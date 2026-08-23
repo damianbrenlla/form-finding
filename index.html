@@ -4,19 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- 1. SEO Primary Metadata -->
+    <!-- SEO & Metadata -->
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
     <meta name="keywords" content="Structural Form Finding, Dynamic Relaxation, Force Density Method, Tensile Fabric Design, Vault Optimization, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://form-finding.dbsw.uk/" />
 
-    <!-- 2. Open Graph / Social Audit Metadata -->
+    <!-- Open Graph Metadata -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="DBSW Engineering">
     <meta property="og:title" content="DBSW 3D Form-Finding Engine — Client-Side WASM">
     <meta property="og:description" content="Interactive 3D dynamic relaxation & equilibrium form finding running entirely in the browser via Pyodide/Wasm.">
     <meta property="og:url" content="https://form-finding.dbsw.uk/">
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "DBSW 3D Form-Finding Engine",
+      "operatingSystem": "WebBrowser",
+      "applicationCategory": "EngineeringApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "GBP"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Damian Brenlla",
+        "url": "https://dbsw.uk"
+      },
+      "description": "Client-side WebAssembly solver for 3D structural form-finding, dynamic relaxation, and reaction force recovery."
+    }
+    </script>
 
     <style>
         * { box-sizing: border-box; }
@@ -94,18 +116,11 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
-        .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-        .load-header-row .btn-group { display: flex; gap: 6px; }
+        
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
         hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
         .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
         
-        .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
-        .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
-        .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
-        .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
-        .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
-
         #intro-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
@@ -132,6 +147,7 @@
 </head>
 <body>
 
+<!-- Introductory Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
         <h2>DBSW</h2>
@@ -163,6 +179,7 @@
     </div>
 </div>
 
+<!-- Sidebar Interface -->
 <div id="sidebar">
     <div>
         <h2>DBSW</h2>
@@ -243,9 +260,327 @@
     <div id="status">Initialising WebAssembly Python runtime…</div>
 </div>
 
+<!-- Main Viewport Canvas -->
 <div id="viewport"></div>
 
-<script src="app.js"></script>
+<script>
+    var scene, camera, renderer, controls;
+    var domainBox;
+    var networkGroup, reactionGroup;
+    var worker = null;
+    var engineReady = false;
+
+    // Black/White 3D Axis Triad Variables
+    var axesScene, axesCamera, axesGroup;
+
+    function initThree() {
+        var container = document.getElementById('viewport');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
+        camera.position.set(9000, 6000, 7000);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+        keyLight.position.set(5000, 8000, 4000);
+        scene.add(keyLight);
+        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+        fillLight.position.set(-3000, -2000, -2000);
+        scene.add(fillLight);
+
+        var grid = new THREE.GridHelper(20000, 200, 0x000000, 0xe0e0e0);
+        grid.position.y = -1;
+        scene.add(grid);
+
+        networkGroup = new THREE.Group();
+        reactionGroup = new THREE.Group();
+        scene.add(networkGroup);
+        scene.add(reactionGroup);
+
+        // --- Minimalistic black/white 3D axis triad setup ---
+        axesScene = new THREE.Scene();
+        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
+        axesCamera.position.set(0, 0, 5);
+        axesCamera.lookAt(0, 0, 0);
+
+        axesGroup = new THREE.Group();
+        axesScene.add(axesGroup);
+
+        var axisLen = 1.2;
+        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+        function addAxisLine(to) {
+            var geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), to
+            ]);
+            axesGroup.add(new THREE.Line(geo, axisMat));
+        }
+        addAxisLine(new THREE.Vector3(axisLen, 0, 0)); // X Axis
+        addAxisLine(new THREE.Vector3(0, axisLen, 0)); // Z Axis (Up)
+        addAxisLine(new THREE.Vector3(0, 0, axisLen)); // Y Axis
+
+        function makeAxisLabel(text) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 68);
+            var tex = new THREE.CanvasTexture(canvas);
+            tex.needsUpdate = true;
+            var mat = new THREE.SpriteMaterial({
+                map: tex,
+                transparent: true,
+                depthTest: false,
+                depthWrite: false
+            });
+            var sprite = new THREE.Sprite(mat);
+            sprite.scale.set(0.55, 0.55, 1);
+            return sprite;
+        }
+
+        var lblX = makeAxisLabel('X');
+        lblX.position.set(axisLen + 0.35, 0, 0);
+        axesGroup.add(lblX);
+
+        var lblZ = makeAxisLabel('Z');
+        lblZ.position.set(0, axisLen + 0.35, 0);
+        axesGroup.add(lblZ);
+
+        var lblY = makeAxisLabel('Y');
+        lblY.position.set(0, 0, axisLen + 0.35);
+        axesGroup.add(lblY);
+
+        window.addEventListener('resize', onWindowResize);
+
+        animate();
+        updateDomainVisuals();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+
+        // Render Orthographic Axis Triad in Bottom-Left Corner
+        if (axesGroup && axesScene && axesCamera) {
+            axesGroup.quaternion.copy(camera.quaternion).invert();
+
+            var size = 110;
+            var margin = 16;
+            var container = document.getElementById('viewport');
+            var w = container.clientWidth;
+            var h = container.clientHeight;
+
+            renderer.autoClear = false;
+            renderer.clearDepth();
+            renderer.setScissorTest(true);
+            renderer.setScissor(margin, margin, size, size);
+            renderer.setViewport(margin, margin, size, size);
+            renderer.render(axesScene, axesCamera);
+            renderer.setScissorTest(false);
+            renderer.setViewport(0, 0, w, h);
+            renderer.autoClear = true;
+        }
+    }
+
+    function onWindowResize() {
+        var container = document.getElementById('viewport');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function updateDomainVisuals() {
+        var Lx = parseFloat(document.getElementById('Lx').value) || 6000;
+        var Ly = parseFloat(document.getElementById('Ly').value) || 6000;
+        var Lz = parseFloat(document.getElementById('Lz').value) || 2000;
+
+        if (domainBox) scene.remove(domainBox);
+        var boxGeo = new THREE.BoxGeometry(Lx, Lz, Ly);
+        var edges = new THREE.EdgesGeometry(boxGeo);
+        domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, linewidth: 1 }));
+        domainBox.position.set(Lx / 2.0, Lz / 2.0, Ly / 2.0);
+        scene.add(domainBox);
+    }
+
+    function initWasmEngine() {
+        worker = new Worker('solver_worker.js?cb=' + Date.now());
+        worker.onmessage = handleWorkerMessage;
+        worker.postMessage({ action: 'init' });
+    }
+
+    function handleWorkerMessage(e) {
+        var data = e.data;
+        var status = document.getElementById('status');
+        var btnExec = document.getElementById('btn-exec');
+        var btnStop = document.getElementById('btn-stop');
+        var actionsGroup = document.getElementById('results-actions-group');
+
+        if (data.status === 'log') {
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = data.message;
+
+        } else if (data.status === 'ready') {
+            engineReady = true;
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Wasm Engine Ready. Define problem parameters.";
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Form-Finding Solver";
+
+        } else if (data.status === 'completed') {
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Form-Finding Solver";
+            btnStop.style.display = 'none';
+            actionsGroup.style.display = 'flex';
+
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
+            
+            renderFormFoundNetwork(data.data);
+            displayReactions(data.data.reactions);
+
+        } else if (data.status === 'error') {
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Form-Finding Solver";
+            btnStop.style.display = 'none';
+            status.style.color = "#cc0000";
+            status.style.borderLeftColor = "#cc0000";
+            status.innerText = "Solver Error: " + data.message;
+        }
+    }
+
+    function startOptimisation() {
+        if (!engineReady) return;
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Dispatching Dynamic Relaxation solver to Wasm worker...";
+
+        document.getElementById('btn-exec').disabled = true;
+        document.getElementById('btn-stop').style.display = 'block';
+        document.getElementById('results-actions-group').style.display = 'none';
+
+        var payload = {
+            preset: document.getElementById('preset').value,
+            material_grade: document.getElementById('mat_grade').value,
+            support_preset: document.getElementById('support_preset').value,
+            Lx: parseFloat(document.getElementById('Lx').value),
+            Ly: parseFloat(document.getElementById('Ly').value),
+            Lz: parseFloat(document.getElementById('Lz').value),
+            nx: parseInt(document.getElementById('nx').value),
+            ny: parseInt(document.getElementById('ny').value),
+            prestress: parseFloat(document.getElementById('prestress').value),
+            iterations: parseInt(document.getElementById('iterations').value)
+        };
+
+        worker.postMessage({ action: 'form_find', payload: payload });
+    }
+
+    function stopOptimisation() {
+        var status = document.getElementById('status');
+        status.style.color = "#cc0000";
+        status.style.borderLeftColor = "#cc0000";
+        status.innerText = "Terminating and reloading Wasm engine...";
+
+        document.getElementById('btn-stop').style.display = 'none';
+        document.getElementById('btn-exec').disabled = true;
+        document.getElementById('btn-exec').innerText = "Loading Wasm Engine…";
+        document.getElementById('results-actions-group').style.display = 'none';
+        engineReady = false;
+
+        if (worker) worker.terminate();
+        initWasmEngine();
+    }
+
+    function clearResults() {
+        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
+        while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
+
+        document.getElementById('results-actions-group').style.display = 'none';
+
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Results cleared. Ready to define parameters.";
+
+        updateDomainVisuals();
+    }
+
+    function renderFormFoundNetwork(data) {
+        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
+
+        var nodes = data.nodes;
+        var edges = data.edges;
+        var axial_forces = data.axial_forces;
+
+        var minF = Math.min.apply(null, axial_forces);
+        var maxF = Math.max.apply(null, axial_forces);
+
+        var lineGeometry = new THREE.BufferGeometry();
+        var positions = [];
+        var colors = [];
+
+        edges.forEach(function(edge, idx) {
+            var p1 = nodes[edge[0]];
+            var p2 = nodes[edge[1]];
+
+            positions.push(p1[0], p1[2], p1[1]);
+            positions.push(p2[0], p2[2], p2[1]);
+
+            var norm = (axial_forces[idx] - minF) / (maxF - minF || 1);
+            var color = new THREE.Color();
+            color.setHSL(0.0, norm, 0.2 + 0.3 * (1 - norm));
+
+            colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+        });
+
+        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        var lineMaterial = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 1.5 });
+        var networkMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
+        
+        networkGroup.add(networkMesh);
+    }
+
+    function displayReactions(reactions) {
+        while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
+
+        reactions.forEach(function(r) {
+            var origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
+            var dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN).normalize();
+            var length = 400;
+
+            var arrow = new THREE.ArrowHelper(dir, origin, length, 0xcc0000, 100, 40);
+            reactionGroup.add(arrow);
+        });
+    }
+
+    function exportSTL() {
+        alert("Exporting solved form-finding network geometry...");
+    }
+
+    initThree();
+    initWasmEngine();
+</script>
 
 </body>
 </html>
