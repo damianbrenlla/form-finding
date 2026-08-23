@@ -9,13 +9,15 @@ let pyodide = null;
 
 async function initEngine() {
     try {
-        postMessage({ status: "log", message: "Initialising Pyodide WebAssembly engine..." });
+        postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
         pyodide = await loadPyodide();
-        await pyodide.loadPackage(["numpy", "scipy"]);
 
+        postMessage({ status: "log", message: "Loading NumPy package..." });
+        await pyodide.loadPackage(["numpy"]);
+
+        postMessage({ status: "log", message: "Mounting Python core files..." });
         pyodide.FS.mkdirTree("/home/pyodide/core");
 
-        // Fetch core Python files directly into Wasm MEMFS (No __init__.py needed)
         const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
         for (const file of files) {
             const response = await fetch(`./python_core/${file}?cb=${Date.now()}`);
@@ -59,7 +61,7 @@ mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
 
 domain = FormFindingDomain3D(
     Lx=float(payload.get("Lx", 6000)), Ly=float(payload.get("Ly", 6000)), Lz=float(payload.get("Lz", 2000)),
-    nx=int(payload.get("nx", 15)), ny=int(payload.get("ny", 15)),
+    nx=int(payload.get("nx", 16)), ny=int(payload.get("ny", 16)),
     geometry_preset=payload.get("preset", "vault")
 )
 
