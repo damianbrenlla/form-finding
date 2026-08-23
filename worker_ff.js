@@ -15,10 +15,11 @@ async function initEngine() {
 
         pyodide.FS.mkdirTree("/home/pyodide/core");
 
-        const files = ["domain_ff.py", "materials.py", "solvers_ff.py", "__init__.py"];
+        // Fetch core Python files directly into Wasm MEMFS (No __init__.py needed)
+        const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
         for (const file of files) {
             const response = await fetch(`./python_core/${file}?cb=${Date.now()}`);
-            if (!response.ok) throw new Error(`Failed to fetch ${file}`);
+            if (!response.ok) throw new Error(`Failed to fetch ${file} (HTTP ${response.status})`);
             const code = await response.text();
             pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
         }
