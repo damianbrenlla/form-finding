@@ -4,7 +4,7 @@
 
 class FormFindingMaterialRegistry:
     """Centralized Registry for Structural Materials adhering to Eurocodes (EC2, EC3, EC5, EC6)
-    plus Tensile Cables, Architectural Fabrics, and Custom Isotropic Grade logic.
+    plus Structural Cables, Architectural Fabrics (PTFE Type I–V), and Custom Isotropic logic.
     """
 
     STEEL_GRADES = {
@@ -33,15 +33,20 @@ class FormFindingMaterialRegistry:
     }
 
     CABLE_GRADES = {
-        "Steel Cable (7x19)":  {"E": 110000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
-        "High-Tensile Wire":  {"E": 160000.0, "nu": 0.30, "f_k": 1860.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
-        "Stainless Strand":   {"E": 130000.0, "nu": 0.30, "f_k": 1450.0, "gamma_M": 1.15, "gamma_kn_m3": 79.0},
+        "Flexible Rope (7x19)":      {"E": 110000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
+        "Spiral Strand (1x19)":      {"E": 140000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
+        "Locked Coil Cable":          {"E": 165000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
+        "High-Tensile Wire (1860)":   {"E": 195000.0, "nu": 0.30, "f_k": 1860.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
+        "Stainless Strand (AISI 316)": {"E": 130000.0, "nu": 0.30, "f_k": 1450.0, "gamma_M": 1.15, "gamma_kn_m3": 79.0},
+        "Aramid / Synthetic Fiber":   {"E": 75000.0,  "nu": 0.35, "f_k": 1400.0, "gamma_M": 1.20, "gamma_kn_m3": 14.0},
     }
 
     FABRIC_GRADES = {
-        "PTFE Architectural": {"E": 1500.0, "nu": 0.25, "f_k": 80.0, "gamma_M": 1.40, "gamma_kn_m3": 14.0},
-        "PVC-Coated Polyester": {"E": 900.0,  "nu": 0.25, "f_k": 50.0, "gamma_M": 1.40, "gamma_kn_m3": 11.0},
-        "ETFE Membrane":        {"E": 650.0,  "nu": 0.40, "f_k": 40.0, "gamma_M": 1.30, "gamma_kn_m3": 17.5},
+        "PTFE Type I (Light)":    {"E": 800.0,  "nu": 0.25, "f_k": 60.0,  "gamma_M": 1.40, "gamma_kn_m3": 11.0},
+        "PTFE Type II (Standard)": {"E": 1200.0, "nu": 0.25, "f_k": 80.0,  "gamma_M": 1.40, "gamma_kn_m3": 13.5},
+        "PTFE Type III (Medium)":  {"E": 1600.0, "nu": 0.25, "f_k": 110.0, "gamma_M": 1.40, "gamma_kn_m3": 15.0},
+        "PTFE Type IV (Heavy)":   {"E": 2000.0, "nu": 0.25, "f_k": 140.0, "gamma_M": 1.40, "gamma_kn_m3": 16.5},
+        "PTFE Type V (Extreme)":  {"E": 2400.0, "nu": 0.25, "f_k": 170.0, "gamma_M": 1.40, "gamma_kn_m3": 18.0},
     }
 
     MASONRY_GAMMA_KN_M3 = 19.0
@@ -97,8 +102,8 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type == "cable":
-            grade = payload.get("material_grade", "Steel Cable (7x19)")
-            props = cls.CABLE_GRADES.get(grade, cls.CABLE_GRADES["Steel Cable (7x19)"])
+            grade = payload.get("material_grade", "Flexible Rope (7x19)")
+            props = cls.CABLE_GRADES.get(grade, cls.CABLE_GRADES["Flexible Rope (7x19)"])
             return {
                 "material_type": "cable",
                 "material_name": f"Cable {grade}",
@@ -110,8 +115,8 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type == "fabric":
-            grade = payload.get("material_grade", "PTFE Architectural")
-            props = cls.FABRIC_GRADES.get(grade, cls.FABRIC_GRADES["PTFE Architectural"])
+            grade = payload.get("material_grade", "PTFE Type II (Standard)")
+            props = cls.FABRIC_GRADES.get(grade, cls.FABRIC_GRADES["PTFE Type II (Standard)"])
             return {
                 "material_type": "fabric",
                 "material_name": f"Fabric {grade}",
@@ -156,10 +161,10 @@ class FormFindingMaterialRegistry:
             E_val = float(payload.get("custom_E", 210000.0))
             nu_val = float(payload.get("custom_nu", 0.30))
             fk_val = float(payload.get("custom_fk", 355.0))
-            gamma_val = float(payload.get("custom_gamma_kn_m3", 0.0))
+            gamma_val = float(payload.get("custom_gamma_kn_m3", 78.5))
             return {
                 "material_type": "generic",
-                "material_name": "Custom/Generic Material",
+                "material_name": "Custom / Generic Isotropic Material",
                 "E": E_val,
                 "nu": nu_val,
                 "f_k": fk_val,
