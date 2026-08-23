@@ -3,159 +3,249 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DBSW 3D FORM-FINDING ENGINE — CLIENT-SIDE WASM</title>
+    
+    <!-- 1. SEO Primary Metadata -->
+    <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
+    <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
+    <meta name="keywords" content="Structural Form Finding, Dynamic Relaxation, Force Density Method, Tensile Fabric Design, Vault Optimization, DBSW Engineering">
+    <meta name="author" content="Damian Brenlla / DBSW">
+    <link rel="canonical" href="https://form-finding.dbsw.uk/" />
+
+    <!-- 2. Open Graph / Social Audit Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="DBSW Engineering">
+    <meta property="og:title" content="DBSW 3D Form-Finding Engine — Client-Side WASM">
+    <meta property="og:description" content="Interactive 3D dynamic relaxation & equilibrium form finding running entirely in the browser via Pyodide/Wasm.">
+    <meta property="og:url" content="https://form-finding.dbsw.uk/">
+
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-        body { display: flex; height: 100vh; background: #c8c8c8; color: #111; overflow: hidden; font-size: 11px; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 0;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background: #ffffff; color: #000000;
+            display: flex; height: 100vh; overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
         
-        /* Sidebar Styling */
-        #sidebar { width: 320px; background: #e0e0e0; padding: 12px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #aaa; overflow-y: auto; font-size: 10px; }
-        .brand-title { font-weight: bold; font-size: 12px; color: #000; letter-spacing: 0.5px; }
-        .brand-subtitle { color: #555; font-size: 9px; margin-bottom: 5px; text-transform: uppercase; }
+        /* DBSW Custom Minimalist Scrollbar Palette */
+        #sidebar::-webkit-scrollbar { width: 6px; }
+        #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
+        #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
+        #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
+        #sidebar::-webkit-scrollbar-button:single-button {
+            background-color: #ffffff; display: block; border-style: solid; height: 10px; width: 6px;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:decrement {
+            border-width: 0 3px 5px 3px; border-color: transparent transparent #000000 transparent;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:increment {
+            border-width: 5px 3px 0 3px; border-color: #000000 transparent transparent transparent;
+        }
+
+        #sidebar {
+            width: 420px; background: #ffffff; padding: 24px;
+            border-right: 1px solid #e5e5e5; display: flex;
+            flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
+        }
+        #viewport { flex: 1; position: relative; background: #ffffff; }
+        h2 { margin: 0 0 2px 0; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #000000; }
+        .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+        .control-group { display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 0.75rem; color: #444444; font-weight: 500; letter-spacing: 0.2px; }
+        input, select {
+            background: #ffffff; border: 1px solid #cccccc; color: #000000;
+            padding: 6px 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.78rem; outline: none; transition: border-color 0.15s ease;
+        }
+        input:focus, select:focus { border-color: #000000; }
+
+        .btn-primary {
+            background: #000000; color: #ffffff; border: 1px solid #000000;
+            padding: 12px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease; margin-top: 4px;
+        }
+        .btn-primary:hover { background: #333333; }
+        .btn-primary:disabled { background: #999999; border-color: #999999; cursor: not-allowed; }
+        .btn-stop {
+            background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
+            padding: 10px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.80rem; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; transition: all 0.15s ease; display: none; margin-top: 4px;
+        }
+        .btn-stop:hover { background: #cc0000; color: #ffffff; }
+        .btn-secondary {
+            background: #ffffff; color: #000000; border: 1px solid #000000;
+            padding: 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
+        }
+        .btn-secondary:hover { background: #f5f5f5; }
+        .btn-secondary-danger {
+            background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
+            padding: 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
+        }
+        .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
+        .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+        .load-header-row .btn-group { display: flex; gap: 6px; }
+        #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
+        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
+        .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
         
-        .section-header { font-weight: bold; font-size: 10px; color: #000; border-bottom: 1px solid #b0b0b0; padding-bottom: 3px; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .form-group { display: flex; flex-direction: column; gap: 3px; }
-        label { color: #333; font-weight: 600; }
-        input, select { padding: 4px 6px; background: #f5f5f5; border: 1px solid #999; color: #000; border-radius: 0px; font-size: 10px; width: 100%; }
-        input:focus, select:focus { border-color: #000; outline: none; background: #fff; }
-        
-        .row-3 { display: flex; gap: 4px; }
-        .row-3 input { flex: 1; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
+        .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
+        .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
+        .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
+        .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
 
-        /* Tables for Supports & Loads */
-        table.input-grid { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9px; }
-        table.input-grid th { background: #d0d0d0; border: 1px solid #aaa; padding: 2px 4px; text-align: center; font-weight: bold; }
-        table.input-grid td { border: 1px solid #bbb; padding: 1px; }
-        table.input-grid input { border: none; background: transparent; text-align: center; font-size: 9px; padding: 2px; }
-        
-        .btn-action { background: #e53935; color: #fff; font-weight: bold; cursor: pointer; border: none; padding: 6px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; border-radius: 0px; margin-top: 5px; }
-        .btn-action:hover { background: #c62828; }
-        .btn-secondary { background: #d5d5d5; color: #111; font-weight: bold; cursor: pointer; border: 1px solid #999; padding: 3px; font-size: 8px; text-transform: uppercase; }
-        .btn-secondary:hover { background: #bbb; }
-
-        /* Main Viewport */
-        #viewport { flex: 1; position: relative; background: #c8c8c8; }
-        #canvas-container { width: 100%; height: 100%; }
-
-        /* Welcome Overlay Modal */
-        #modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.35); display: flex; justify-content: center; align-items: center; z-index: 999; }
-        .modal-card { background: #fff; width: 420px; padding: 25px; border: 1px solid #000; box-shadow: 0 4px 20px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px; color: #111; }
-        .modal-card h1 { font-size: 14px; font-weight: bold; line-height: 1.2; text-transform: uppercase; }
-        .modal-card p { font-size: 11px; line-height: 1.4; color: #333; }
-        .modal-card ul { padding-left: 15px; font-size: 10px; line-height: 1.5; color: #333; }
-        .btn-modal { background: #000; color: #fff; font-weight: bold; padding: 10px; border: none; cursor: pointer; text-transform: uppercase; font-size: 11px; text-align: center; margin-top: 5px; }
-        .btn-modal:hover { background: #222; }
-
-        /* Reaction Panel Overlay */
-        #reaction-panel { position: absolute; bottom: 15px; right: 15px; background: rgba(255,255,255,0.9); border: 1px solid #888; padding: 8px 12px; font-size: 9px; max-height: 160px; overflow-y: auto; display: none; }
+        #intro-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        #intro-modal {
+            background: #ffffff; border: 1px solid #000000;
+            max-width: 460px; width: 90%; padding: 28px 28px 22px 28px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
+        }
+        #intro-modal h2 { margin: 0 0 2px 0; letter-spacing: 1.5px; }
+        #intro-modal .subtitle { margin-bottom: 16px; }
+        #intro-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
+        #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
+        #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 3px; }
+        #intro-modal .author-line {
+            font-size: 0.72rem; color: #666666; letter-spacing: 0.3px;
+            border-top: 1px solid #e5e5e5; padding-top: 12px; margin-bottom: 16px;
+        }
+        #intro-modal .author-line a { color: #000000; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
-    <!-- Welcome Modal Overlay -->
-    <div id="modal-overlay">
-        <div class="modal-card">
-            <div>
-                <h1>DBSW</h1>
-                <div style="font-size: 10px; font-weight: bold; color: #555; margin-top: 2px;">3D FORM-FINDING ENGINE — CLIENT-SIDE WASM</div>
-            </div>
-            <p>This tool generates 3D structural equilibrium forms (vaults, domes, cable-nets, tensile fabrics, and space trusses) using Dynamic Relaxation and Force Density methods solved entirely in your browser via WebAssembly — no data leaves your machine.</p>
-            <ul>
-                <li>Multi-material support (Steel, Concrete, Masonry, Timber, Cables, Fabrics)</li>
-                <li>Point/line boundary restraints with reaction force vector outputs</li>
-                <li>Gravity, self-weight, and point load array processing</li>
-                <li>Tension vs. Compression axial force distribution maps</li>
-            </ul>
-            <p style="font-size: 9px; color: #666;">Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" style="color:#000;">dbsw.uk</a></p>
-            <button class="btn-modal" onclick="closeModal()">ENTER APPLICATION</button>
+<div id="intro-overlay">
+    <div id="intro-modal">
+        <h2>DBSW</h2>
+        <div class="subtitle">3D Form-Finding Engine — Client-Side WASM</div>
+
+        <p>
+            This tool generates 3D structural equilibrium forms (compression vaults, domes, cable nets, tensile fabrics, and space trusses) using Dynamic Relaxation and Force Density methods, solved entirely in your browser via WebAssembly — no data leaves your machine.
+        </p>
+
+        <ul>
+            <li>Multi-material support (Steel, Concrete, Timber, Masonry, Cables, Fabrics)</li>
+            <li>Configurable domain geometry, spatial grid density, supports, and prestress</li>
+            <li>Explicit support reaction force vectors (Rx, Ry, Rz in kN)</li>
+            <li>Tension vs. Compression axial force distribution visualization</li>
+            <li>Direct .STL geometry export capability</li>
+        </ul>
+
+        <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
+            This is a concept-stage design exploration tool, not a substitute for code-compliant structural verification of the final geometry.
+        </p>
+
+        <div class="author-line" style="margin-top: 14px;">
+            Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
+        </div>
+
+        <button class="btn-primary" style="margin-top: 0;" onclick="document.getElementById('intro-overlay').style.display='none';">
+            Enter Application
+        </button>
+    </div>
+</div>
+
+<div id="sidebar">
+    <div>
+        <h2>DBSW</h2>
+        <div class="subtitle">3D Form-Finding Engine — Client-Side WASM</div>
+    </div>
+
+    <div class="control-group">
+        <label>Structural Material Classification</label>
+        <select id="mat_grade">
+            <option value="S355" selected>Structural Steel — S355 (BS EN 1993)</option>
+            <option value="C30/37">Reinforced Concrete — C30/37 (BS EN 1992)</option>
+            <option value="Masonry_EC6">Structural Masonry — BS EN 1996 (EC6)</option>
+            <option value="C16_Timber">Timber / Glulam — C16 (BS EN 1995)</option>
+            <option value="PTFE_Architectural_Fabric">Architectural PTFE Fabric</option>
+            <option value="Steel_Cable_7x19">Steel Structural Cable (7x19)</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Target Form Preset</label>
+        <select id="preset" onchange="updateDomainVisuals()">
+            <option value="vault" selected>Compression Vault / Shell</option>
+            <option value="dome">Masonry / Concrete Dome</option>
+            <option value="surface_grid">Tensile Fabric Canopy</option>
+            <option value="catenary_arch">Catenary Cable Net</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Domain Geometry Lx, Ly, Lz (mm)</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" id="Lx" value="6000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
+            <input type="number" id="Ly" value="6000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
+            <input type="number" id="Lz" value="2000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
         </div>
     </div>
 
-    <!-- Sidebar Controls -->
-    <div id="sidebar">
-        <div>
-            <div class="brand-title">DBSW</div>
-            <div class="brand-subtitle">3D FORM-FINDING ENGINE — CLIENT-SIDE WASM</div>
-        </div>
-
-        <div class="form-group">
-            <label>Structural Material Classification</label>
-            <select id="material_grade">
-                <option value="S355">Structural Steel — S355 (BS EN 1993)</option>
-                <option value="C30/37">Reinforced Concrete — C30/37 (BS EN 1992)</option>
-                <option value="Masonry_EC6">Structural Masonry — (BS EN 1996)</option>
-                <option value="C16_Timber">Timber — C16 (BS EN 1995)</option>
-                <option value="PTFE_Architectural_Fabric">Architectural PTFE Fabric</option>
-                <option value="Steel_Cable_7x19">Steel Structural Cable (7x19)</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label>Form Target Preset</label>
-            <select id="preset">
-                <option value="vault">Compression Vault / Shell</option>
-                <option value="dome">Masonry / Concrete Dome</option>
-                <option value="surface_grid">Tensile Fabric Canopy</option>
-                <option value="catenary_arch">Catenary Cable Net</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label>Domain Geometry Lx, Ly, Lz (mm)</label>
-            <div class="row-3">
-                <input type="number" id="Lx" value="6000">
-                <input type="number" id="Ly" value="6000">
-                <input type="number" id="Lz" value="2000">
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Spatial Grid Density nx, ny</label>
-            <div class="row-3">
-                <input type="number" id="nx" value="16">
-                <input type="number" id="ny" value="16">
-            </div>
-        </div>
-
-        <div class="section-header">BOUNDARY RESTRAINTS</div>
-
-        <div class="form-group">
-            <label>Support Mode</label>
-            <select id="support_preset">
-                <option value="four_corners">Four Corner Point Supports</option>
-                <option value="two_opposite_lines">Two Continuous Boundary Lines</option>
-            </select>
-        </div>
-
-        <div class="section-header">LOADING DEFINITION</div>
-
-        <div class="form-group">
-            <label>Internal Prestress Force (N)</label>
-            <input type="number" id="prestress" value="15">
-        </div>
-
-        <button class="btn-action" onclick="runFormFinding()">RUN FORM-FINDING SOLVER</button>
-    </div>
-
-    <!-- Viewport Container -->
-    <div id="viewport">
-        <div id="canvas-container"></div>
-        <div id="reaction-panel">
-            <strong>SUPPORT REACTIONS (kN)</strong>
-            <table class="input-grid" id="reaction-table">
-                <thead><tr><th>NODE</th><th>Rz</th><th>R TOTAL</th></tr></thead>
-                <tbody></tbody>
-            </table>
+    <div class="control-group">
+        <label>Spatial Grid Divisions nx, ny</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" id="nx" value="16" style="width: 50%; font-family: monospace;">
+            <input type="number" id="ny" value="16" style="width: 50%; font-family: monospace;">
         </div>
     </div>
 
-    <script src="app.js"></script>
-    <script>
-        function closeModal() {
-            document.getElementById('modal-overlay').style.display = 'none';
-        }
-    </script>
+    <hr>
+    <div class="section-header">Boundary Restraints</div>
+
+    <div class="control-group">
+        <label>Support Presets</label>
+        <select id="support_preset" onchange="updateDomainVisuals()">
+            <option value="four_corners" selected>Four Point Corner Supports</option>
+            <option value="two_opposite_lines">Two Continuous Line Supports</option>
+        </select>
+    </div>
+
+    <hr>
+    <div class="section-header">Prestress & Loading</div>
+
+    <div class="control-group">
+        <label>Internal Cable / Fabric Prestress (N)</label>
+        <input type="number" id="prestress" value="15" style="font-family: monospace;">
+    </div>
+
+    <div class="control-group">
+        <label>Dynamic Relaxation Iterations</label>
+        <input type="number" id="iterations" value="300" style="font-family: monospace;">
+    </div>
+
+    <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
+    <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
+    
+    <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
+        <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
+        <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div id="status">Initialising WebAssembly Python runtime…</div>
+</div>
+
+<div id="viewport"></div>
+
+<script src="app.js"></script>
+
 </body>
 </html>
