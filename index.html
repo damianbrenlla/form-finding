@@ -342,9 +342,9 @@
         "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
     };
 
-    // Strict Structural Engineering Form Options Governed by Mechanics
+    // Strict Structural Mechanics Classification Mapping
     var PRESET_CATALOGUE = {
-        compression_only: [
+        vault_dome_only: [
             { value: "vault", text: "Compression Vault / Shell" },
             { value: "dome", text: "Masonry / Concrete Dome" }
         ],
@@ -352,7 +352,7 @@
             { value: "surface_grid", text: "Prestressed Tensile Canopy / Hypar" },
             { value: "catenary_arch", text: "Suspended Cable Net Surface" }
         ],
-        isotropic: [
+        all_presets: [
             { value: "vault", text: "Compression Vault / Shell" },
             { value: "dome", text: "Dome Structure" },
             { value: "surface_grid", text: "Tensile Canopy / Hypar" },
@@ -371,12 +371,15 @@
         presetSelect.innerHTML = '';
 
         var optionsGroup;
-        if (matType === 'masonry' || matType === 'stone') {
-            optionsGroup = PRESET_CATALOGUE.compression_only;
+        // Stone, Masonry, Concrete, Steel, Timber -> Vault / Shell & Dome Options Only
+        if (matType === 'masonry' || matType === 'stone' || matType === 'concrete' || matType === 'steel' || matType === 'timber') {
+            optionsGroup = PRESET_CATALOGUE.vault_dome_only;
+        // Cables & Fabrics -> Tension-Only Options (Canopies & Suspended Nets)
         } else if (matType === 'cable' || matType === 'fabric') {
             optionsGroup = PRESET_CATALOGUE.tension_only;
+        // Custom / Generic Isotropic Material -> All Options Available
         } else {
-            optionsGroup = PRESET_CATALOGUE.isotropic;
+            optionsGroup = PRESET_CATALOGUE.all_presets;
         }
 
         optionsGroup.forEach(function(opt) {
