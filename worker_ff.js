@@ -1,12 +1,29 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v2 — Fixed: material_type passed to solver, invert logic, payload mapping
+ * v3 — Fixed: python_core fetch path resolved relative to worker location
+ *      (not the page), so this still works if the worker script is loaded
+ *      from a different directory depth than index.html. Fixed: fetch
+ *      failures and Pyodide/package load failures now report the exact
+ *      URL and HTTP status instead of a generic "Init failed" message.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
 let pyodide = null;
+
+// FIX: build python_core URLs relative to *this worker's* location
+// (self.location), not relative to whatever page happened to load it.
+// A worker instantiated as new Worker('worker_ff.js') resolves relative
+// fetches against the worker's own script URL, which is usually the same
+// as the page — but if you ever move worker_ff.js into a /js/ subfolder,
+// or serve it from a different path than index.html, the old relative
+// './python_core/...' silently 404s and the engine hangs forever on
+// "Loading Wasm Engine...". This makes the intent explicit and easy to
+// debug (see the console.error we now emit with the exact URL on failure).
+function corePythonUrl(filename) {
+    return new URL(`./python_core/${filename}`, self.location.href).href;
+}
 
 async function initEngine() {
     try {
@@ -24,8 +41,26 @@ async function initEngine() {
 
         const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
         for (const file of files) {
-            const response = await fetch(`./python_core/${file}?cb=${Date.now()}`);
-            if (!response.ok) throw new Error(`HTTP ${response.status} fetching python_core/${file}`);
+            const url = corePythonUrl(file) + `?cb=${Date.now()}`;
+            let response;
+            try {
+                response = await fetch(url);
+            } catch (networkErr) {
+                // FIX: distinguish a network/CORS failure from an HTTP error status —
+                // both used to collapse into the same vague "Init failed" message.
+                throw new Error(
+                    `Network error fetching ${file} at ${url}: ${networkErr.message}. ` +
+                    `If you are opening this page as a file:// URL, serve it with a local ` +
+                    `web server instead (e.g. "python3 -m http.server") — workers cannot ` +
+                    `fetch local files over file://.`
+                );
+            }
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status} ${response.statusText} fetching ${file} at ${url}. ` +
+                    `Check that python_core/${file} exists alongside worker_ff.js.`
+                );
+            }
             const code = await response.text();
             pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
         }
@@ -39,6 +74,7 @@ if '/home/pyodide' not in sys.path:
         postMessage({ status: "ready" });
 
     } catch (err) {
+        console.error("[worker_ff.js] Init failed:", err);
         postMessage({ status: "error", message: "Init failed: " + err.toString() });
     }
 }
@@ -110,6 +146,15 @@ for pt in payload.get("point_supports", []):
         float(pt.get("x", 0)),
         float(pt.get("y", 0)),
         float(pt.get("z", 0))
+    )
+
+# Fail loudly rather than silently returning an empty/degenerate result if
+# no supports resolved (e.g. "points_only" mode selected with an empty table).
+if len(domain.fixed_nodes) == 0:
+    raise ValueError(
+        "No support nodes resolved. If using 'Only User-Selected Discrete "
+        "Points' mode, add at least one row to the Discrete Point Supports "
+        "table, or switch back to a Support Preset."
     )
 
 # --- Cross-Section Area ---
@@ -195,6 +240,7 @@ json.dumps({
             postMessage({ status: "completed", data: JSON.parse(resultJson) });
 
         } catch (err) {
+            console.error("[worker_ff.js] Solve failed:", err);
             postMessage({ status: "error", message: err.toString() });
         }
     }
