@@ -88,17 +88,16 @@ else:
 # Member Section Area Calculations
 mat_type = payload.get("material_type", "steel")
 if mat_type == "cable":
-    d_mm = float(payload.get("sec_cable_d", 24.0))
+    d_mm = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0)**2
 elif mat_type == "fabric":
-    t_mm = float(payload.get("sec_fabric_t", 1.2))
-    area_mm2 = t_mm * 1000.0  # Unit width
+    t_mm = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
+    area_mm2 = t_mm * 1000.0
 else:
-    b_mm = float(payload.get("sec_b", 300.0))
-    h_mm = float(payload.get("sec_h", 300.0))
+    b_mm = max(float(payload.get("sec_b", 300.0)), 1.0)
+    h_mm = max(float(payload.get("sec_h", 300.0)), 1.0)
     area_mm2 = b_mm * h_mm
 
-# External Loads Assembly
 external_loads = payload.get("loads", [])
 include_sw = payload.get("include_self_weight", True)
 
@@ -121,8 +120,8 @@ equilibrium_nodes, axial_forces, reactions = solver.solve_equilibrium(
 fixed_indices = list(domain.fixed_nodes)
 reaction_data = []
 for idx in fixed_indices:
-    pos = [float(x) for x in equilibrium_nodes[idx].tolist()]
-    rx, ry, rz = [float(f) for f in reactions[idx].tolist()]
+    pos = [float(x) for x in np.nan_to_num(equilibrium_nodes[idx]).tolist()]
+    rx, ry, rz = [float(f) for f in np.nan_to_num(reactions[idx]).tolist()]
     reaction_data.append({
         "node": int(idx),
         "pos": pos,
@@ -132,9 +131,12 @@ for idx in fixed_indices:
         "R_total_kN": round(float(np.linalg.norm([rx, ry, rz])) / 1000.0, 2)
     })
 
-nodes_list = [[float(val) for val in row] for row in equilibrium_nodes.tolist()]
+clean_nodes = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
+clean_forces = np.nan_to_num(axial_forces, nan=0.0, posinf=0.0, neginf=0.0)
+
+nodes_list = [[float(val) for val in row] for row in clean_nodes.tolist()]
 edges_list = [[int(val) for val in row] for row in np.asarray(domain.edges, dtype=int).tolist()]
-forces_list = [float(val) for val in np.asarray(axial_forces, dtype=float).tolist()]
+forces_list = [float(val) for val in clean_forces.tolist()]
 
 json.dumps({
     "nodes": nodes_list,
