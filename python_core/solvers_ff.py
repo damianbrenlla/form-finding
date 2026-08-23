@@ -258,7 +258,7 @@ class UniversalFormFindingSolver:
 
                 # Scale to target rise Lz
                 new_z_range = np.max(nodes[free_nodes, 2]) - np.min(nodes[free_nodes, 2])
-                if new_z_range > 1e-3 and self.domain.Lz > 1e-3:
+               if new_z_range > 1.0:  # only scale if meaningful deformation occurred
                     scale = self.domain.Lz / new_z_range
                     for i in free_nodes:
                         nodes[i, 2] = support_z + (nodes[i, 2] - support_z) * scale
