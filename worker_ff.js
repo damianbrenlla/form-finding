@@ -1,6 +1,6 @@
 /**
- * DBSW R260003 Form-Finding WebWorker Engine
- * Author: Damian Brenlla / DBSW 2026
+ * DBSW 3D Form-Finding WebWorker Engine (Instant Boot)
+ * Author: Damian Brenlla / DBSW
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -12,16 +12,17 @@ async function initEngine() {
         postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
         pyodide = await loadPyodide();
 
-        postMessage({ status: "log", message: "Loading NumPy package..." });
+        postMessage({ status: "log", message: "Loading NumPy package into Wasm memory..." });
         await pyodide.loadPackage(["numpy"]);
 
         postMessage({ status: "log", message: "Mounting Python core files..." });
         pyodide.FS.mkdirTree("/home/pyodide/core");
 
-        const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
+        // Removed __init__.py to prevent HTTP fetch timeouts
+        const files = ["domain.py", "materials.py", "solvers.py"];
         for (const file of files) {
             const response = await fetch(`./python_core/${file}?cb=${Date.now()}`);
-            if (!response.ok) throw new Error(`Failed to fetch ${file} (HTTP ${response.status})`);
+            if (!response.ok) throw new Error(`Failed to fetch python_core/${file} (HTTP ${response.status})`);
             const code = await response.text();
             pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
         }
@@ -46,15 +47,15 @@ self.onmessage = async function(e) {
         return;
     }
 
-    if (action === "form_find") {
+    if (action === "solve" || action === "form_find") {
         pyodide.globals.set("payload_json", JSON.stringify(payload));
 
         try {
             const resultJson = await pyodide.runPythonAsync(`
 import json, numpy as np
-from core.domain_ff import FormFindingDomain3D
+from core.domain import FormFindingDomain3D
 from core.materials import FormFindingMaterialRegistry
-from core.solvers_ff import UniversalFormFindingSolver
+from core.solvers import UniversalFormFindingSolver
 
 payload = json.loads(payload_json)
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
