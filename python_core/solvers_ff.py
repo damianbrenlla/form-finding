@@ -1,11 +1,26 @@
 # DBSW 3D Dynamic Relaxation & Dynamic Form-Finding Solver
 # Author: Damian Brenlla / DBSW 2026
+# v3 — Fixed: capped stiffness-normalized load scaling (was unbounded and could
+#      blow up displacements/forces to NaN territory for stiff sections with
+#      light loads, e.g. default concrete 300x300mm with a single small point
+#      load and self-weight off). Fixed: per-iteration NaN/Inf guard on
+#      velocities, not just at the very end, so a single bad iteration can't
+#      poison the whole relaxation run silently.
 
 import numpy as np
 
 
 class UniversalFormFindingSolver:
     """Robust Dynamic Relaxation solver for 3D form-finding (vaults, domes, cable nets, fabrics)."""
+
+    # FIX: hard ceiling on the stiffness-normalisation multiplier. The old code
+    # scaled F_ext by (E*A/1e6) / total_load with no upper bound. For a typical
+    # concrete section (E=33000, A=90000mm^2 -> stiffness_factor ~2970) and a
+    # small total load (e.g. a single 1-5 kN point load with self-weight off),
+    # this produced multipliers in the thousands, driving nodal displacements
+    # far outside anything physically meaningful and risking overflow/NaN in
+    # the strain -> force calculation on the very first iterations.
+    MAX_LOAD_SCALE_FACTOR = 50.0
 
     def __init__(
         self,
@@ -73,8 +88,10 @@ class UniversalFormFindingSolver:
             F_ext[closest_idx, 1] += fy_N
             F_ext[closest_idx, 2] += fz_N
 
-        # --- Fix 2: Stiffness-Normalized Load Scaling ---
-        # Scale external forces relative to EA stiffness so stiff sections deform meaningfully
+        # --- Stiffness-Normalized Load Scaling (fixed: capped) ---
+        # Scale external forces relative to EA stiffness so stiff sections deform
+        # meaningfully, but never by more than MAX_LOAD_SCALE_FACTOR. Without the
+        # cap, stiff/lightly-loaded cases produced runaway multipliers.
         total_load = np.linalg.norm(F_ext)
         if total_load < 1e-3:
             # Default minimal downward drive load
@@ -82,10 +99,11 @@ class UniversalFormFindingSolver:
                 if i not in fixed_nodes:
                     F_ext[i, 2] -= 100.0
         else:
-            # Normalize forces relative to section stiffness
             stiffness_factor = (self.E * self.area) / 1e6
             if stiffness_factor > 1.0:
-                F_ext *= (stiffness_factor / (total_load + 1e-6))
+                raw_scale = stiffness_factor / (total_load + 1e-6)
+                scale = min(raw_scale, self.MAX_LOAD_SCALE_FACTOR)
+                F_ext *= scale
 
         # Dynamic Relaxation Integration Loop
         velocities = np.zeros((num_nodes, 3), dtype=float)
@@ -108,7 +126,7 @@ class UniversalFormFindingSolver:
                 L0 = rest_lengths[i]
                 strain = (curr_len - L0) / L0
                 force = (self.E * self.area * strain) + self.prestress
-                
+
                 if np.isnan(force) or np.isinf(force):
                     force = 0.0
                 axial_forces[i] = force
@@ -123,10 +141,19 @@ class UniversalFormFindingSolver:
                     velocities[i] = 0.0
                 else:
                     R_residual = F_ext[i] + F_int[i]
-                    velocities[i] = (velocities[i] + R_residual * dt) * damping
+                    new_velocity = (velocities[i] + R_residual * dt) * damping
+                    # FIX: guard velocities every iteration, not just at the very
+                    # end. A single NaN/Inf velocity (e.g. from a degenerate edge
+                    # or transient overflow) previously propagated through every
+                    # subsequent iteration via nodes[i] += velocities[i] * dt,
+                    # silently corrupting the whole run before the final
+                    # np.nan_to_num cleanup masked it.
+                    if not np.all(np.isfinite(new_velocity)):
+                        new_velocity = np.zeros(3)
+                    velocities[i] = new_velocity
                     nodes[i] += velocities[i] * dt
 
-        # --- Fix 1 & Fix 3: Inversion and Origin-Guarded Height Scaling ---
+        # --- Inversion and Origin-Guarded Height Scaling ---
         free_nodes = [i for i in range(num_nodes) if i not in fixed_nodes]
         support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
 
