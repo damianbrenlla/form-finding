@@ -14,7 +14,7 @@ class UniversalFormFindingSolver:
         gamma_kn_m3: float = 78.5,
         cross_section_area: float = 90000.0,
         area_mm2: float = None,
-        prestress_force: float = 15.0,
+        prestress_force: float = 0.0,
         point_loads: list = None,
         material_type: str = "generic",
     ):
@@ -42,6 +42,7 @@ class UniversalFormFindingSolver:
         if num_nodes == 0 or num_edges == 0:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3))
 
+        # Calculate initial rest lengths
         rest_lengths = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
             dist = np.linalg.norm(nodes[u] - nodes[v])
@@ -49,7 +50,7 @@ class UniversalFormFindingSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
-        # 1. Apply gravity self-weight
+        # 1. Apply gravity self-weight (downward in -Z)
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-9
             for i, (u, v) in enumerate(edges):
@@ -72,9 +73,21 @@ class UniversalFormFindingSolver:
             F_ext[closest_idx, 1] += fy_N
             F_ext[closest_idx, 2] += fz_N
 
-        if invert_form:
-            F_ext[:, 2] = -F_ext[:, 2]
+        # --- Fix 2: Stiffness-Normalized Load Scaling ---
+        # Scale external forces relative to EA stiffness so stiff sections deform meaningfully
+        total_load = np.linalg.norm(F_ext)
+        if total_load < 1e-3:
+            # Default minimal downward drive load
+            for i in range(num_nodes):
+                if i not in fixed_nodes:
+                    F_ext[i, 2] -= 100.0
+        else:
+            # Normalize forces relative to section stiffness
+            stiffness_factor = (self.E * self.area) / 1e6
+            if stiffness_factor > 1.0:
+                F_ext *= (stiffness_factor / (total_load + 1e-6))
 
+        # Dynamic Relaxation Integration Loop
         velocities = np.zeros((num_nodes, 3), dtype=float)
         damping = 0.85
         dt = 0.005
@@ -113,23 +126,25 @@ class UniversalFormFindingSolver:
                     velocities[i] = (velocities[i] + R_residual * dt) * damping
                     nodes[i] += velocities[i] * dt
 
-        # Target Height Proportional Scaling Logic
+        # --- Fix 1 & Fix 3: Inversion and Origin-Guarded Height Scaling ---
         free_nodes = [i for i in range(num_nodes) if i not in fixed_nodes]
+        support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
+
+        if invert_form:
+            # 1. Mirror free nodes across the support plane (hanging Z < support_z -> vault Z > support_z)
+            for i in free_nodes:
+                nodes[i, 2] = support_z + (support_z - nodes[i, 2])
+            reactions[:, 2] = -reactions[:, 2]
+
+        # 2. Scale free nodes up to target domain Lz if meaningful deformation occurred
         if free_nodes and self.domain.Lz > 0.0:
-            support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
             new_z_range = np.max(np.abs(nodes[free_nodes, 2] - support_z))
-            
-            if new_z_range > 1.0:  # Only scale if meaningful deformation occurred
+            if new_z_range > 1.0:  # Only scale if deformation > 1mm
                 scale = self.domain.Lz / new_z_range
                 for i in free_nodes:
                     nodes[i, 2] = support_z + (nodes[i, 2] - support_z) * scale
 
-        if invert_form:
-            max_z = np.max(nodes[:, 2])
-            nodes[:, 2] = max_z - nodes[:, 2]
-            reactions[:, 2] = -reactions[:, 2]
-
-        # Final NaN/Inf Sanitization Safeguard
+        # Final NaN/Inf Sanitization
         nodes = np.nan_to_num(nodes, nan=0.0, posinf=0.0, neginf=0.0)
         axial_forces = np.nan_to_num(axial_forces, nan=0.0, posinf=0.0, neginf=0.0)
         reactions = np.nan_to_num(reactions, nan=0.0, posinf=0.0, neginf=0.0)
