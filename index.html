@@ -4,11 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
+    <!-- Primary Metadata -->
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://form-finding.dbsw.uk/" />
 
+    <!-- Preload Pyodide Binary -->
     <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.asm.wasm" as="fetch" crossorigin="anonymous">
 
     <style>
@@ -331,7 +333,7 @@
 
     <div class="control-group" style="margin-top: 6px;">
         <label>Dynamic Relaxation Solver Iterations</label>
-        <input type="number" id="iterations" value="300" style="font-family: monospace;">
+        <input type="number" id="iterations" value="500" style="font-family: monospace;">
     </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
@@ -349,7 +351,7 @@
 
 <script>
     var scene, camera, renderer, controls;
-    var domainBox;
+    var domainBox, mainGrid;
     var networkGroup, reactionGroup;
     var supportGizmos = [], forceArrows = [];
     var worker = null;
@@ -657,9 +659,10 @@
         fillLight.position.set(-3000, -2000, -2000);
         scene.add(fillLight);
 
-        var grid = new THREE.GridHelper(20000, 200, 0x000000, 0xe0e0e0);
-        grid.position.y = -1;
-        scene.add(grid);
+        // Ground Reference Grid (XZ plane in Three.js)
+        mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
+        mainGrid.position.y = 0;
+        scene.add(mainGrid);
 
         networkGroup = new THREE.Group();
         reactionGroup = new THREE.Group();
@@ -712,7 +715,6 @@
 
         onMaterialChange();
         animate();
-        updateDomainVisuals();
     }
 
     function animate() {
@@ -747,6 +749,8 @@
     }
 
     function updateDomainVisuals() {
+        if (!scene) return;
+
         var Lx = parseFloat(document.getElementById('Lx').value) || 6000;
         var Ly = parseFloat(document.getElementById('Ly').value) || 6000;
         var Lz = parseFloat(document.getElementById('Lz').value) || 2000;
@@ -844,6 +848,8 @@
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('results-actions-group').style.display = 'none';
 
+        var presetVal = document.getElementById('preset').value || 'vault';
+
         var payload = {
             material_type: document.getElementById('mat_type').value,
             material_grade: document.getElementById('mat_grade').value,
@@ -858,7 +864,7 @@
             sec_h: parseFloat(document.getElementById('sec_h').value) || 300.0,
             sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
             sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
-            preset: document.getElementById('preset').value,
+            preset: presetVal,
             support_mode: document.getElementById('support_mode').value,
             support_preset: document.getElementById('support_preset').value,
             point_supports: getPointSupportArrayData(),
@@ -939,7 +945,6 @@
                 var force = axial_forces[idx] !== undefined ? axial_forces[idx] : 0.0;
                 var norm = (force - minF) / rangeF;
 
-                // Black/Dark Red Force Gradient
                 var color = new THREE.Color();
                 color.setHSL(0.0, 0.9, 0.15 + 0.45 * norm);
 
@@ -950,7 +955,6 @@
         lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
-        // Essential for Three.js rendering bounding box & frustum culling
         lineGeometry.computeBoundingSphere();
         lineGeometry.computeBoundingBox();
 
@@ -964,7 +968,6 @@
         var networkMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
         networkGroup.add(networkMesh);
 
-        // Auto-center target view on solved structural centroid
         if (lineGeometry.boundingBox) {
             var center = new THREE.Vector3();
             lineGeometry.boundingBox.getCenter(center);
