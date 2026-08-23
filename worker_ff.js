@@ -96,9 +96,9 @@ if sup_mode == "points_only" and payload.get("point_supports"):
         )
 else:
     if sup_preset == "four_corners":
-        domain.add_point_support(0.0,        0.0,        0.0)
-        domain.add_point_support(domain.Lx,  0.0,        0.0)
-        domain.add_point_support(0.0,        domain.Ly,  0.0)
+        domain.add_point_support(0.0,       0.0,       0.0)
+        domain.add_point_support(domain.Lx,  0.0,       0.0)
+        domain.add_point_support(0.0,       domain.Ly,  0.0)
         domain.add_point_support(domain.Lx,  domain.Ly,  0.0)
     elif sup_preset == "two_opposite_lines":
         domain.add_line_support("x", 0.0)
@@ -125,7 +125,6 @@ else:
     area_mm2 = b_mm * h_mm
 
 # --- Prestress ---
-# Only meaningful for cables and fabrics
 prestress_N = float(payload.get("prestress", 0.0))
 if mat_type not in ("cable", "fabric"):
     prestress_N = 0.0
@@ -145,11 +144,10 @@ solver = UniversalFormFindingSolver(
     material_type   = mat_type,
 )
 
-# Invert form for compression presets (vault, dome, catenary_arch)
+# Invert form for compression presets (vault, dome)
 preset       = payload.get("preset", "surface_grid")
 invert_flag  = preset in ("vault", "dome")
 
-# Increase iterations for complex geometries
 iters = int(payload.get("iterations", 500))
 
 equilibrium_nodes, axial_forces, reactions = solver.solve_equilibrium(
@@ -165,11 +163,11 @@ for idx in fixed_indices:
     rx, ry, rz = [float(v) for v in np.nan_to_num(reactions[idx]).tolist()]
     R_total  = float(np.linalg.norm([rx, ry, rz]))
     reaction_data.append({
-        "node":      int(idx),
-        "pos":       pos,
-        "Rx_kN":     round(rx / 1000.0, 3),
-        "Ry_kN":     round(ry / 1000.0, 3),
-        "Rz_kN":     round(rz / 1000.0, 3),
+        "node":       int(idx),
+        "pos":        pos,
+        "Rx_kN":      round(rx / 1000.0, 3),
+        "Ry_kN":      round(ry / 1000.0, 3),
+        "Rz_kN":      round(rz / 1000.0, 3),
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
@@ -182,14 +180,14 @@ edges_list  = [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype
 forces_list = [float(v) for v in clean_forces.tolist()]
 
 json.dumps({
-    "nodes":       nodes_list,
-    "edges":       edges_list,
+    "nodes":        nodes_list,
+    "edges":        edges_list,
     "axial_forces": forces_list,
-    "reactions":   reaction_data,
-    "material":    mat_props["material_name"],
+    "reactions":    reaction_data,
+    "material":     mat_props["material_name"],
     "preset":      preset,
-    "num_nodes":   len(nodes_list),
-    "num_edges":   len(edges_list),
+    "num_nodes":    len(nodes_list),
+    "num_edges":    len(edges_list),
 })
 `);
 
