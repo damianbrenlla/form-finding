@@ -165,14 +165,18 @@ class UniversalFormFindingSolver:
             F_ext[closest, 1] += fy_N
             F_ext[closest, 2] += fz_N
 
-        # Ensure there is at least some load to drive form-finding
-        # If no external loads and no self-weight, apply small unit gravity
+       # Scale loads relative to structural stiffness for meaningful deformation
         total_load = np.linalg.norm(F_ext)
+        EA = self.E * self.area
+        target_load = EA * 0.001  # 0.1% strain driving force
         if total_load < 1e-3:
-            # Apply unit downward load to free nodes
             for i in range(num_nodes):
                 if i not in fixed_nodes:
-                    F_ext[i, 2] -= 1.0
+                    F_ext[i, 2] -= target_load / num_nodes
+        elif total_load > 0:
+    # Scale up small loads to be meaningful
+    scale = max(1.0, target_load / total_load * 0.01)
+    F_ext *= scale
 
         # Dynamic Relaxation main loop
         velocities = np.zeros((num_nodes, 3), dtype=float)
