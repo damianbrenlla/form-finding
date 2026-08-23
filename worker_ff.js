@@ -68,19 +68,47 @@ domain = FormFindingDomain3D(
     geometry_preset=payload.get("preset", "vault")
 )
 
-sup_preset = payload.get("support_preset", "four_corners")
-if sup_preset == "four_corners":
-    domain.add_point_support(0.0, 0.0, 0.0)
-    domain.add_point_support(domain.Lx, 0.0, 0.0)
-    domain.add_point_support(0.0, domain.Ly, 0.0)
-    domain.add_point_support(domain.Lx, domain.Ly, 0.0)
-elif sup_preset == "two_opposite_lines":
-    domain.add_line_support("x", 0.0)
-    domain.add_line_support("x", domain.Lx)
+# Boundary Restraints Handling
+sup_mode = payload.get("support_mode", "preset")
+
+if sup_mode == "points_only" and payload.get("point_supports"):
+    for pt in payload.get("point_supports"):
+        domain.add_point_support(pt["x"], pt["y"], pt["z"])
+else:
+    sup_preset = payload.get("support_preset", "four_corners")
+    if sup_preset == "four_corners":
+        domain.add_point_support(0.0, 0.0, 0.0)
+        domain.add_point_support(domain.Lx, 0.0, 0.0)
+        domain.add_point_support(0.0, domain.Ly, 0.0)
+        domain.add_point_support(domain.Lx, domain.Ly, 0.0)
+    elif sup_preset == "two_opposite_lines":
+        domain.add_line_support("x", 0.0)
+        domain.add_line_support("x", domain.Lx)
+
+# Member Section Calculations
+mat_type = payload.get("material_type", "steel")
+if mat_type == "cable":
+    d_mm = float(payload.get("sec_cable_d", 24.0))
+    area_mm2 = np.pi * (d_mm / 2.0)**2
+elif mat_type == "fabric":
+    t_mm = float(payload.get("sec_fabric_t", 1.2))
+    area_mm2 = t_mm * 1000.0  # Unit width
+else:
+    b_mm = float(payload.get("sec_b", 300.0))
+    h_mm = float(payload.get("sec_h", 300.0))
+    area_mm2 = b_mm * h_mm
+
+# External Loads Assembly
+external_loads = payload.get("loads", [])
+include_sw = payload.get("include_self_weight", True)
 
 solver = UniversalFormFindingSolver(
-    domain=domain, E_modulus=mat_props["E"], gamma_kn_m3=mat_props["gamma_kn_m3"],
-    prestress_force=float(payload.get("prestress", 15.0))
+    domain=domain, 
+    E_modulus=mat_props["E"], 
+    gamma_kn_m3=(mat_props["gamma_kn_m3"] if include_sw else 0.0),
+    area_mm2=area_mm2,
+    prestress_force=float(payload.get("prestress", 15.0)),
+    point_loads=external_loads
 )
 
 invert_flag = payload.get("preset") in ["vault", "dome", "catenary_arch"]
@@ -103,7 +131,6 @@ for idx in fixed_indices:
         "R_total_kN": round(float(np.linalg.norm([rx, ry, rz])) / 1000.0, 2)
     })
 
-# Convert all NumPy ndarrays/types to native Python primitives for JSON serialization
 nodes_list = [[float(val) for val in row] for row in equilibrium_nodes.tolist()]
 edges_list = [[int(val) for val in row] for row in np.asarray(domain.edges, dtype=int).tolist()]
 forces_list = [float(val) for val in np.asarray(axial_forces, dtype=float).tolist()]
