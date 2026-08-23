@@ -422,9 +422,9 @@
 </div>
 
 <script>
-    var scene, camera, renderer, controls, mesh;
+    var scene, camera, renderer, controls;
     var domainBox, mainGrid;
-    var networkGroup, reactionGroup;
+    var networkGroup, reactionGroup, surfaceMeshGroup;
     var supportGizmos = [], forceArrows = [];
     var currentNodes = [], currentEdges = [], currentAxialForces = [], currentDeflectionsMM = [], currentStressesMPa = [];
     var currentSigmaMaxTens = 1.0, currentSigmaMaxComp = -1.0, currentUMax = 1.0;
@@ -753,8 +753,10 @@
 
         networkGroup = new THREE.Group();
         reactionGroup = new THREE.Group();
+        surfaceMeshGroup = new THREE.Group();
         scene.add(networkGroup);
         scene.add(reactionGroup);
+        scene.add(surfaceMeshGroup);
 
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
@@ -1016,6 +1018,7 @@
 
         while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
         while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
+        while (surfaceMeshGroup.children.length > 0) surfaceMeshGroup.remove(surfaceMeshGroup.children[0]);
 
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
@@ -1058,9 +1061,10 @@
     function reRenderMesh() {
         var legend = document.getElementById('legend');
         var mode = document.getElementById('render_mode').value;
+        var matType = document.getElementById('mat_type').value;
         var isDeflectionMode = (mode === 'deflection');
 
-        if (!currentNodes || !currentNodes.length || !currentEdges || !currentEdges.length) return;
+        if (!currentNodes || !currentNodes.length) return;
 
         if (mode === 'ec3_stress' || mode === 'deflection') {
             updateLegendLabels(isDeflectionMode);
@@ -1070,6 +1074,7 @@
         }
 
         while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
+        while (surfaceMeshGroup.children.length > 0) surfaceMeshGroup.remove(surfaceMeshGroup.children[0]);
 
         var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
         var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
@@ -1099,54 +1104,110 @@
             return c;
         };
 
-        // Render solid Studio Grey / Colored Cylinders for each member
-        currentEdges.forEach(function(edge, idx) {
-            var p1_raw = currentNodes[edge[0]];
-            var p2_raw = currentNodes[edge[1]];
+        var nx = parseInt(document.getElementById('nx').value) || 16;
+        var ny = parseInt(document.getElementById('ny').value) || 16;
+        var isSolidSurfaceMaterial = (matType === 'concrete' || matType === 'stone' || matType === 'masonry' || matType === 'fabric');
 
-            if (p1_raw && p2_raw) {
-                var p1 = new THREE.Vector3(p1_raw[0], p1_raw[2], p1_raw[1]);
-                var p2 = new THREE.Vector3(p2_raw[0], p2_raw[2], p2_raw[1]);
+        if (isSolidSurfaceMaterial && currentNodes.length === (nx + 1) * (ny + 1)) {
+            // Render Continuous Solid Shell/Slab Geometry
+            var geometry = new THREE.BufferGeometry();
+            var positions = [];
+            var colors = [];
 
-                var direction = new THREE.Vector3().subVectors(p2, p1);
-                var memberLen = direction.length();
+            for (var iy = 0; iy < ny; iy++) {
+                for (var ix = 0; ix < nx; ix++) {
+                    var i1 = iy * (nx + 1) + ix;
+                    var i2 = i1 + 1;
+                    var i3 = (iy + 1) * (nx + 1) + ix;
+                    var i4 = i3 + 1;
 
-                if (memberLen > 1e-3) {
-                    var cylGeo = new THREE.CylinderGeometry(35, 35, memberLen, 8);
-                    
-                    var mat;
-                    if (mode === 'grey') {
-                        mat = new THREE.MeshStandardMaterial({
-                            color: 0x808080, roughness: 0.50, metalness: 0.10
-                        });
-                    } else if (mode === 'deflection') {
-                        var u_val = currentDeflectionsMM[edge[0]] || 0.0;
-                        var col = colorScaleUnsigned(u_val, currentUMax);
-                        mat = new THREE.MeshStandardMaterial({
-                            color: col, roughness: 0.40, metalness: 0.10
-                        });
-                    } else { // ec3_stress
-                        var s_val = currentStressesMPa[idx] || 0.0;
-                        var col = colorScaleSignedAsymmetric(s_val, activeMaxTens, activeMaxComp);
-                        mat = new THREE.MeshStandardMaterial({
-                            color: col, roughness: 0.40, metalness: 0.10
-                        });
-                    }
+                    var p1 = currentNodes[i1], p2 = currentNodes[i2], p3 = currentNodes[i3], p4 = currentNodes[i4];
 
-                    var cylMesh = new THREE.Mesh(cylGeo, mat);
-                    
-                    // Position and orient cylinder between nodal points
-                    var midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-                    cylMesh.position.copy(midpoint);
-                    cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+                    // Triangles for quad (p1, p2, p3) & (p2, p4, p3)
+                    var triIndices = [i1, i2, i3, i2, i4, i3];
+                    triIndices.forEach(function(idx) {
+                        var pt = currentNodes[idx];
+                        positions.push(pt[0], pt[2], pt[1]);
 
-                    networkGroup.add(cylMesh);
+                        if (mode === 'grey') {
+                            colors.push(0.5, 0.5, 0.5);
+                        } else if (mode === 'deflection') {
+                            var u = currentDeflectionsMM[idx] || 0.0;
+                            var col = colorScaleUnsigned(u, currentUMax);
+                            colors.push(col.r, col.g, col.b);
+                        } else {
+                            var s = currentStressesMPa[idx] || 0.0;
+                            var col = colorScaleSignedAsymmetric(s, activeMaxTens, activeMaxComp);
+                            colors.push(col.r, col.g, col.b);
+                        }
+                    });
                 }
             }
-        });
 
-        // Center camera controls onto centroid
-        var bbox = new THREE.Box3().setFromObject(networkGroup);
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+
+            var mat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.50,
+                metalness: 0.10,
+                side: THREE.DoubleSide
+            });
+
+            var surfaceMesh = new THREE.Mesh(geometry, mat);
+            surfaceMeshGroup.add(surfaceMesh);
+
+        } else {
+            // Render Frame/Truss Cylinders for Steel, Timber, Cables & Generic
+            currentEdges.forEach(function(edge, idx) {
+                var p1_raw = currentNodes[edge[0]];
+                var p2_raw = currentNodes[edge[1]];
+
+                if (p1_raw && p2_raw) {
+                    var p1 = new THREE.Vector3(p1_raw[0], p1_raw[2], p1_raw[1]);
+                    var p2 = new THREE.Vector3(p2_raw[0], p2_raw[2], p2_raw[1]);
+
+                    var direction = new THREE.Vector3().subVectors(p2, p1);
+                    var memberLen = direction.length();
+
+                    if (memberLen > 1e-3) {
+                        var cylGeo = new THREE.CylinderGeometry(30, 35, memberLen, 8);
+                        var mat;
+
+                        if (mode === 'grey') {
+                            mat = new THREE.MeshStandardMaterial({
+                                color: 0x808080, roughness: 0.50, metalness: 0.10
+                            });
+                        } else if (mode === 'deflection') {
+                            var u_val = currentDeflectionsMM[edge[0]] || 0.0;
+                            var col = colorScaleUnsigned(u_val, currentUMax);
+                            mat = new THREE.MeshStandardMaterial({
+                                color: col, roughness: 0.40, metalness: 0.10
+                            });
+                        } else {
+                            var s_val = currentStressesMPa[idx] || 0.0;
+                            var col = colorScaleSignedAsymmetric(s_val, activeMaxTens, activeMaxComp);
+                            mat = new THREE.MeshStandardMaterial({
+                                color: col, roughness: 0.40, metalness: 0.10
+                            });
+                        }
+
+                        var cylMesh = new THREE.Mesh(cylGeo, mat);
+                        var midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                        cylMesh.position.copy(midpoint);
+                        cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+
+                        networkGroup.add(cylMesh);
+                    }
+                }
+            });
+        }
+
+        var bbox = new THREE.Box3();
+        if (surfaceMeshGroup.children.length > 0) bbox.setFromObject(surfaceMeshGroup);
+        else if (networkGroup.children.length > 0) bbox.setFromObject(networkGroup);
+
         if (!bbox.isEmpty()) {
             var center = new THREE.Vector3();
             bbox.getCenter(center);
