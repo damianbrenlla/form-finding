@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
+
     <!-- Primary Metadata -->
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
@@ -22,7 +22,7 @@
             display: flex; height: 100vh; overflow: hidden;
             -webkit-font-smoothing: antialiased;
         }
-        
+
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
@@ -34,6 +34,18 @@
             flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
+
+        /* Fallback message shown if WebGL/Three.js fails to initialise.
+           Sits above the canvas so a blank white screen is never silent. */
+        #viewport-fallback {
+            display: none;
+            position: absolute; inset: 0;
+            align-items: center; justify-content: center;
+            padding: 40px; text-align: center;
+            font-size: 0.85rem; color: #cc0000;
+            background: #fff5f5; z-index: 5;
+        }
+
         h2 { margin: 0 0 2px 0; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #000000; }
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
         .control-group { display: flex; flex-direction: column; gap: 4px; }
@@ -79,7 +91,7 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
-        
+
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
 
@@ -92,7 +104,7 @@
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
         hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
         .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
-        
+
         .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
         .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
         input[type="checkbox"] { accent-color: #000000; }
@@ -118,6 +130,13 @@
         }
         #intro-modal .author-line a { color: #000000; }
     </style>
+
+    <!--
+        FIX: scripts previously lived only at the bottom of <body>. That's fine for load
+        order, but there was no guard against Three.js / OrbitControls failing to load
+        (blocked CDN, ad-blocker, offline). We now check for THREE's existence before
+        using it, and report clearly in #status + #viewport-fallback if it's missing.
+    -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -215,7 +234,7 @@
     <!-- 2. Cross Section Geometry Parameters -->
     <hr>
     <div class="section-header">Cross-Section Dimensions</div>
-    
+
     <div id="section_solid_div" class="control-group">
         <label>Member Width b & Height h (mm)</label>
         <div style="display: flex; gap: 6px;">
@@ -338,7 +357,7 @@
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
-    
+
     <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
         <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
         <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
@@ -347,7 +366,14 @@
     <div id="status">Initialising WebAssembly Python runtime…</div>
 </div>
 
-<div id="viewport"></div>
+<div id="viewport">
+    <div id="viewport-fallback">
+        3D viewport failed to initialise. Open the browser console (F12) for the exact error —
+        this is usually a blocked CDN script (Three.js/OrbitControls), an unsupported/disabled
+        WebGL context, or the page being opened directly as a file:// URL instead of served
+        over http(s). Serve this folder with a local web server and reload.
+    </div>
+</div>
 
 <script>
     var scene, camera, renderer, controls;
@@ -363,11 +389,11 @@
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
     var CABLE_GRADES = [
-        "Flexible Rope (7x19)", "Spiral Strand (1x19)", "Locked Coil Cable", 
+        "Flexible Rope (7x19)", "Spiral Strand (1x19)", "Locked Coil Cable",
         "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)", "Aramid / Synthetic Fiber"
     ];
     var FABRIC_GRADES = [
-        "PTFE Type I (Light)", "PTFE Type II (Standard)", "PTFE Type III (Medium)", 
+        "PTFE Type I (Light)", "PTFE Type II (Standard)", "PTFE Type III (Medium)",
         "PTFE Type IV (Heavy)", "PTFE Type V (Extreme)"
     ];
 
@@ -399,6 +425,13 @@
             { value: "catenary_arch", text: "Suspended Net" }
         ]
     };
+
+    function setStatus(message, isError) {
+        var status = document.getElementById('status');
+        status.style.color = isError ? "#cc0000" : "#000000";
+        status.style.borderLeftColor = isError ? "#cc0000" : "#000000";
+        status.innerText = message;
+    }
 
     function onMaterialChange() {
         updateMaterialUI();
@@ -476,10 +509,10 @@
             stdDiv.style.display = 'flex';
             var gradeSelect = document.getElementById('mat_grade');
             gradeSelect.innerHTML = '';
-            
-            var list = (matType === 'concrete') ? CONCRETE_GRADES : 
-                       ((matType === 'steel') ? STEEL_GRADES : 
-                       ((matType === 'timber') ? TIMBER_GRADES : 
+
+            var list = (matType === 'concrete') ? CONCRETE_GRADES :
+                       ((matType === 'steel') ? STEEL_GRADES :
+                       ((matType === 'timber') ? TIMBER_GRADES :
                        ((matType === 'cable') ? CABLE_GRADES : FABRIC_GRADES)));
 
             list.forEach(function(g) {
@@ -487,9 +520,9 @@
                 opt.value = g; opt.innerText = g;
                 gradeSelect.appendChild(opt);
             });
-            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : 
-                                ((matType === 'steel') ? 'S355' : 
-                                ((matType === 'timber') ? 'C24' : 
+            gradeSelect.value = (matType === 'concrete') ? 'C30/37' :
+                                ((matType === 'steel') ? 'S355' :
+                                ((matType === 'timber') ? 'C24' :
                                 ((matType === 'cable') ? 'Flexible Rope (7x19)' : 'PTFE Type II (Standard)')));
 
         } else if (matType === 'masonry' || matType === 'stone') {
@@ -634,87 +667,129 @@
         return supports;
     }
 
-    function initThree() {
-        var container = document.getElementById('viewport');
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff);
-
-        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
-        camera.position.set(9000, 6000, 7000);
-
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        container.appendChild(renderer.domElement);
-
-        controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-        var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
-        keyLight.position.set(5000, 8000, 4000);
-        scene.add(keyLight);
-        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
-        fillLight.position.set(-3000, -2000, -2000);
-        scene.add(fillLight);
-
-        // Ground Reference Grid (XZ plane in Three.js)
-        mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
-        mainGrid.position.y = 0;
-        scene.add(mainGrid);
-
-        networkGroup = new THREE.Group();
-        reactionGroup = new THREE.Group();
-        scene.add(networkGroup);
-        scene.add(reactionGroup);
-
-        axesScene = new THREE.Scene();
-        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
-        axesCamera.position.set(0, 0, 5);
-        axesCamera.lookAt(0, 0, 0);
-
-        axesGroup = new THREE.Group();
-        axesScene.add(axesGroup);
-
-        var axisLen = 1.2;
-        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-
-        function addAxisLine(to) {
-            var geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0), to
-            ]);
-            axesGroup.add(new THREE.Line(geo, axisMat));
-        }
-        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
-        addAxisLine(new THREE.Vector3(0, axisLen, 0));
-        addAxisLine(new THREE.Vector3(0, 0, axisLen));
-
-        function makeAxisLabel(text) {
+    // FIX: WebGL capability probe, run before we try to build a renderer.
+    // Gives a specific, visible reason instead of a blank canvas.
+    function detectWebGLSupport() {
+        try {
             var canvas = document.createElement('canvas');
-            canvas.width = 128; canvas.height = 128;
-            var ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, 128, 128);
-            ctx.fillStyle = '#000000';
-            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(text, 64, 68);
-            var tex = new THREE.CanvasTexture(canvas);
-            tex.needsUpdate = true;
-            var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
-            var sprite = new THREE.Sprite(mat);
-            sprite.scale.set(0.55, 0.55, 1);
-            return sprite;
+            var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            return !!(gl && gl instanceof WebGLRenderingContext);
+        } catch (e) {
+            return false;
         }
+    }
 
-        var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
-        var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
-        var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
+    function showViewportFallback(message) {
+        var fallback = document.getElementById('viewport-fallback');
+        if (message) fallback.innerText = message;
+        fallback.style.display = 'flex';
+    }
 
-        window.addEventListener('resize', onWindowResize);
+    // FIX: entire init wrapped in try/catch. Previously, if THREE/OrbitControls
+    // failed to load from the CDN (blocked, offline, ad-blocker) or WebGL context
+    // creation threw, every line after the failure point silently never ran —
+    // including the grid, the domain box, onMaterialChange() (dropdown population),
+    // and animate(). The result was a blank white #viewport with no console output
+    // pointing at the cause, and a sidebar stuck on default values.
+    function initThree() {
+        try {
+            if (typeof THREE === 'undefined') {
+                throw new Error("THREE is not defined — three.min.js failed to load (check network/CDN access).");
+            }
+            if (typeof THREE.OrbitControls === 'undefined') {
+                throw new Error("THREE.OrbitControls is not defined — OrbitControls.js failed to load.");
+            }
+            if (!detectWebGLSupport()) {
+                throw new Error("WebGL is not available in this browser/context.");
+            }
 
-        onMaterialChange();
-        animate();
+            var container = document.getElementById('viewport');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
+            camera.position.set(9000, 6000, 7000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+            var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+            keyLight.position.set(5000, 8000, 4000);
+            scene.add(keyLight);
+            var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+            fillLight.position.set(-3000, -2000, -2000);
+            scene.add(fillLight);
+
+            // Ground Reference Grid (XZ plane in Three.js)
+            mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
+            mainGrid.position.y = 0;
+            scene.add(mainGrid);
+
+            networkGroup = new THREE.Group();
+            reactionGroup = new THREE.Group();
+            scene.add(networkGroup);
+            scene.add(reactionGroup);
+
+            axesScene = new THREE.Scene();
+            axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
+            axesCamera.position.set(0, 0, 5);
+            axesCamera.lookAt(0, 0, 0);
+
+            axesGroup = new THREE.Group();
+            axesScene.add(axesGroup);
+
+            var axisLen = 1.2;
+            var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+            function addAxisLine(to) {
+                var geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0), to
+                ]);
+                axesGroup.add(new THREE.Line(geo, axisMat));
+            }
+            addAxisLine(new THREE.Vector3(axisLen, 0, 0));
+            addAxisLine(new THREE.Vector3(0, axisLen, 0));
+            addAxisLine(new THREE.Vector3(0, 0, axisLen));
+
+            function makeAxisLabel(text) {
+                var canvas = document.createElement('canvas');
+                canvas.width = 128; canvas.height = 128;
+                var ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, 128, 128);
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(text, 64, 68);
+                var tex = new THREE.CanvasTexture(canvas);
+                tex.needsUpdate = true;
+                var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+                var sprite = new THREE.Sprite(mat);
+                sprite.scale.set(0.55, 0.55, 1);
+                return sprite;
+            }
+
+            var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
+            var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
+            var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
+
+            window.addEventListener('resize', onWindowResize);
+
+            onMaterialChange();
+            updateDomainVisuals();
+            animate();
+
+        } catch (err) {
+            console.error("Three.js viewport initialisation failed:", err);
+            showViewportFallback("Viewport init failed: " + err.message);
+            setStatus("Viewport init failed: " + err.message, true);
+        }
     }
 
     function animate() {
@@ -789,28 +864,37 @@
     }
 
     function initWasmEngine() {
-        worker = new Worker('worker_ff.js?cb=' + Date.now());
-        worker.onmessage = handleWorkerMessage;
-        worker.postMessage({ action: 'init' });
+        try {
+            worker = new Worker('worker_ff.js?cb=' + Date.now());
+            worker.onmessage = handleWorkerMessage;
+            worker.onerror = function(err) {
+                // FIX: worker-level errors (e.g. worker_ff.js itself 404s, or a syntax
+                // error inside it) previously vanished silently — onerror was never
+                // wired up, so a broken worker path just left the button stuck on
+                // "Loading Wasm Engine..." forever with nothing in the console.
+                console.error("Worker error:", err);
+                setStatus("Worker failed to load: " + (err.message || "unknown error") +
+                    ". Check that worker_ff.js is served from the same folder as this page.", true);
+            };
+            worker.postMessage({ action: 'init' });
+        } catch (err) {
+            console.error("Failed to start worker:", err);
+            setStatus("Failed to start Wasm worker: " + err.message, true);
+        }
     }
 
     function handleWorkerMessage(e) {
         var data = e.data;
-        var status = document.getElementById('status');
         var btnExec = document.getElementById('btn-exec');
         var btnStop = document.getElementById('btn-stop');
         var actionsGroup = document.getElementById('results-actions-group');
 
         if (data.status === 'log') {
-            status.style.color = "#000000";
-            status.style.borderLeftColor = "#000000";
-            status.innerText = data.message;
+            setStatus(data.message, false);
 
         } else if (data.status === 'ready') {
             engineReady = true;
-            status.style.color = "#000000";
-            status.style.borderLeftColor = "#000000";
-            status.innerText = "Wasm Engine Ready. Define problem parameters.";
+            setStatus("Wasm Engine Ready. Define problem parameters.", false);
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form-Finding Solver";
 
@@ -820,10 +904,8 @@
             btnStop.style.display = 'none';
             actionsGroup.style.display = 'flex';
 
-            status.style.color = "#000000";
-            status.style.borderLeftColor = "#000000";
-            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
-            
+            setStatus("Form finding complete [" + (data.data.material || "") + "]. Rendering...", false);
+
             renderFormFoundNetwork(data.data);
             displayReactions(data.data.reactions);
 
@@ -831,18 +913,13 @@
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form-Finding Solver";
             btnStop.style.display = 'none';
-            status.style.color = "#cc0000";
-            status.style.borderLeftColor = "#cc0000";
-            status.innerText = "Solver Error: " + data.message;
+            setStatus("Solver Error: " + data.message, true);
         }
     }
 
     function startOptimisation() {
         if (!engineReady) return;
-        var status = document.getElementById('status');
-        status.style.color = "#000000";
-        status.style.borderLeftColor = "#000000";
-        status.innerText = "Dispatching Dynamic Relaxation solver to Wasm worker...";
+        setStatus("Dispatching Dynamic Relaxation solver to Wasm worker...", false);
 
         document.getElementById('btn-exec').disabled = true;
         document.getElementById('btn-stop').style.display = 'block';
@@ -884,10 +961,7 @@
     }
 
     function stopOptimisation() {
-        var status = document.getElementById('status');
-        status.style.color = "#cc0000";
-        status.style.borderLeftColor = "#cc0000";
-        status.innerText = "Terminating and reloading Wasm engine...";
+        setStatus("Terminating and reloading Wasm engine...", true);
 
         document.getElementById('btn-stop').style.display = 'none';
         document.getElementById('btn-exec').disabled = true;
@@ -904,11 +978,7 @@
         while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
 
         document.getElementById('results-actions-group').style.display = 'none';
-
-        var status = document.getElementById('status');
-        status.style.color = "#000000";
-        status.style.borderLeftColor = "#000000";
-        status.innerText = "Results cleared. Ready to define parameters.";
+        setStatus("Results cleared. Ready to define parameters.", false);
 
         updateDomainVisuals();
     }
@@ -922,6 +992,7 @@
 
         if (!nodes || nodes.length === 0 || !edges || edges.length === 0) {
             console.error("Invalid geometry data received:", data);
+            setStatus("Solver returned empty geometry — check supports/loads/domain size.", true);
             return;
         }
 
@@ -998,8 +1069,15 @@
         alert("Exporting solved form-finding network geometry...");
     }
 
-    initThree();
-    initWasmEngine();
+    // FIX: run after DOM is parsed (script sits at end of body, so this is already
+    // safe) but ALSO guard against THREE/OrbitControls not having loaded yet by the
+    // time this executes — e.g. slow/blocked CDN. window.onload waits for every
+    // resource including the two <script src> tags in <head>, which is a more
+    // reliable trigger point than firing immediately at the bottom of body.
+    window.onload = function () {
+        initThree();
+        initWasmEngine();
+    };
 </script>
 
 </body>
