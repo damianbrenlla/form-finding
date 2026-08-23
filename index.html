@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBSW Form-Finding Engine R260003</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; height: 100vh; background: #1a1a1a; color: #eee; overflow: hidden; }
+        #sidebar { width: 340px; background: #242424; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #333; overflow-y: auto; }
+        h2 { font-size: 1.1rem; color: #00d2ff; text-transform: uppercase; letter-spacing: 1px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.85rem; color: #aaa; }
+        input, select, button { padding: 8px 12px; background: #333; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 0.9rem; }
+        input:focus, select:focus { border-color: #00d2ff; outline: none; }
+        button { background: #00d2ff; color: #111; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; margin-top: 10px; }
+        button:hover { background: #0099cc; color: #fff; }
+        #viewport { flex: 1; position: relative; }
+        #canvas-container { width: 100%; height: 100%; }
+        #reaction-panel { position: absolute; bottom: 20px; right: 20px; background: rgba(30, 30, 30, 0.85); backdrop-filter: blur(5px); padding: 15px; border-radius: 6px; border: 1px solid #444; max-height: 200px; overflow-y: auto; font-size: 0.8rem; }
+        #status-bar { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 8px 15px; border-radius: 4px; font-size: 0.85rem; color: #00d2ff; }
+    </style>
+    <!-- Three.js + OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>DBSW Form-Finder</h2>
+        
+        <div class="form-group">
+            <label for="preset">Structure Type</label>
+            <select id="preset">
+                <option value="vault">Compression Vault / Shell</option>
+                <option value="dome">Masonry / Concrete Dome</option>
+                <option value="surface_grid">Tensile Fabric Canopy</option>
+                <option value="catenary_arch">Catenary Cable Net</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="material_grade">Material Type</label>
+            <select id="material_grade">
+                <option value="S355">S355 Structural Steel</option>
+                <option value="C30/37">C30/37 Concrete</option>
+                <option value="Masonry_EC6">Eurocode 6 Masonry</option>
+                <option value="C16_Timber">C16 Timber</option>
+                <option value="PTFE_Architectural_Fabric">PTFE Fabric</option>
+                <option value="Steel_Cable_7x19">Steel Cable (7x19)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="support_preset">Boundary Supports</label>
+            <select id="support_preset">
+                <option value="four_corners">Four Point Corner Supports</option>
+                <option value="two_opposite_lines">Two Continuous Line Supports</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="Lx">Length Lx (mm)</label>
+            <input type="number" id="Lx" value="6000">
+        </div>
+
+        <div class="form-group">
+            <label for="Ly">Width Ly (mm)</label>
+            <input type="number" id="Ly" value="6000">
+        </div>
+
+        <div class="form-group">
+            <label for="Lz">Target Height / Sag Lz (mm)</label>
+            <input type="number" id="Lz" value="2000">
+        </div>
+
+        <div class="form-group">
+            <label for="prestress">Internal Prestress (N)</label>
+            <input type="number" id="prestress" value="15">
+        </div>
+
+        <button id="solve-btn" onclick="runFormFinding()">Form Find Geometry</button>
+    </div>
+
+    <div id="viewport">
+        <div id="status-bar">Initialising WebAssembly Engine...</div>
+        <div id="canvas-container"></div>
+        <div id="reaction-panel">
+            <strong>Support Reactions (kN)</strong>
+            <ul id="reaction-list" style="list-style: none; margin-top: 5px;"></ul>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
