@@ -192,7 +192,7 @@
     <!-- Multi-Tier Material Dropdown System -->
     <div class="control-group">
         <label>Structural Material Classification</label>
-        <select id="mat_type" onchange="updateMaterialUI()">
+        <select id="mat_type" onchange="onMaterialChange()">
             <option value="concrete" selected>Reinforced Concrete — BS EN 1992-1-1 (EC2)</option>
             <option value="steel">Structural Steel — BS EN 1993-1-1 (EC3)</option>
             <option value="timber">Timber / Glulam — BS EN 1995-1-1 (EC5)</option>
@@ -249,12 +249,7 @@
     <hr>
     <div class="control-group">
         <label>Target Form Preset</label>
-        <select id="preset" onchange="updateDomainVisuals()">
-            <option value="vault" selected>Compression Vault / Shell</option>
-            <option value="dome">Masonry / Concrete Dome</option>
-            <option value="surface_grid">Tensile Fabric Canopy</option>
-            <option value="catenary_arch">Catenary Cable Net</option>
-        </select>
+        <select id="preset" onchange="updateDomainVisuals()"></select>
     </div>
 
     <div class="control-group">
@@ -346,6 +341,53 @@
         "Granite (150 MPa)": { fb: 150.0, E: 50000.0 }, "Limestone (80 MPa)": { fb: 80.0, E: 35000.0 },
         "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
     };
+
+    // Strict Structural Engineering Form Options Governed by Mechanics
+    var PRESET_CATALOGUE = {
+        compression_only: [
+            { value: "vault", text: "Compression Vault / Shell" },
+            { value: "dome", text: "Masonry / Concrete Dome" }
+        ],
+        tension_only: [
+            { value: "surface_grid", text: "Prestressed Tensile Canopy / Hypar" },
+            { value: "catenary_arch", text: "Suspended Cable Net Surface" }
+        ],
+        isotropic: [
+            { value: "vault", text: "Compression Vault / Shell" },
+            { value: "dome", text: "Dome Structure" },
+            { value: "surface_grid", text: "Tensile Canopy / Hypar" },
+            { value: "catenary_arch", text: "Catenary Cable Net / Arch" }
+        ]
+    };
+
+    function onMaterialChange() {
+        updateMaterialUI();
+        syncPresetsWithMaterial();
+    }
+
+    function syncPresetsWithMaterial() {
+        var matType = document.getElementById('mat_type').value;
+        var presetSelect = document.getElementById('preset');
+        presetSelect.innerHTML = '';
+
+        var optionsGroup;
+        if (matType === 'masonry' || matType === 'stone') {
+            optionsGroup = PRESET_CATALOGUE.compression_only;
+        } else if (matType === 'cable' || matType === 'fabric') {
+            optionsGroup = PRESET_CATALOGUE.tension_only;
+        } else {
+            optionsGroup = PRESET_CATALOGUE.isotropic;
+        }
+
+        optionsGroup.forEach(function(opt) {
+            var el = document.createElement('option');
+            el.value = opt.value;
+            el.innerText = opt.text;
+            presetSelect.appendChild(el);
+        });
+
+        updateDomainVisuals();
+    }
 
     function updateMaterialUI() {
         var matType = document.getElementById('mat_type').value;
@@ -511,7 +553,7 @@
 
         window.addEventListener('resize', onWindowResize);
 
-        updateMaterialUI();
+        onMaterialChange();
         animate();
         updateDomainVisuals();
     }
