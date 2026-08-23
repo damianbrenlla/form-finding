@@ -125,6 +125,7 @@ else:
     area_mm2 = b_mm * h_mm
 
 # --- Prestress ---
+# Only meaningful for cables and fabrics
 prestress_N = float(payload.get("prestress", 0.0))
 if mat_type not in ("cable", "fabric"):
     prestress_N = 0.0
@@ -144,7 +145,7 @@ solver = UniversalFormFindingSolver(
     material_type   = mat_type,
 )
 
-# Invert form for compression presets (vault, dome)
+# Invert form strictly for compression presets (vault, dome)
 preset       = payload.get("preset", "surface_grid")
 invert_flag  = preset in ("vault", "dome")
 
@@ -185,7 +186,7 @@ json.dumps({
     "axial_forces": forces_list,
     "reactions":    reaction_data,
     "material":     mat_props["material_name"],
-    "preset":      preset,
+    "preset":       preset,
     "num_nodes":    len(nodes_list),
     "num_edges":    len(edges_list),
 })
