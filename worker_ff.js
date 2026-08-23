@@ -1,6 +1,6 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine (Worker FF)
- * Author: Damian Brenlla / DBSW
+ * Author: Damian Brenlla / DBSW 2026
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -11,7 +11,6 @@ async function initEngine() {
     try {
         postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
         
-        // Pass indexURL explicitly so Pyodide knows where to fetch Wasm binaries
         pyodide = await loadPyodide({
             indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/"
         });
@@ -93,20 +92,26 @@ equilibrium_nodes, axial_forces, reactions = solver.solve_equilibrium(
 fixed_indices = list(domain.fixed_nodes)
 reaction_data = []
 for idx in fixed_indices:
-    pos = equilibrium_nodes[idx].tolist()
-    rx, ry, rz = reactions[idx].tolist()
+    pos = [float(x) for x in equilibrium_nodes[idx].tolist()]
+    rx, ry, rz = [float(f) for f in reactions[idx].tolist()]
     reaction_data.append({
-        "node": idx, "pos": pos,
+        "node": int(idx),
+        "pos": pos,
         "Rx_kN": round(rx / 1000.0, 2),
         "Ry_kN": round(ry / 1000.0, 2),
         "Rz_kN": round(rz / 1000.0, 2),
         "R_total_kN": round(float(np.linalg.norm([rx, ry, rz])) / 1000.0, 2)
     })
 
+# Convert all NumPy ndarrays/types to native Python primitives for JSON serialization
+nodes_list = [[float(val) for val in row] for row in equilibrium_nodes.tolist()]
+edges_list = [[int(val) for val in row] for row in np.asarray(domain.edges, dtype=int).tolist()]
+forces_list = [float(val) for val in np.asarray(axial_forces, dtype=float).tolist()]
+
 json.dumps({
-    "nodes": equilibrium_nodes.tolist(),
-    "edges": domain.edges.tolist(),
-    "axial_forces": axial_forces.tolist(),
+    "nodes": nodes_list,
+    "edges": edges_list,
+    "axial_forces": forces_list,
     "reactions": reaction_data,
     "material": mat_props["material_name"]
 })
