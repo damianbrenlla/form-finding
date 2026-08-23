@@ -1,26 +1,13 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v3 — Fixed: python_core fetch path resolved relative to worker location
- *      (not the page), so this still works if the worker script is loaded
- *      from a different directory depth than index.html. Fixed: fetch
- *      failures and Pyodide/package load failures now report the exact
- *      URL and HTTP status instead of a generic "Init failed" message.
+ * v4 — Fixed: Unpacks 4-element return tuple from solvers_ff.py v4
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
 let pyodide = null;
 
-// FIX: build python_core URLs relative to *this worker's* location
-// (self.location), not relative to whatever page happened to load it.
-// A worker instantiated as new Worker('worker_ff.js') resolves relative
-// fetches against the worker's own script URL, which is usually the same
-// as the page — but if you ever move worker_ff.js into a /js/ subfolder,
-// or serve it from a different path than index.html, the old relative
-// './python_core/...' silently 404s and the engine hangs forever on
-// "Loading Wasm Engine...". This makes the intent explicit and easy to
-// debug (see the console.error we now emit with the exact URL on failure).
 function corePythonUrl(filename) {
     return new URL(`./python_core/${filename}`, self.location.href).href;
 }
@@ -46,8 +33,6 @@ async function initEngine() {
             try {
                 response = await fetch(url);
             } catch (networkErr) {
-                // FIX: distinguish a network/CORS failure from an HTTP error status —
-                // both used to collapse into the same vague "Init failed" message.
                 throw new Error(
                     `Network error fetching ${file} at ${url}: ${networkErr.message}. ` +
                     `If you are opening this page as a file:// URL, serve it with a local ` +
@@ -148,8 +133,6 @@ for pt in payload.get("point_supports", []):
         float(pt.get("z", 0))
     )
 
-# Fail loudly rather than silently returning an empty/degenerate result if
-# no supports resolved (e.g. "points_only" mode selected with an empty table).
 if len(domain.fixed_nodes) == 0:
     raise ValueError(
         "No support nodes resolved. If using 'Only User-Selected Discrete "
@@ -170,7 +153,6 @@ else:
     area_mm2 = b_mm * h_mm
 
 # --- Prestress ---
-# Only meaningful for cables and fabrics
 prestress_N = float(payload.get("prestress", 0.0))
 if mat_type not in ("cable", "fabric"):
     prestress_N = 0.0
@@ -190,13 +172,12 @@ solver = UniversalFormFindingSolver(
     material_type   = mat_type,
 )
 
-# Invert form strictly for compression presets (vault, dome)
 preset       = payload.get("preset", "surface_grid")
 invert_flag  = preset in ("vault", "dome")
+iters        = int(payload.get("iterations", 500))
 
-iters = int(payload.get("iterations", 500))
-
-equilibrium_nodes, axial_forces, reactions = solver.solve_equilibrium(
+# --- Solvers v4 returns 4 items: nodes, forces, reactions, diagnostics ---
+equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations  = iters,
     invert_form = invert_flag,
 )
@@ -234,6 +215,7 @@ json.dumps({
     "preset":       preset,
     "num_nodes":    len(nodes_list),
     "num_edges":    len(edges_list),
+    "diagnostics":  diagnostics,
 })
 `);
 
