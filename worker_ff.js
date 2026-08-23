@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v5 — Fixed: Computes axial stress (MPa) and displacement magnitudes (mm) for field mapping.
+ * v6 — Added nodal stress mapping for solid continuous surface rendering.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -176,7 +176,6 @@ preset       = payload.get("preset", "surface_grid")
 invert_flag  = preset in ("vault", "dome")
 iters        = int(payload.get("iterations", 500))
 
-# Save initial node layout to measure displacement
 initial_nodes = np.copy(domain.nodes).astype(float)
 
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
@@ -184,15 +183,29 @@ equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibri
     invert_form = invert_flag,
 )
 
-# Compute per-node displacement magnitudes (mm)
 displacement_vecs = equilibrium_nodes - initial_nodes
 deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
 u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
-# Compute per-element axial stresses sigma = N / A (MPa)
-stresses_mpa = axial_forces / max(area_mm2, 1e-4)
-sigma_max_tens = float(np.max(stresses_mpa)) if len(stresses_mpa) > 0 else 0.0
-sigma_max_comp = float(np.min(stresses_mpa)) if len(stresses_mpa) > 0 else 0.0
+element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
+
+# Average element axial stresses onto grid nodes for smooth surface rendering
+num_nodes = len(equilibrium_nodes)
+nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
+node_degree = np.zeros(num_nodes, dtype=float)
+
+for i, (u, v) in enumerate(domain.edges):
+    s = element_stresses_mpa[i]
+    nodal_stresses_mpa[u] += s
+    nodal_stresses_mpa[v] += s
+    node_degree[u] += 1.0
+    node_degree[v] += 1.0
+
+node_degree = np.maximum(node_degree, 1.0)
+nodal_stresses_mpa /= node_degree
+
+sigma_max_tens = float(np.max(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
+sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 
 # --- Reactions ---
 fixed_indices = sorted(list(domain.fixed_nodes))
@@ -213,7 +226,7 @@ for idx in fixed_indices:
 # --- Clean output ---
 clean_nodes  = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
 clean_forces = np.nan_to_num(axial_forces,      nan=0.0, posinf=0.0, neginf=0.0)
-clean_stresses = np.nan_to_num(stresses_mpa,    nan=0.0, posinf=0.0, neginf=0.0)
+clean_stresses = np.nan_to_num(nodal_stresses_mpa, nan=0.0, posinf=0.0, neginf=0.0)
 clean_defs   = np.nan_to_num(deflections_mm,    nan=0.0, posinf=0.0, neginf=0.0)
 
 nodes_list  = [[float(v) for v in row] for row in clean_nodes.tolist()]
