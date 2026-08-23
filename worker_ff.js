@@ -147,7 +147,7 @@ solver = UniversalFormFindingSolver(
 
 # Invert form for compression presets (vault, dome, catenary_arch)
 preset       = payload.get("preset", "surface_grid")
-invert_flag  = preset in ("vault", "dome", "catenary_arch")
+invert_flag  = preset in ("vault", "dome")
 
 # Increase iterations for complex geometries
 iters = int(payload.get("iterations", 500))
