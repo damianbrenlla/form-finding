@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v4 — Fixed: Unpacks 4-element return tuple from solvers_ff.py v4
+ * v5 — Fixed: Computes axial stress (MPa) and displacement magnitudes (mm) for field mapping.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -176,11 +176,23 @@ preset       = payload.get("preset", "surface_grid")
 invert_flag  = preset in ("vault", "dome")
 iters        = int(payload.get("iterations", 500))
 
-# --- Solvers v4 returns 4 items: nodes, forces, reactions, diagnostics ---
+# Save initial node layout to measure displacement
+initial_nodes = np.copy(domain.nodes).astype(float)
+
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations  = iters,
     invert_form = invert_flag,
 )
+
+# Compute per-node displacement magnitudes (mm)
+displacement_vecs = equilibrium_nodes - initial_nodes
+deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
+u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
+
+# Compute per-element axial stresses sigma = N / A (MPa)
+stresses_mpa = axial_forces / max(area_mm2, 1e-4)
+sigma_max_tens = float(np.max(stresses_mpa)) if len(stresses_mpa) > 0 else 0.0
+sigma_max_comp = float(np.min(stresses_mpa)) if len(stresses_mpa) > 0 else 0.0
 
 # --- Reactions ---
 fixed_indices = sorted(list(domain.fixed_nodes))
@@ -201,21 +213,30 @@ for idx in fixed_indices:
 # --- Clean output ---
 clean_nodes  = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
 clean_forces = np.nan_to_num(axial_forces,      nan=0.0, posinf=0.0, neginf=0.0)
+clean_stresses = np.nan_to_num(stresses_mpa,    nan=0.0, posinf=0.0, neginf=0.0)
+clean_defs   = np.nan_to_num(deflections_mm,    nan=0.0, posinf=0.0, neginf=0.0)
 
 nodes_list  = [[float(v) for v in row] for row in clean_nodes.tolist()]
 edges_list  = [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()]
 forces_list = [float(v) for v in clean_forces.tolist()]
+stresses_list = [float(v) for v in clean_stresses.tolist()]
+defs_list   = [float(v) for v in clean_defs.tolist()]
 
 json.dumps({
-    "nodes":        nodes_list,
-    "edges":        edges_list,
-    "axial_forces": forces_list,
-    "reactions":    reaction_data,
-    "material":     mat_props["material_name"],
-    "preset":       preset,
-    "num_nodes":    len(nodes_list),
-    "num_edges":    len(edges_list),
-    "diagnostics":  diagnostics,
+    "nodes":          nodes_list,
+    "edges":          edges_list,
+    "axial_forces":   forces_list,
+    "stresses_mpa":   stresses_list,
+    "deflections_mm": defs_list,
+    "sigma_max_tens": round(sigma_max_tens, 3),
+    "sigma_max_comp": round(sigma_max_comp, 3),
+    "u_max":          round(u_max, 3),
+    "reactions":      reaction_data,
+    "material":       mat_props["material_name"],
+    "preset":         preset,
+    "num_nodes":      len(nodes_list),
+    "num_edges":      len(edges_list),
+    "diagnostics":    diagnostics,
 })
 `);
 
