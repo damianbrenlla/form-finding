@@ -371,13 +371,13 @@
         presetSelect.innerHTML = '';
 
         var optionsGroup;
-        // Stone & Masonry -> Strictly Compression Forms Only
-        if (matType === 'masonry' || matType === 'stone') {
+        // Concrete, Masonry & Stone -> Strictly Compression Forms Only (Vault & Dome)
+        if (matType === 'concrete' || matType === 'masonry' || matType === 'stone') {
             optionsGroup = PRESET_CATALOGUE.compression_only;
-        // Cables & Fabrics -> Strictly Tension Forms Only
+        // Cables & Fabrics -> Strictly Tension Forms Only (Canopy & Suspended Net)
         } else if (matType === 'cable' || matType === 'fabric') {
             optionsGroup = PRESET_CATALOGUE.tension_only;
-        // Steel, Concrete, Timber, Generic -> Dual Capacity (All Presets Available)
+        // Steel, Timber, Generic -> Dual Capacity (All Presets Available)
         } else {
             optionsGroup = PRESET_CATALOGUE.all_presets;
         }
