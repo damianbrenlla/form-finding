@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- SEO & Metadata -->
+    <!-- Primary Metadata -->
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
     <meta name="keywords" content="Structural Form Finding, Dynamic Relaxation, Force Density Method, Tensile Fabric Design, Vault Optimization, DBSW Engineering">
@@ -17,6 +17,9 @@
     <meta property="og:title" content="DBSW 3D Form-Finding Engine — Client-Side WASM">
     <meta property="og:description" content="Interactive 3D dynamic relaxation & equilibrium form finding running entirely in the browser via Pyodide/Wasm.">
     <meta property="og:url" content="https://form-finding.dbsw.uk/">
+
+    <!-- Preload Pyodide Binary to Eliminate Startup Latency -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.asm.wasm" as="fetch" crossorigin="anonymous">
 
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
@@ -147,7 +150,7 @@
 </head>
 <body>
 
-<!-- Introductory Modal -->
+<!-- Introductory Splash Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
         <h2>DBSW</h2>
@@ -260,7 +263,7 @@
     <div id="status">Initialising WebAssembly Python runtime…</div>
 </div>
 
-<!-- Main Viewport Canvas -->
+<!-- Viewport Container -->
 <div id="viewport"></div>
 
 <script>
@@ -270,7 +273,7 @@
     var worker = null;
     var engineReady = false;
 
-    // Black/White 3D Axis Triad Variables
+    // Minimalistic Black/White 3D Axis Triad Variables
     var axesScene, axesCamera, axesGroup;
 
     function initThree() {
