@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- Primary Metadata -->
+    
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://form-finding.dbsw.uk/" />
 
-    <!-- Preload Pyodide Binary -->
     <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.asm.wasm" as="fetch" crossorigin="anonymous">
 
     <style>
@@ -22,7 +20,7 @@
             display: flex; height: 100vh; overflow: hidden;
             -webkit-font-smoothing: antialiased;
         }
-
+        
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
@@ -34,18 +32,6 @@
             flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
-
-        /* Fallback message shown if WebGL/Three.js fails to initialise.
-           Sits above the canvas so a blank white screen is never silent. */
-        #viewport-fallback {
-            display: none;
-            position: absolute; inset: 0;
-            align-items: center; justify-content: center;
-            padding: 40px; text-align: center;
-            font-size: 0.85rem; color: #cc0000;
-            background: #fff5f5; z-index: 5;
-        }
-
         h2 { margin: 0 0 2px 0; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #000000; }
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
         .control-group { display: flex; flex-direction: column; gap: 4px; }
@@ -57,6 +43,16 @@
             font-size: 0.78rem; outline: none; transition: border-color 0.15s ease;
         }
         input:focus, select:focus { border-color: #000000; }
+
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 4px; background: #e5e5e5;
+            outline: none; margin: 6px 0; padding: 0; border: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+            background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { background: #000000; }
 
         .btn-primary {
             background: #000000; color: #ffffff; border: 1px solid #000000;
@@ -91,7 +87,7 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
-
+        
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
 
@@ -104,10 +100,26 @@
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
         hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
         .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
-
+        
         .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
         .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
         input[type="checkbox"] { accent-color: #000000; }
+
+        #legend {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(255, 255, 255, 0.92); border: 1px solid #cccccc;
+            padding: 12px 14px; font-size: 0.72rem; display: none;
+            flex-direction: column; gap: 6px;
+            box-shadow: 0px 2px 8px rgba(0,0,0,0.06); z-index: 100; min-width: 190px;
+        }
+        #legend-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.70rem; color: #000000; margin-bottom: 2px; }
+        .legend-bar-container { display: flex; align-items: center; gap: 10px; }
+        #legend-bar {
+            width: 14px; height: 130px;
+            background: linear-gradient(to top, hsl(240, 85%, 45%), hsl(180, 85%, 45%), hsl(120, 85%, 45%), hsl(60, 85%, 45%), hsl(0, 85%, 45%));
+            border: 1px solid #999999;
+        }
+        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: monospace; font-size: 0.70rem; color: #333333; }
 
         #intro-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -130,13 +142,6 @@
         }
         #intro-modal .author-line a { color: #000000; }
     </style>
-
-    <!--
-        FIX: scripts previously lived only at the bottom of <body>. That's fine for load
-        order, but there was no guard against Three.js / OrbitControls failing to load
-        (blocked CDN, ad-blocker, offline). We now check for THREE's existence before
-        using it, and report clearly in #status + #viewport-fallback if it's missing.
-    -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -155,6 +160,7 @@
             <li>Multi-material support (Steel, Concrete, Timber, Masonry, Stone, Cables, Fabrics)</li>
             <li>Configurable section dimensions, discrete support restraints, and point/patch loads</li>
             <li>Explicit support reaction force vectors (Rx, Ry, Rz in kN)</li>
+            <li>Stress (+Tension / -Compression) and displacement map visualization</li>
             <li>Direct .STL geometry export capability</li>
         </ul>
 
@@ -234,7 +240,7 @@
     <!-- 2. Cross Section Geometry Parameters -->
     <hr>
     <div class="section-header">Cross-Section Dimensions</div>
-
+    
     <div id="section_solid_div" class="control-group">
         <label>Member Width b & Height h (mm)</label>
         <div style="display: flex; gap: 6px;">
@@ -350,6 +356,39 @@
         </label>
     </div>
 
+    <hr>
+    <div class="section-header">Visualization Render Mode</div>
+    <div class="control-group">
+        <select id="render_mode" onchange="toggleRenderModeUI(); reRenderMesh();">
+            <option value="grey" selected>Monochrome Studio Grey (50%)</option>
+            <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
+            <option value="deflection">Displacement Map (Deflection mm)</option>
+        </select>
+    </div>
+
+    <!-- Analog Stress Limit Faders -->
+    <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
+        <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem; letter-spacing: 0.5px;">
+            Interactive Stress Palette Faders
+        </label>
+        <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
+                    <span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span>
+                    <span id="lbl_comp_val" style="font-family: monospace; font-weight: bold;">-0.01 MPa</span>
+                </div>
+                <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
+                    <span style="color: #cc0000; font-weight: 600;">Tension Limit (+MPa)</span>
+                    <span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+0.01 MPa</span>
+                </div>
+                <input type="range" id="stress_tens_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
+            </div>
+        </div>
+    </div>
+
     <div class="control-group" style="margin-top: 6px;">
         <label>Dynamic Relaxation Solver Iterations</label>
         <input type="number" id="iterations" value="500" style="font-family: monospace;">
@@ -357,7 +396,7 @@
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
-
+    
     <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
         <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
         <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
@@ -367,19 +406,28 @@
 </div>
 
 <div id="viewport">
-    <div id="viewport-fallback">
-        3D viewport failed to initialise. Open the browser console (F12) for the exact error —
-        this is usually a blocked CDN script (Three.js/OrbitControls), an unsupported/disabled
-        WebGL context, or the page being opened directly as a file:// URL instead of served
-        over http(s). Serve this folder with a local web server and reload.
+    <div id="legend">
+        <div id="legend-title">Field Map</div>
+        <div class="legend-bar-container">
+            <div id="legend-bar"></div>
+            <div class="legend-labels">
+                <span id="lbl-100">+Max</span>
+                <span id="lbl-075">+50%</span>
+                <span id="lbl-050">0.0</span>
+                <span id="lbl-025">-50%</span>
+                <span id="lbl-000">-Max</span>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    var scene, camera, renderer, controls;
+    var scene, camera, renderer, controls, mesh;
     var domainBox, mainGrid;
     var networkGroup, reactionGroup;
     var supportGizmos = [], forceArrows = [];
+    var currentNodes = [], currentEdges = [], currentAxialForces = [], currentDeflectionsMM = [], currentStressesMPa = [];
+    var currentSigmaMaxTens = 1.0, currentSigmaMaxComp = -1.0, currentUMax = 1.0;
     var worker = null;
     var engineReady = false;
 
@@ -389,11 +437,11 @@
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
     var CABLE_GRADES = [
-        "Flexible Rope (7x19)", "Spiral Strand (1x19)", "Locked Coil Cable",
+        "Flexible Rope (7x19)", "Spiral Strand (1x19)", "Locked Coil Cable", 
         "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)", "Aramid / Synthetic Fiber"
     ];
     var FABRIC_GRADES = [
-        "PTFE Type I (Light)", "PTFE Type II (Standard)", "PTFE Type III (Medium)",
+        "PTFE Type I (Light)", "PTFE Type II (Standard)", "PTFE Type III (Medium)", 
         "PTFE Type IV (Heavy)", "PTFE Type V (Extreme)"
     ];
 
@@ -426,11 +474,18 @@
         ]
     };
 
-    function setStatus(message, isError) {
-        var status = document.getElementById('status');
-        status.style.color = isError ? "#cc0000" : "#000000";
-        status.style.borderLeftColor = isError ? "#cc0000" : "#000000";
-        status.innerText = message;
+    function toggleRenderModeUI() {
+        var mode = document.getElementById('render_mode').value;
+        var thresholdDiv = document.getElementById('stress_thresholds_div');
+        thresholdDiv.style.display = (mode === 'ec3_stress' && currentNodes.length > 0) ? 'flex' : 'none';
+    }
+
+    function onStressSliderChange() {
+        var compVal = parseFloat(document.getElementById('stress_comp_slider').value) || 0.01;
+        var tensVal = parseFloat(document.getElementById('stress_tens_slider').value) || 0.01;
+        document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
+        document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
+        reRenderMesh();
     }
 
     function onMaterialChange() {
@@ -509,10 +564,10 @@
             stdDiv.style.display = 'flex';
             var gradeSelect = document.getElementById('mat_grade');
             gradeSelect.innerHTML = '';
-
-            var list = (matType === 'concrete') ? CONCRETE_GRADES :
-                       ((matType === 'steel') ? STEEL_GRADES :
-                       ((matType === 'timber') ? TIMBER_GRADES :
+            
+            var list = (matType === 'concrete') ? CONCRETE_GRADES : 
+                       ((matType === 'steel') ? STEEL_GRADES : 
+                       ((matType === 'timber') ? TIMBER_GRADES : 
                        ((matType === 'cable') ? CABLE_GRADES : FABRIC_GRADES)));
 
             list.forEach(function(g) {
@@ -520,9 +575,9 @@
                 opt.value = g; opt.innerText = g;
                 gradeSelect.appendChild(opt);
             });
-            gradeSelect.value = (matType === 'concrete') ? 'C30/37' :
-                                ((matType === 'steel') ? 'S355' :
-                                ((matType === 'timber') ? 'C24' :
+            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : 
+                                ((matType === 'steel') ? 'S355' : 
+                                ((matType === 'timber') ? 'C24' : 
                                 ((matType === 'cable') ? 'Flexible Rope (7x19)' : 'PTFE Type II (Standard)')));
 
         } else if (matType === 'masonry' || matType === 'stone') {
@@ -667,129 +722,86 @@
         return supports;
     }
 
-    // FIX: WebGL capability probe, run before we try to build a renderer.
-    // Gives a specific, visible reason instead of a blank canvas.
-    function detectWebGLSupport() {
-        try {
-            var canvas = document.createElement('canvas');
-            var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            return !!(gl && gl instanceof WebGLRenderingContext);
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function showViewportFallback(message) {
-        var fallback = document.getElementById('viewport-fallback');
-        if (message) fallback.innerText = message;
-        fallback.style.display = 'flex';
-    }
-
-    // FIX: entire init wrapped in try/catch. Previously, if THREE/OrbitControls
-    // failed to load from the CDN (blocked, offline, ad-blocker) or WebGL context
-    // creation threw, every line after the failure point silently never ran —
-    // including the grid, the domain box, onMaterialChange() (dropdown population),
-    // and animate(). The result was a blank white #viewport with no console output
-    // pointing at the cause, and a sidebar stuck on default values.
     function initThree() {
-        try {
-            if (typeof THREE === 'undefined') {
-                throw new Error("THREE is not defined — three.min.js failed to load (check network/CDN access).");
-            }
-            if (typeof THREE.OrbitControls === 'undefined') {
-                throw new Error("THREE.OrbitControls is not defined — OrbitControls.js failed to load.");
-            }
-            if (!detectWebGLSupport()) {
-                throw new Error("WebGL is not available in this browser/context.");
-            }
+        var container = document.getElementById('viewport');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
 
-            var container = document.getElementById('viewport');
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xffffff);
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
+        camera.position.set(9000, 6000, 7000);
 
-            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
-            camera.position.set(9000, 6000, 7000);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.appendChild(renderer.domElement);
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+        keyLight.position.set(5000, 8000, 4000);
+        scene.add(keyLight);
+        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+        fillLight.position.set(-3000, -2000, -2000);
+        scene.add(fillLight);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-            var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
-            keyLight.position.set(5000, 8000, 4000);
-            scene.add(keyLight);
-            var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
-            fillLight.position.set(-3000, -2000, -2000);
-            scene.add(fillLight);
+        mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
+        mainGrid.position.y = 0;
+        scene.add(mainGrid);
 
-            // Ground Reference Grid (XZ plane in Three.js)
-            mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
-            mainGrid.position.y = 0;
-            scene.add(mainGrid);
+        networkGroup = new THREE.Group();
+        reactionGroup = new THREE.Group();
+        scene.add(networkGroup);
+        scene.add(reactionGroup);
 
-            networkGroup = new THREE.Group();
-            reactionGroup = new THREE.Group();
-            scene.add(networkGroup);
-            scene.add(reactionGroup);
+        axesScene = new THREE.Scene();
+        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
+        axesCamera.position.set(0, 0, 5);
+        axesCamera.lookAt(0, 0, 0);
 
-            axesScene = new THREE.Scene();
-            axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
-            axesCamera.position.set(0, 0, 5);
-            axesCamera.lookAt(0, 0, 0);
+        axesGroup = new THREE.Group();
+        axesScene.add(axesGroup);
 
-            axesGroup = new THREE.Group();
-            axesScene.add(axesGroup);
+        var axisLen = 1.2;
+        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
 
-            var axisLen = 1.2;
-            var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-
-            function addAxisLine(to) {
-                var geo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(0, 0, 0), to
-                ]);
-                axesGroup.add(new THREE.Line(geo, axisMat));
-            }
-            addAxisLine(new THREE.Vector3(axisLen, 0, 0));
-            addAxisLine(new THREE.Vector3(0, axisLen, 0));
-            addAxisLine(new THREE.Vector3(0, 0, axisLen));
-
-            function makeAxisLabel(text) {
-                var canvas = document.createElement('canvas');
-                canvas.width = 128; canvas.height = 128;
-                var ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, 128, 128);
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(text, 64, 68);
-                var tex = new THREE.CanvasTexture(canvas);
-                tex.needsUpdate = true;
-                var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
-                var sprite = new THREE.Sprite(mat);
-                sprite.scale.set(0.55, 0.55, 1);
-                return sprite;
-            }
-
-            var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
-            var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
-            var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
-
-            window.addEventListener('resize', onWindowResize);
-
-            onMaterialChange();
-            updateDomainVisuals();
-            animate();
-
-        } catch (err) {
-            console.error("Three.js viewport initialisation failed:", err);
-            showViewportFallback("Viewport init failed: " + err.message);
-            setStatus("Viewport init failed: " + err.message, true);
+        function addAxisLine(to) {
+            var geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), to
+            ]);
+            axesGroup.add(new THREE.Line(geo, axisMat));
         }
+        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
+        addAxisLine(new THREE.Vector3(0, axisLen, 0));
+        addAxisLine(new THREE.Vector3(0, 0, axisLen));
+
+        function makeAxisLabel(text) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 68);
+            var tex = new THREE.CanvasTexture(canvas);
+            tex.needsUpdate = true;
+            var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+            var sprite = new THREE.Sprite(mat);
+            sprite.scale.set(0.55, 0.55, 1);
+            return sprite;
+        }
+
+        var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
+        var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
+        var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
+
+        window.addEventListener('resize', onWindowResize);
+
+        onMaterialChange();
+        animate();
     }
 
     function animate() {
@@ -864,37 +876,28 @@
     }
 
     function initWasmEngine() {
-        try {
-            worker = new Worker('worker_ff.js?cb=' + Date.now());
-            worker.onmessage = handleWorkerMessage;
-            worker.onerror = function(err) {
-                // FIX: worker-level errors (e.g. worker_ff.js itself 404s, or a syntax
-                // error inside it) previously vanished silently — onerror was never
-                // wired up, so a broken worker path just left the button stuck on
-                // "Loading Wasm Engine..." forever with nothing in the console.
-                console.error("Worker error:", err);
-                setStatus("Worker failed to load: " + (err.message || "unknown error") +
-                    ". Check that worker_ff.js is served from the same folder as this page.", true);
-            };
-            worker.postMessage({ action: 'init' });
-        } catch (err) {
-            console.error("Failed to start worker:", err);
-            setStatus("Failed to start Wasm worker: " + err.message, true);
-        }
+        worker = new Worker('worker_ff.js?cb=' + Date.now());
+        worker.onmessage = handleWorkerMessage;
+        worker.postMessage({ action: 'init' });
     }
 
     function handleWorkerMessage(e) {
         var data = e.data;
+        var status = document.getElementById('status');
         var btnExec = document.getElementById('btn-exec');
         var btnStop = document.getElementById('btn-stop');
         var actionsGroup = document.getElementById('results-actions-group');
 
         if (data.status === 'log') {
-            setStatus(data.message, false);
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = data.message;
 
         } else if (data.status === 'ready') {
             engineReady = true;
-            setStatus("Wasm Engine Ready. Define problem parameters.", false);
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Wasm Engine Ready. Define problem parameters.";
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form-Finding Solver";
 
@@ -904,22 +907,53 @@
             btnStop.style.display = 'none';
             actionsGroup.style.display = 'flex';
 
-            setStatus("Form finding complete [" + (data.data.material || "") + "]. Rendering...", false);
+            currentNodes = data.data.nodes;
+            currentEdges = data.data.edges;
+            currentAxialForces = data.data.axial_forces || [];
+            currentDeflectionsMM = data.data.deflections_mm || [];
+            currentStressesMPa = data.data.stresses_mpa || [];
 
-            renderFormFoundNetwork(data.data);
+            currentSigmaMaxTens = data.data.sigma_max_tens != null ? data.data.sigma_max_tens : Math.max(0.0, ...currentStressesMPa);
+            currentSigmaMaxComp = data.data.sigma_max_comp != null ? data.data.sigma_max_comp : Math.min(0.0, ...currentStressesMPa);
+            currentUMax = data.data.u_max || 1.0;
+
+            var compSlider = document.getElementById('stress_comp_slider');
+            var tensSlider = document.getElementById('stress_tens_slider');
+
+            var maxCompAbs = Math.ceil(Math.abs(currentSigmaMaxComp) * 100) / 100;
+            compSlider.max = maxCompAbs > 0.01 ? maxCompAbs : 0.01;
+            compSlider.value = compSlider.max;
+
+            var maxTensRounded = Math.ceil(currentSigmaMaxTens * 100) / 100;
+            tensSlider.max = maxTensRounded > 0.01 ? maxTensRounded : 0.01;
+            tensSlider.value = tensSlider.max;
+
+            onStressSliderChange();
+
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
+            
+            toggleRenderModeUI();
+            reRenderMesh();
             displayReactions(data.data.reactions);
 
         } else if (data.status === 'error') {
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form-Finding Solver";
             btnStop.style.display = 'none';
-            setStatus("Solver Error: " + data.message, true);
+            status.style.color = "#cc0000";
+            status.style.borderLeftColor = "#cc0000";
+            status.innerText = "Solver Error: " + data.message;
         }
     }
 
     function startOptimisation() {
         if (!engineReady) return;
-        setStatus("Dispatching Dynamic Relaxation solver to Wasm worker...", false);
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Dispatching Dynamic Relaxation solver to Wasm worker...";
 
         document.getElementById('btn-exec').disabled = true;
         document.getElementById('btn-stop').style.display = 'block';
@@ -961,7 +995,10 @@
     }
 
     function stopOptimisation() {
-        setStatus("Terminating and reloading Wasm engine...", true);
+        var status = document.getElementById('status');
+        status.style.color = "#cc0000";
+        status.style.borderLeftColor = "#cc0000";
+        status.innerText = "Terminating and reloading Wasm engine...";
 
         document.getElementById('btn-stop').style.display = 'none';
         document.getElementById('btn-exec').disabled = true;
@@ -974,74 +1011,145 @@
     }
 
     function clearResults() {
+        currentNodes = []; currentEdges = []; currentAxialForces = [];
+        currentDeflectionsMM = []; currentStressesMPa = [];
+
         while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
         while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
 
+        document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
-        setStatus("Results cleared. Ready to define parameters.", false);
+        document.getElementById('stress_thresholds_div').style.display = 'none';
+
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Results cleared. Ready to define parameters.";
 
         updateDomainVisuals();
     }
 
-    function renderFormFoundNetwork(data) {
-        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
+    function format2DP(val) { return Number(val).toFixed(2); }
+    function formatMPa(val) { return format2DP(val) + " MPa"; }
+    function formatMM(val) { return format2DP(val) + " mm"; }
 
-        var nodes = data.nodes;
-        var edges = data.edges;
-        var axial_forces = data.axial_forces;
+    function updateLegendLabels(isDeflectionMode) {
+        var legendTitle = document.getElementById('legend-title');
+        if (isDeflectionMode) {
+            legendTitle.innerText = "Displacement Map (mm)";
+            document.getElementById('lbl-100').innerText = formatMM(currentUMax) + " (Max)";
+            document.getElementById('lbl-075').innerText = formatMM(currentUMax * 0.75);
+            document.getElementById('lbl-050').innerText = formatMM(currentUMax * 0.50);
+            document.getElementById('lbl-025').innerText = formatMM(currentUMax * 0.25);
+            document.getElementById('lbl-000').innerText = "0.00 mm";
+        } else {
+            var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
+            var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
 
-        if (!nodes || nodes.length === 0 || !edges || edges.length === 0) {
-            console.error("Invalid geometry data received:", data);
-            setStatus("Solver returned empty geometry — check supports/loads/domain size.", true);
-            return;
+            legendTitle.innerText = "Stress Map (MPa)";
+            document.getElementById('lbl-100').innerText = "+" + formatMPa(activeMaxTens);
+            document.getElementById('lbl-075').innerText = "+" + formatMPa(activeMaxTens * 0.50);
+            document.getElementById('lbl-050').innerText = "0.00 MPa";
+            document.getElementById('lbl-025').innerText = formatMPa(activeMaxComp * 0.50);
+            document.getElementById('lbl-000').innerText = formatMPa(activeMaxComp);
+        }
+    }
+
+    function reRenderMesh() {
+        var legend = document.getElementById('legend');
+        var mode = document.getElementById('render_mode').value;
+        var isDeflectionMode = (mode === 'deflection');
+
+        if (!currentNodes || !currentNodes.length || !currentEdges || !currentEdges.length) return;
+
+        if (mode === 'ec3_stress' || mode === 'deflection') {
+            updateLegendLabels(isDeflectionMode);
+            legend.style.display = 'flex';
+        } else {
+            legend.style.display = 'none';
         }
 
-        var minF = Math.min.apply(null, axial_forces);
-        var maxF = Math.max.apply(null, axial_forces);
-        var rangeF = (maxF - minF) || 1.0;
+        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
 
-        var lineGeometry = new THREE.BufferGeometry();
-        var positions = [];
-        var colors = [];
+        var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
+        var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
 
-        edges.forEach(function(edge, idx) {
-            var p1 = nodes[edge[0]];
-            var p2 = nodes[edge[1]];
+        var colorScaleSignedAsymmetric = function(val, maxTens, minComp) {
+            if (val > maxTens || val < minComp) {
+                return new THREE.Color(0x808080);
+            }
+            var h;
+            if (val >= 0) {
+                var normTens = (maxTens > 1e-6) ? Math.min(val / maxTens, 1.0) : 0.0;
+                h = (1.0 - normTens) * 120.0 / 360.0;
+            } else {
+                var normComp = (Math.abs(minComp) > 1e-6) ? Math.min(Math.abs(val / minComp), 1.0) : 0.0;
+                h = (120.0 + normComp * 120.0) / 360.0;
+            }
+            var c = new THREE.Color(); 
+            c.setHSL(h, 0.85, 0.45); 
+            return c;
+        };
 
-            if (p1 && p2) {
-                // Map Python coordinates (X, Y, Z) to Three.js (X, Z_up, Y)
-                positions.push(p1[0], p1[2], p1[1]);
-                positions.push(p2[0], p2[2], p2[1]);
+        var colorScaleUnsigned = function(val, maxVal) {
+            var norm = (maxVal > 1e-6) ? Math.min(Math.max(val / maxVal, 0.0), 1.0) : 0.0;
+            var h = (1.0 - norm) * 240.0 / 360.0;
+            var c = new THREE.Color(); 
+            c.setHSL(h, 0.85, 0.45); 
+            return c;
+        };
 
-                var force = axial_forces[idx] !== undefined ? axial_forces[idx] : 0.0;
-                var norm = (force - minF) / rangeF;
+        // Render solid Studio Grey / Colored Cylinders for each member
+        currentEdges.forEach(function(edge, idx) {
+            var p1_raw = currentNodes[edge[0]];
+            var p2_raw = currentNodes[edge[1]];
 
-                var color = new THREE.Color();
-                color.setHSL(0.0, 0.9, 0.15 + 0.45 * norm);
+            if (p1_raw && p2_raw) {
+                var p1 = new THREE.Vector3(p1_raw[0], p1_raw[2], p1_raw[1]);
+                var p2 = new THREE.Vector3(p2_raw[0], p2_raw[2], p2_raw[1]);
 
-                colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+                var direction = new THREE.Vector3().subVectors(p2, p1);
+                var memberLen = direction.length();
+
+                if (memberLen > 1e-3) {
+                    var cylGeo = new THREE.CylinderGeometry(35, 35, memberLen, 8);
+                    
+                    var mat;
+                    if (mode === 'grey') {
+                        mat = new THREE.MeshStandardMaterial({
+                            color: 0x808080, roughness: 0.50, metalness: 0.10
+                        });
+                    } else if (mode === 'deflection') {
+                        var u_val = currentDeflectionsMM[edge[0]] || 0.0;
+                        var col = colorScaleUnsigned(u_val, currentUMax);
+                        mat = new THREE.MeshStandardMaterial({
+                            color: col, roughness: 0.40, metalness: 0.10
+                        });
+                    } else { // ec3_stress
+                        var s_val = currentStressesMPa[idx] || 0.0;
+                        var col = colorScaleSignedAsymmetric(s_val, activeMaxTens, activeMaxComp);
+                        mat = new THREE.MeshStandardMaterial({
+                            color: col, roughness: 0.40, metalness: 0.10
+                        });
+                    }
+
+                    var cylMesh = new THREE.Mesh(cylGeo, mat);
+                    
+                    // Position and orient cylinder between nodal points
+                    var midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                    cylMesh.position.copy(midpoint);
+                    cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+
+                    networkGroup.add(cylMesh);
+                }
             }
         });
 
-        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-        lineGeometry.computeBoundingSphere();
-        lineGeometry.computeBoundingBox();
-
-        var lineMaterial = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            linewidth: 2,
-            depthTest: true,
-            depthWrite: true
-        });
-
-        var networkMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
-        networkGroup.add(networkMesh);
-
-        if (lineGeometry.boundingBox) {
+        // Center camera controls onto centroid
+        var bbox = new THREE.Box3().setFromObject(networkGroup);
+        if (!bbox.isEmpty()) {
             var center = new THREE.Vector3();
-            lineGeometry.boundingBox.getCenter(center);
+            bbox.getCenter(center);
             controls.target.copy(center);
             controls.update();
         }
@@ -1069,15 +1177,8 @@
         alert("Exporting solved form-finding network geometry...");
     }
 
-    // FIX: run after DOM is parsed (script sits at end of body, so this is already
-    // safe) but ALSO guard against THREE/OrbitControls not having loaded yet by the
-    // time this executes — e.g. slow/blocked CDN. window.onload waits for every
-    // resource including the two <script src> tags in <head>, which is a more
-    // reliable trigger point than firing immediately at the bottom of body.
-    window.onload = function () {
-        initThree();
-        initWasmEngine();
-    };
+    initThree();
+    initWasmEngine();
 </script>
 
 </body>
