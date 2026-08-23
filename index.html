@@ -4,44 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- Primary Metadata -->
     <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
-    <meta name="keywords" content="Structural Form Finding, Dynamic Relaxation, Force Density Method, Tensile Fabric Design, Vault Optimization, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://form-finding.dbsw.uk/" />
 
-    <!-- Open Graph Metadata -->
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="DBSW Engineering">
-    <meta property="og:title" content="DBSW 3D Form-Finding Engine — Client-Side WASM">
-    <meta property="og:description" content="Interactive 3D dynamic relaxation & equilibrium form finding running entirely in the browser via Pyodide/Wasm.">
-    <meta property="og:url" content="https://form-finding.dbsw.uk/">
-
-    <!-- Preload Pyodide Binary -->
     <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.asm.wasm" as="fetch" crossorigin="anonymous">
-
-    <!-- Structured Data (JSON-LD) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "DBSW 3D Form-Finding Engine",
-      "operatingSystem": "WebBrowser",
-      "applicationCategory": "EngineeringApplication",
-      "offers": {
-        "@type": "Offer",
-        "price": "0.00",
-        "priceCurrency": "GBP"
-      },
-      "author": {
-        "@type": "Person",
-        "name": "Damian Brenlla",
-        "url": "https://dbsw.uk"
-      },
-      "description": "Client-side WebAssembly solver for 3D structural form-finding, dynamic relaxation, and reaction force recovery."
-    }
-    </script>
 
     <style>
         * { box-sizing: border-box; }
@@ -53,23 +21,13 @@
             -webkit-font-smoothing: antialiased;
         }
         
-        /* DBSW Custom Minimalist Scrollbar Palette */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
         #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
-        #sidebar::-webkit-scrollbar-button:single-button {
-            background-color: #ffffff; display: block; border-style: solid; height: 10px; width: 6px;
-        }
-        #sidebar::-webkit-scrollbar-button:single-button:vertical:decrement {
-            border-width: 0 3px 5px 3px; border-color: transparent transparent #000000 transparent;
-        }
-        #sidebar::-webkit-scrollbar-button:single-button:vertical:increment {
-            border-width: 5px 3px 0 3px; border-color: #000000 transparent transparent transparent;
-        }
 
         #sidebar {
-            width: 420px; background: #ffffff; padding: 24px;
+            width: 440px; background: #ffffff; padding: 24px;
             border-right: 1px solid #e5e5e5; display: flex;
             flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
@@ -120,10 +78,23 @@
         }
         .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
         
+        .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+        .load-header-row .btn-group { display: flex; gap: 6px; }
+
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
+        .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
+        .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
+        .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
+        .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
+
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
         hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
         .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
         
+        .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
+        .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #000000; }
+
         #intro-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
@@ -150,7 +121,6 @@
 </head>
 <body>
 
-<!-- Introductory Splash Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
         <h2>DBSW</h2>
@@ -162,15 +132,10 @@
 
         <ul>
             <li>Multi-material support (Steel, Concrete, Timber, Masonry, Stone, Cables, Fabrics)</li>
-            <li>Configurable domain geometry, spatial grid density, supports, and prestress</li>
+            <li>Configurable section dimensions, discrete support restraints, and point/patch loads</li>
             <li>Explicit support reaction force vectors (Rx, Ry, Rz in kN)</li>
-            <li>Tension vs. Compression axial force distribution visualization</li>
             <li>Direct .STL geometry export capability</li>
         </ul>
-
-        <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
-            This is a concept-stage design exploration tool, not a substitute for code-compliant structural verification of the final geometry.
-        </p>
 
         <div class="author-line" style="margin-top: 14px;">
             Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
@@ -182,14 +147,13 @@
     </div>
 </div>
 
-<!-- Sidebar Interface -->
 <div id="sidebar">
     <div>
         <h2>DBSW</h2>
         <div class="subtitle">3D Form-Finding Engine — Client-Side WASM</div>
     </div>
 
-    <!-- Multi-Tier Material Dropdown System -->
+    <!-- 1. Material Classification -->
     <div class="control-group">
         <label>Structural Material Classification</label>
         <select id="mat_type" onchange="onMaterialChange()">
@@ -246,6 +210,29 @@
         </div>
     </div>
 
+    <!-- 2. Cross Section Geometry Parameters -->
+    <hr>
+    <div class="section-header">Cross-Section Dimensions</div>
+    
+    <div id="section_solid_div" class="control-group">
+        <label>Member Width b & Height h (mm)</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" id="sec_b" value="300" style="width: 50%; font-family: monospace;" placeholder="Width b">
+            <input type="number" id="sec_h" value="300" style="width: 50%; font-family: monospace;" placeholder="Height h">
+        </div>
+    </div>
+
+    <div id="section_cable_div" class="control-group" style="display: none;">
+        <label>Cable Diameter d (mm)</label>
+        <input type="number" id="sec_cable_d" value="24" style="font-family: monospace;">
+    </div>
+
+    <div id="section_fabric_div" class="control-group" style="display: none;">
+        <label>Membrane Equivalent Thickness t (mm)</label>
+        <input type="number" id="sec_fabric_t" value="1.2" step="0.1" style="font-family: monospace;">
+    </div>
+
+    <!-- 3. Domain & Form Presets -->
     <hr>
     <div class="control-group">
         <label>Target Form Preset</label>
@@ -269,10 +256,19 @@
         </div>
     </div>
 
+    <!-- 4. Restraints & Discrete Boundary System -->
     <hr>
     <div class="section-header">Boundary Restraints</div>
 
     <div class="control-group">
+        <label>Support Mode</label>
+        <select id="support_mode" onchange="toggleSupportMode()">
+            <option value="preset" selected>Preset Boundary Configurations</option>
+            <option value="points_only">Only User-Selected Discrete Points</option>
+        </select>
+    </div>
+
+    <div id="preset_supports_div" class="control-group">
         <label>Support Presets</label>
         <select id="support_preset" onchange="updateDomainVisuals()">
             <option value="four_corners" selected>Four Point Corner Supports</option>
@@ -280,16 +276,61 @@
         </select>
     </div>
 
-    <hr>
-    <div class="section-header">Prestress & Loading</div>
+    <div class="control-group" style="margin-top: 4px;">
+        <div class="load-header-row">
+            <label style="margin: 0;">Discrete Point Supports (mm / DOFs)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addSupportRow()">+ Add Support Node</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllSupports()">Clear All Supports</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
+            <tbody id="support_table_body"></tbody>
+        </table>
+    </div>
 
-    <div class="control-group">
-        <label>Internal Cable / Fabric Prestress (N)</label>
+    <!-- 5. Prestress & Loading Definition -->
+    <hr>
+    <div class="section-header">Loading Definition</div>
+
+    <div id="prestress_container" class="control-group">
+        <label>Internal Cable / Fabric Prestress Force (N)</label>
         <input type="number" id="prestress" value="15" style="font-family: monospace;">
     </div>
 
     <div class="control-group">
-        <label>Dynamic Relaxation Iterations</label>
+        <label>Load Presets</label>
+        <select id="load_preset" onchange="applyLoadPreset()">
+            <option value="custom" selected>Custom Point Load Array</option>
+            <option value="center_point">Single Center Point Load (X=Lx/2, Y=Ly/2)</option>
+            <option value="top_udl">Top Surface Uniform Patch Array</option>
+        </select>
+    </div>
+
+    <div id="point_loads_container" class="control-group">
+        <div class="load-header-row">
+            <label style="margin: 0;">Point Load Array (mm / kN)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Fx</th><th>Fy</th><th>Fz</th><th></th></tr></thead>
+            <tbody id="load_table_body"></tbody>
+        </table>
+    </div>
+
+    <div class="checkbox-group" style="margin-top: 4px;">
+        <label>
+            <input type="checkbox" id="self_weight_toggle" checked>
+            Include Self-Weight (Dead Load)
+        </label>
+    </div>
+
+    <div class="control-group" style="margin-top: 6px;">
+        <label>Dynamic Relaxation Solver Iterations</label>
         <input type="number" id="iterations" value="300" style="font-family: monospace;">
     </div>
 
@@ -304,20 +345,18 @@
     <div id="status">Initialising WebAssembly Python runtime…</div>
 </div>
 
-<!-- Viewport Container -->
 <div id="viewport"></div>
 
 <script>
     var scene, camera, renderer, controls;
     var domainBox;
     var networkGroup, reactionGroup;
+    var supportGizmos = [], forceArrows = [];
     var worker = null;
     var engineReady = false;
 
-    // Minimalistic Black/White 3D Axis Triad Variables
     var axesScene, axesCamera, axesGroup;
 
-    // Multi-Material Classification Lookup Tables
     var STEEL_GRADES = ["S235", "S275", "S355", "S460"];
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
@@ -342,7 +381,6 @@
         "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
     };
 
-    // Minimalist Target Form Presets Governed strictly by Structural Mechanics
     var PRESET_CATALOGUE = {
         compression_only: [
             { value: "vault", text: "Vault / Shell" },
@@ -363,6 +401,39 @@
     function onMaterialChange() {
         updateMaterialUI();
         syncPresetsWithMaterial();
+        toggleSectionInputs();
+        togglePrestressVisibility();
+    }
+
+    function toggleSectionInputs() {
+        var matType = document.getElementById('mat_type').value;
+        var solidDiv = document.getElementById('section_solid_div');
+        var cableDiv = document.getElementById('section_cable_div');
+        var fabricDiv = document.getElementById('section_fabric_div');
+
+        solidDiv.style.display = 'none';
+        cableDiv.style.display = 'none';
+        fabricDiv.style.display = 'none';
+
+        if (matType === 'cable') {
+            cableDiv.style.display = 'flex';
+        } else if (matType === 'fabric') {
+            fabricDiv.style.display = 'flex';
+        } else {
+            solidDiv.style.display = 'flex';
+        }
+    }
+
+    function togglePrestressVisibility() {
+        var matType = document.getElementById('mat_type').value;
+        var prestressDiv = document.getElementById('prestress_container');
+        prestressDiv.style.display = (matType === 'cable' || matType === 'fabric') ? 'flex' : 'none';
+    }
+
+    function toggleSupportMode() {
+        var mode = document.getElementById('support_mode').value;
+        document.getElementById('preset_supports_div').style.display = (mode === 'preset') ? 'flex' : 'none';
+        updateDomainVisuals();
     }
 
     function syncPresetsWithMaterial() {
@@ -371,13 +442,10 @@
         presetSelect.innerHTML = '';
 
         var optionsGroup;
-        // Concrete, Masonry & Stone -> Strictly Compression Forms Only (Vault & Dome)
         if (matType === 'concrete' || matType === 'masonry' || matType === 'stone') {
             optionsGroup = PRESET_CATALOGUE.compression_only;
-        // Cables & Fabrics -> Strictly Tension Forms Only (Canopy & Suspended Net)
         } else if (matType === 'cable' || matType === 'fabric') {
             optionsGroup = PRESET_CATALOGUE.tension_only;
-        // Steel, Timber, Generic -> Dual Capacity (All Presets Available)
         } else {
             optionsGroup = PRESET_CATALOGUE.all_presets;
         }
@@ -462,6 +530,109 @@
         document.getElementById('mortar_fm').value = MORTAR_GRADES[key] || 6.0;
     }
 
+    // Support and Loading Table Helpers
+    function addSupportRow(x, y, z, dofs) {
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y;
+        z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
+        var tbody = document.getElementById('support_table_body');
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tbody.appendChild(tr);
+        updateDomainVisuals();
+    }
+
+    function addLoadRow(x, y, z, Fx, Fy, Fz) {
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 3000 : y; z = (z === undefined) ? 2000 : z;
+        Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -10.0 : Fz;
+        var tbody = document.getElementById('load_table_body');
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="number" class="ld-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fx" value="' + Fx + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fy" value="' + Fy + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fz" value="' + Fz + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tbody.appendChild(tr);
+        updateDomainVisuals();
+    }
+
+    function deleteRow(btn) {
+        var tr = btn.parentNode.parentNode;
+        tr.parentNode.removeChild(tr);
+        updateDomainVisuals();
+    }
+
+    function clearAllSupports() {
+        document.getElementById('support_table_body').innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function clearAllLoads() {
+        document.getElementById('load_table_body').innerHTML = '';
+        document.getElementById('load_preset').value = 'custom';
+        updateDomainVisuals();
+    }
+
+    function applyLoadPreset() {
+        var preset = document.getElementById('load_preset').value;
+        var Lx = parseFloat(document.getElementById('Lx').value) || 6000;
+        var Ly = parseFloat(document.getElementById('Ly').value) || 6000;
+        var Lz = parseFloat(document.getElementById('Lz').value) || 2000;
+        var tbody = document.getElementById('load_table_body');
+
+        if (preset === 'center_point') {
+            tbody.innerHTML = '';
+            addLoadRow(Lx / 2.0, Ly / 2.0, Lz, 0, 0, -50.0);
+        } else if (preset === 'top_udl') {
+            tbody.innerHTML = '';
+            var num_x = 3, num_y = 3;
+            var load_per_pt = -100.0 / (num_x * num_y);
+            for (var ix = 1; ix <= num_x; ix++) {
+                for (var iy = 1; iy <= num_y; iy++) {
+                    addLoadRow((ix / (num_x + 1)) * Lx, (iy / (num_y + 1)) * Ly, Lz, 0, 0, load_per_pt);
+                }
+            }
+        }
+        updateDomainVisuals();
+    }
+
+    function getLoadArrayData() {
+        var rows = document.querySelectorAll('#load_table_body tr');
+        var loads = [];
+        rows.forEach(function(r) {
+            loads.push({
+                x: parseFloat(r.querySelector('.ld-x').value) || 0,
+                y: parseFloat(r.querySelector('.ld-y').value) || 0,
+                z: parseFloat(r.querySelector('.ld-z').value) || 0,
+                Fx: parseFloat(r.querySelector('.ld-fx').value) || 0,
+                Fy: parseFloat(r.querySelector('.ld-fy').value) || 0,
+                Fz: parseFloat(r.querySelector('.ld-fz').value) || 0
+            });
+        });
+        return loads;
+    }
+
+    function getPointSupportArrayData() {
+        var rows = document.querySelectorAll('#support_table_body tr');
+        var supports = [];
+        rows.forEach(function(r) {
+            supports.push({
+                x: parseFloat(r.querySelector('.sp-x').value) || 0,
+                y: parseFloat(r.querySelector('.sp-y').value) || 0,
+                z: parseFloat(r.querySelector('.sp-z').value) || 0,
+                dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase()
+            });
+        });
+        return supports;
+    }
+
     function initThree() {
         var container = document.getElementById('viewport');
         scene = new THREE.Scene();
@@ -496,7 +667,6 @@
         scene.add(networkGroup);
         scene.add(reactionGroup);
 
-        // --- Minimalistic black/white 3D axis triad setup ---
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
         axesCamera.position.set(0, 0, 5);
@@ -514,45 +684,30 @@
             ]);
             axesGroup.add(new THREE.Line(geo, axisMat));
         }
-        addAxisLine(new THREE.Vector3(axisLen, 0, 0)); // X Axis
-        addAxisLine(new THREE.Vector3(0, axisLen, 0)); // Z Axis (Up)
-        addAxisLine(new THREE.Vector3(0, 0, axisLen)); // Y Axis
+        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
+        addAxisLine(new THREE.Vector3(0, axisLen, 0));
+        addAxisLine(new THREE.Vector3(0, 0, axisLen));
 
         function makeAxisLabel(text) {
             var canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
+            canvas.width = 128; canvas.height = 128;
             var ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, 128, 128);
             ctx.fillStyle = '#000000';
             ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(text, 64, 68);
             var tex = new THREE.CanvasTexture(canvas);
             tex.needsUpdate = true;
-            var mat = new THREE.SpriteMaterial({
-                map: tex,
-                transparent: true,
-                depthTest: false,
-                depthWrite: false
-            });
+            var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
             var sprite = new THREE.Sprite(mat);
             sprite.scale.set(0.55, 0.55, 1);
             return sprite;
         }
 
-        var lblX = makeAxisLabel('X');
-        lblX.position.set(axisLen + 0.35, 0, 0);
-        axesGroup.add(lblX);
-
-        var lblZ = makeAxisLabel('Z');
-        lblZ.position.set(0, axisLen + 0.35, 0);
-        axesGroup.add(lblZ);
-
-        var lblY = makeAxisLabel('Y');
-        lblY.position.set(0, 0, axisLen + 0.35);
-        axesGroup.add(lblY);
+        var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
+        var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
+        var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
 
         window.addEventListener('resize', onWindowResize);
 
@@ -566,15 +721,12 @@
         controls.update();
         renderer.render(scene, camera);
 
-        // Render Orthographic Axis Triad in Bottom-Left Corner
         if (axesGroup && axesScene && axesCamera) {
             axesGroup.quaternion.copy(camera.quaternion).invert();
 
-            var size = 110;
-            var margin = 16;
+            var size = 110, margin = 16;
             var container = document.getElementById('viewport');
-            var w = container.clientWidth;
-            var h = container.clientHeight;
+            var w = container.clientWidth, h = container.clientHeight;
 
             renderer.autoClear = false;
             renderer.clearDepth();
@@ -606,6 +758,32 @@
         domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, linewidth: 1 }));
         domainBox.position.set(Lx / 2.0, Lz / 2.0, Ly / 2.0);
         scene.add(domainBox);
+
+        // Support and Load Gizmo Rendering
+        supportGizmos.forEach(function(g) { scene.remove(g); }); supportGizmos = [];
+        forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
+
+        var ptPinGeo = new THREE.ConeGeometry(120, 200, 4);
+        var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
+
+        getPointSupportArrayData().forEach(function(ps) {
+            var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
+            ptMesh.position.set(ps.x, ps.z - 100, ps.y);
+            scene.add(ptMesh);
+            supportGizmos.push(ptMesh);
+        });
+
+        getLoadArrayData().forEach(function(ld) {
+            var dirVector = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
+            var forceMag = dirVector.length();
+            if (forceMag > 1e-3) {
+                dirVector.normalize();
+                var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
+                var arrow = new THREE.ArrowHelper(dirVector, origin, 500, 0xcc0000, 120, 50);
+                scene.add(arrow);
+                forceArrows.push(arrow);
+            }
+        });
     }
 
     function initWasmEngine() {
@@ -678,8 +856,17 @@
             custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.30,
             custom_fk: parseFloat(document.getElementById('custom_fk').value) || 355.0,
             custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 78.5,
+            sec_b: parseFloat(document.getElementById('sec_b').value) || 300.0,
+            sec_h: parseFloat(document.getElementById('sec_h').value) || 300.0,
+            sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
+            sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
             preset: document.getElementById('preset').value,
+            support_mode: document.getElementById('support_mode').value,
             support_preset: document.getElementById('support_preset').value,
+            point_supports: getPointSupportArrayData(),
+            load_preset: document.getElementById('load_preset').value,
+            loads: getLoadArrayData(),
+            include_self_weight: document.getElementById('self_weight_toggle').checked,
             Lx: parseFloat(document.getElementById('Lx').value),
             Ly: parseFloat(document.getElementById('Ly').value),
             Lz: parseFloat(document.getElementById('Lz').value),
