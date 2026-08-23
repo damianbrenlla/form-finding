@@ -85,7 +85,7 @@ else:
         domain.add_line_support("x", 0.0)
         domain.add_line_support("x", domain.Lx)
 
-# Member Section Calculations
+# Member Section Area Calculations
 mat_type = payload.get("material_type", "steel")
 if mat_type == "cable":
     d_mm = float(payload.get("sec_cable_d", 24.0))
@@ -106,6 +106,7 @@ solver = UniversalFormFindingSolver(
     domain=domain, 
     E_modulus=mat_props["E"], 
     gamma_kn_m3=(mat_props["gamma_kn_m3"] if include_sw else 0.0),
+    cross_section_area=area_mm2,
     area_mm2=area_mm2,
     prestress_force=float(payload.get("prestress", 15.0)),
     point_loads=external_loads
