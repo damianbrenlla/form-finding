@@ -1,5 +1,5 @@
 /**
- * DBSW 3D Form-Finding WebWorker Engine (Instant Boot)
+ * DBSW 3D Form-Finding WebWorker Engine (Worker FF)
  * Author: Damian Brenlla / DBSW
  */
 
@@ -10,19 +10,22 @@ let pyodide = null;
 async function initEngine() {
     try {
         postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
-        pyodide = await loadPyodide();
+        
+        // Pass indexURL explicitly so Pyodide knows where to fetch Wasm binaries
+        pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/"
+        });
 
         postMessage({ status: "log", message: "Loading NumPy package into Wasm memory..." });
-        await pyodide.loadPackage(["numpy"]);
+        await pyodide.loadPackage("numpy");
 
         postMessage({ status: "log", message: "Mounting Python core files..." });
         pyodide.FS.mkdirTree("/home/pyodide/core");
 
-        // Removed __init__.py to prevent HTTP fetch timeouts
-        const files = ["domain.py", "materials.py", "solvers.py"];
+        const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
         for (const file of files) {
             const response = await fetch(`./python_core/${file}?cb=${Date.now()}`);
-            if (!response.ok) throw new Error(`Failed to fetch python_core/${file} (HTTP ${response.status})`);
+            if (!response.ok) throw new Error(`HTTP ${response.status} fetching python_core/${file}`);
             const code = await response.text();
             pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
         }
@@ -53,9 +56,9 @@ self.onmessage = async function(e) {
         try {
             const resultJson = await pyodide.runPythonAsync(`
 import json, numpy as np
-from core.domain import FormFindingDomain3D
+from core.domain_ff import FormFindingDomain3D
 from core.materials import FormFindingMaterialRegistry
-from core.solvers import UniversalFormFindingSolver
+from core.solvers_ff import UniversalFormFindingSolver
 
 payload = json.loads(payload_json)
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
