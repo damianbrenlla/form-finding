@@ -4,12 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <title>3D Form-Finding Engine | WebAssembly Dynamic Relaxation — DBSW</title>
-    <meta name="description" content="Browser-native 3D structural form-finding engine powered by Python and WebAssembly. Features Force Density & Dynamic Relaxation methods for vaults, domes, cable nets, and fabrics.">
+    <!-- 1. SEO Primary Metadata -->
+    <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
+    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode 2/3/5/6 material logic, continuum mechanics, and interactive 3D section cut-planes.">
+    <meta name="keywords" content="Structural Form Finding, 3D SIMP FEA, WebAssembly Finite Element Analysis, Eurocode Structural Engineering, Low Carbon Structural Design, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
-    <link rel="canonical" href="https://form-finding.dbsw.uk/" />
+    <link rel="canonical" href="https://topology.dbsw.uk/" />
 
-    <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.asm.wasm" as="fetch" crossorigin="anonymous">
+    <!-- 2. Open Graph / Social Audit Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="DBSW Engineering">
+    <meta property="og:title" content="DBSW 3D Form Finding Engine — Client-Side WASM FEA">
+    <meta property="og:description" content="Interactive first-principles 3D continuum mechanics & form finding running entirely in the browser via Pyodide/Wasm. Eurocode compliant design exploration.">
+    <meta property="og:url" content="https://topology.dbsw.uk/">
+    <meta property="og:image" content="https://topology.dbsw.uk/assets/og-preview.jpg">
+
+    <!-- 3. Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "DBSW 3D Form Finding Engine",
+      "operatingSystem": "WebBrowser",
+      "applicationCategory": "EngineeringApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "GBP"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Damian Brenlla",
+        "url": "https://dbsw.uk"
+      },
+      "description": "Client-side WebAssembly solver for 3D structural form finding, continuum mechanics, and Eurocode stress recovery."
+    }
+    </script>
 
     <style>
         * { box-sizing: border-box; }
@@ -21,19 +51,40 @@
             -webkit-font-smoothing: antialiased;
         }
         
+        /* DBSW Custom Minimalist Scrollbar Palette */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
         #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
+        #sidebar::-webkit-scrollbar-button:single-button {
+            background-color: #ffffff; display: block; border-style: solid; height: 10px; width: 6px;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:decrement {
+            border-width: 0 3px 5px 3px; border-color: transparent transparent #000000 transparent;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:increment {
+            border-width: 5px 3px 0 3px; border-color: #000000 transparent transparent transparent;
+        }
 
         #sidebar {
-            width: 440px; background: #ffffff; padding: 24px;
+            width: 420px; background: #ffffff; padding: 24px;
             border-right: 1px solid #e5e5e5; display: flex;
             flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
-        h2 { margin: 0 0 2px 0; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #000000; }
-        .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+        
+        /* Brand Image Logo Styling */
+        .brand-logo-img {
+            height: 18px;
+            width: auto;
+            max-width: 100%;
+            display: block;
+            margin-bottom: 6px;
+            object-fit: contain;
+            object-position: left center;
+        }
+
+        .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
         .control-group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 0.75rem; color: #444444; font-weight: 500; letter-spacing: 0.2px; }
         input, select {
@@ -53,6 +104,9 @@
             background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease;
         }
         input[type="range"]::-webkit-slider-thumb:hover { background: #000000; }
+        input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; background: #555555; cursor: pointer; border-radius: 0px; border: none;
+        }
 
         .btn-primary {
             background: #000000; color: #ffffff; border: 1px solid #000000;
@@ -79,6 +133,7 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary:hover { background: #f5f5f5; }
+        .btn-secondary:disabled { color: #999999; border-color: #cccccc; cursor: not-allowed; }
         .btn-secondary-danger {
             background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
             padding: 8px; border-radius: 0px;
@@ -87,23 +142,21 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
-        
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
-
+        #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
+        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
+        .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
+        .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
+        .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #000000; }
+        
+        /* Compact Data Tables */
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
         .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
         .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
         .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
         .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
-
-        #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
-        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
-        .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
-        
-        .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
-        .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-        input[type="checkbox"] { accent-color: #000000; }
 
         #legend {
             position: absolute; top: 20px; right: 20px;
@@ -131,7 +184,6 @@
             max-width: 460px; width: 90%; padding: 28px 28px 22px 28px;
             box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
         }
-        #intro-modal h2 { margin: 0 0 2px 0; letter-spacing: 1.5px; }
         #intro-modal .subtitle { margin-bottom: 16px; }
         #intro-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
         #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
@@ -149,20 +201,29 @@
 
 <div id="intro-overlay">
     <div id="intro-modal">
-        <h2>DBSW</h2>
-        <div class="subtitle">3D Form-Finding Engine — Client-Side WASM</div>
+        <!-- Logo Graphic Image -->
+        <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
+        <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
 
         <p>
-            This tool generates 3D structural equilibrium forms (compression vaults, domes, cable nets, tensile fabrics, and space trusses) using Dynamic Relaxation and Force Density methods, solved entirely in your browser via WebAssembly — no data leaves your machine.
+            This tool generates 3D structural form-found geometries, solved entirely
+            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
+            and morphological behavior adapt dynamically based on your chosen structural material.
         </p>
 
         <ul>
-            <li>Multi-material support (Steel, Concrete, Timber, Masonry, Stone, Cables, Fabrics)</li>
-            <li>Configurable section dimensions, discrete support restraints, and point/patch loads</li>
-            <li>Explicit support reaction force vectors (Rx, Ry, Rz in kN)</li>
-            <li>Stress (+Tension / -Compression) and displacement map visualization</li>
-            <li>Direct .STL geometry export capability</li>
+            <li>Six material classes driving dynamic form-finding algorithms</li>
+            <li>Discrete point and 3D vector line support restraints</li>
+            <li>Void keep-out and forced-solid passive regions</li>
+            <li>Optional self-weight inclusion</li>
+            <li>Stress & displacement maps with interactive 3D section cut-planes</li>
+            <li>Direct .STL export of generated forms</li>
         </ul>
+
+        <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
+            This is a concept-stage design exploration tool, not a substitute for
+            code-compliant structural verification of the final geometry.
+        </p>
 
         <div class="author-line" style="margin-top: 14px;">
             Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
@@ -176,19 +237,17 @@
 
 <div id="sidebar">
     <div>
-        <h2>DBSW</h2>
-        <div class="subtitle">3D Form-Finding Engine — Client-Side WASM</div>
+        <!-- Logo Graphic Image -->
+        <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
+        <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
     </div>
 
-    <!-- 1. Material Classification -->
     <div class="control-group">
         <label>Structural Material Classification</label>
-        <select id="mat_type" onchange="onMaterialChange()">
+        <select id="mat_type" onchange="updateMaterialUI()">
             <option value="concrete" selected>Reinforced Concrete — BS EN 1992-1-1 (EC2)</option>
             <option value="steel">Structural Steel — BS EN 1993-1-1 (EC3)</option>
             <option value="timber">Timber / Glulam — BS EN 1995-1-1 (EC5)</option>
-            <option value="cable">Structural Tensile Cables</option>
-            <option value="fabric">Architectural Tensile Fabrics (PTFE Type I–V)</option>
             <option value="masonry">Structural Masonry — BS EN 1996-1-1 (EC6)</option>
             <option value="stone">Natural Stone Masonry — BS EN 1996-1-1 (EC6)</option>
             <option value="generic">Custom / Generic Isotropic Material</option>
@@ -221,94 +280,41 @@
     <div id="mat_generic_div" style="display: none; flex-direction: column; gap: 6px;">
         <div class="control-group">
             <label>Young's Modulus E (MPa)</label>
-            <input type="number" id="custom_E" value="210000">
+            <input type="number" id="custom_E" value="33000">
         </div>
         <div class="control-group">
             <label>Poisson's Ratio ν</label>
-            <input type="number" step="0.01" id="custom_nu" value="0.30">
+            <input type="number" step="0.01" id="custom_nu" value="0.20">
         </div>
         <div class="control-group">
             <label>Characteristic Design Yield Strength fk (MPa)</label>
-            <input type="number" id="custom_fk" value="355">
+            <input type="number" id="custom_fk" value="30">
         </div>
         <div class="control-group">
-            <label>Unit Weight γ (kN/m³)</label>
-            <input type="number" step="0.1" id="custom_gamma" value="78.5">
-        </div>
-    </div>
-
-    <!-- 2. Cross Section Geometry Parameters -->
-    <hr>
-    <div class="section-header">Cross-Section Dimensions</div>
-    
-    <div id="section_solid_div" class="control-group">
-        <label>Member Width b & Height h (mm)</label>
-        <div style="display: flex; gap: 6px;">
-            <input type="number" id="sec_b" value="300" style="width: 50%; font-family: monospace;" placeholder="Width b">
-            <input type="number" id="sec_h" value="300" style="width: 50%; font-family: monospace;" placeholder="Height h">
-        </div>
-    </div>
-
-    <div id="section_cable_div" class="control-group" style="display: none;">
-        <label>Cable Diameter d (mm)</label>
-        <input type="number" id="sec_cable_d" value="24" style="font-family: monospace;">
-    </div>
-
-    <div id="section_fabric_div" class="control-group" style="display: none;">
-        <label>Membrane Equivalent Thickness t (mm)</label>
-        <input type="number" id="sec_fabric_t" value="1.2" step="0.1" style="font-family: monospace;">
-    </div>
-
-    <!-- 3. Domain & Form Presets -->
-    <hr>
-    <div class="control-group">
-        <label>Target Form Preset</label>
-        <select id="preset" onchange="updateDomainVisuals()"></select>
-    </div>
-
-    <div class="control-group">
-        <label>Domain Geometry Lx, Ly, Lz (mm)</label>
-        <div style="display: flex; gap: 6px;">
-            <input type="number" id="Lx" value="6000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
-            <input type="number" id="Ly" value="6000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
-            <input type="number" id="Lz" value="2000" style="width: 33%; font-family: monospace;" onchange="updateDomainVisuals()">
+            <label>Unit Weight γ (kN/m³) — 0 disables self-weight</label>
+            <input type="number" step="0.1" id="custom_gamma" value="25.0">
         </div>
     </div>
 
     <div class="control-group">
-        <label>Spatial Grid Divisions nx, ny</label>
+        <label>FE Mesh Divisions nx, ny, nz</label>
         <div style="display: flex; gap: 6px;">
-            <input type="number" id="nx" value="16" style="width: 50%; font-family: monospace;">
-            <input type="number" id="ny" value="16" style="width: 50%; font-family: monospace;">
+            <input type="number" id="nx" value="36" style="width: 33%; font-family: monospace;">
+            <input type="number" id="ny" value="9" style="width: 33%; font-family: monospace;">
+            <input type="number" id="nz" value="12" style="width: 33%; font-family: monospace;">
         </div>
     </div>
 
-    <!-- 4. Restraints & Discrete Boundary System -->
     <hr>
     <div class="section-header">Boundary Restraints</div>
 
-    <div class="control-group">
-        <label>Support Mode</label>
-        <select id="support_mode" onchange="toggleSupportMode()">
-            <option value="preset" selected>Preset Boundary Configurations</option>
-            <option value="points_only">Only User-Selected Discrete Points</option>
-        </select>
-    </div>
-
-    <div id="preset_supports_div" class="control-group">
-        <label>Support Presets</label>
-        <select id="support_preset" onchange="updateDomainVisuals()">
-            <option value="four_corners" selected>Four Point Corner Supports</option>
-            <option value="two_opposite_lines">Two Continuous Line Supports</option>
-        </select>
-    </div>
-
+    <!-- Discrete Point Supports Generator Module -->
     <div class="control-group" style="margin-top: 4px;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Point Supports (mm / DOFs)</label>
             <div class="btn-group">
                 <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addSupportRow()">+ Add Support Node</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllSupports()">Clear All Supports</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllSupports()">Clear Point Supports</button>
             </div>
         </div>
         <table class="data-table">
@@ -317,21 +323,40 @@
         </table>
     </div>
 
-    <!-- 5. Prestress & Loading Definition -->
+    <!-- Discrete Line Supports Generator Module -->
+    <div class="control-group" style="margin-top: 6px;">
+        <div class="load-header-row">
+            <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLineSupportRow()">+ Add Line Support</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLineSupports()">Clear Line Supports</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>X1</th><th>Y1</th><th>Z1</th>
+                    <th>X2</th><th>Y2</th><th>Z2</th>
+                    <th>DOFs</th><th></th>
+                </tr>
+            </thead>
+            <tbody id="line_support_table_body"></tbody>
+        </table>
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
+            Boundary restraints are defined strictly via user-selected discrete points and 3D line vectors. Line supports generate nodal restraint chains along the 3D vector. Ensure sufficient DOFs are locked to prevent rigid-body motion.
+        </p>
+    </div>
+
     <hr>
     <div class="section-header">Loading Definition</div>
-
-    <div id="prestress_container" class="control-group">
-        <label>Internal Cable / Fabric Prestress Force (N)</label>
-        <input type="number" id="prestress" value="15" style="font-family: monospace;">
-    </div>
 
     <div class="control-group">
         <label>Load Presets</label>
         <select id="load_preset" onchange="applyLoadPreset()">
-            <option value="custom" selected>Custom Point Load Array</option>
-            <option value="center_point">Single Center Point Load (X=Lx/2, Y=Ly/2)</option>
-            <option value="top_udl">Top Surface Uniform Patch Array</option>
+            <option value="top_udl">Top Surface Uniform Patch Load</option>
+            <option value="custom">Custom Point Load Array</option>
+            <option value="tip_center">Single Center Point Load</option>
+            <option value="third_points">Third-Point Flexure Loads</option>
         </select>
     </div>
 
@@ -340,16 +365,48 @@
             <label style="margin: 0;">Point Load Array (mm / kN)</label>
             <div class="btn-group">
                 <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All Loads</button>
             </div>
         </div>
         <table class="data-table">
             <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Fx</th><th>Fy</th><th>Fz</th><th></th></tr></thead>
             <tbody id="load_table_body"></tbody>
         </table>
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
+            An empty table means zero external load. If self-weight is also switched off below, the solver returns a zero-stress result.
+        </p>
     </div>
 
-    <div class="checkbox-group" style="margin-top: 4px;">
+    <hr>
+    <div class="section-header">Void / Passive Material Regions</div>
+    <div id="void_regions_container" class="control-group">
+        <div class="load-header-row">
+            <label style="margin: 0;">Keep-Out / Forced-Solid Boxes (mm)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addVoidRegionRow()">+ Add Region</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllVoidRegions()">Clear All</button>
+            </div>
+        </div>
+        
+        <div id="void_region_list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;"></div>
+
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 6px 0 0 0;">
+            "Void" forces elements inside the box to stay empty — useful for service penetrations or openings. "Forced Solid" pins material in place — useful for bearing zones.
+        </p>
+    </div>
+
+    <hr>
+    <div class="control-group">
+        <label>Volume Fraction & Max Iterations</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" step="0.05" id="volfrac" value="0.90" min="0.05" max="1.00" style="width: 50%; font-family: monospace;">
+            <input type="number" id="iterations" value="20" style="width: 50%; font-family: monospace;">
+        </div>
+        <p style="font-size: 0.70rem; color: #888888; line-height: 1.45; margin: 4px 0 0 0;">
+            Volume fraction sets the target proportion of domain volume kept solid. Iterations set how many algorithm passes run.
+        </p>
+    </div>
+    <div class="checkbox-group" style="margin-top: 2px;">
         <label>
             <input type="checkbox" id="self_weight_toggle" checked>
             Include Self-Weight (Dead Load)
@@ -360,8 +417,8 @@
     <div class="section-header">Visualization Render Mode</div>
     <div class="control-group">
         <select id="render_mode" onchange="toggleRenderModeUI(); reRenderMesh();">
-            <option value="grey" selected>Monochrome Studio Grey (50%)</option>
             <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
+            <option value="grey">Monochrome Studio Grey (50%)</option>
             <option value="deflection">Displacement Map (Deflection mm)</option>
         </select>
     </div>
@@ -371,6 +428,9 @@
         <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem; letter-spacing: 0.5px;">
             Interactive Stress Palette Faders
         </label>
+        <p style="font-size: 0.68rem; color: #888888; margin: 0 0 4px 0; line-height: 1.3;">
+            Adjust limits between 0.01 MPa and calculated peaks. Elements outside range render in Studio Grey.
+        </p>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
             <div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
@@ -389,14 +449,25 @@
         </div>
     </div>
 
-    <div class="control-group" style="margin-top: 6px;">
-        <label>Dynamic Relaxation Solver Iterations</label>
-        <input type="number" id="iterations" value="500" style="font-family: monospace;">
+    <hr>
+    <div class="section-header">Interactive 3D Section Cut-Planes</div>
+    <div class="control-group">
+        <label>Cut Plane X Position (Longitudinal Cut)</label>
+        <input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()">
+    </div>
+    <div class="control-group">
+        <label>Cut Plane Y Position (Cross-Section Cut)</label>
+        <input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()">
+    </div>
+    <div class="control-group">
+        <label>Cut Plane Z Position (Height Cut)</label>
+        <input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()">
     </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
     
+    <!-- Results Actions Group -->
     <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
         <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
         <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
@@ -422,28 +493,31 @@
 </div>
 
 <script>
-    var scene, camera, renderer, controls;
-    var domainBox, mainGrid;
-    var networkGroup, reactionGroup, surfaceMeshGroup;
-    var supportGizmos = [], forceArrows = [];
-    var currentNodes = [], currentEdges = [], currentAxialForces = [], currentDeflectionsMM = [], currentStressesMPa = [];
-    var currentSigmaMaxTens = 1.0, currentSigmaMaxComp = -1.0, currentUMax = 1.0;
+    var scene, camera, renderer, controls, mesh;
+    var domainBox;
+    var forceArrows = [];
+    var supportGizmos = [];
+    var voidRegionGizmos = [];
+    var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
+    
+    var currentSigmaMaxTens = 1.0;  
+    var currentSigmaMaxComp = -1.0; 
+    var currentUMax = 1.0, currentFk = 30.0;
     var worker = null;
     var engineReady = false;
+
+    // Default domain bounds for visuals/cut-planes (derived dynamically during runtime)
+    var activeLx = 6000, activeLy = 300, activeLz = 600;
+
+    var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), activeLx);
+    var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), activeLy);
+    var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), activeLz);
 
     var axesScene, axesCamera, axesGroup;
 
     var STEEL_GRADES = ["S235", "S275", "S355", "S460"];
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
-    var CABLE_GRADES = [
-        "Flexible Rope (7x19)", "Spiral Strand (1x19)", "Locked Coil Cable", 
-        "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)", "Aramid / Synthetic Fiber"
-    ];
-    var FABRIC_GRADES = [
-        "PTFE Type I (Light)", "PTFE Type II (Standard)", "PTFE Type III (Medium)", 
-        "PTFE Type IV (Heavy)", "PTFE Type V (Extreme)"
-    ];
 
     var MASONRY_UNITS = {
         "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0,
@@ -457,27 +531,19 @@
         "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
     };
 
-    var PRESET_CATALOGUE = {
-        compression_only: [
-            { value: "vault", text: "Vault / Shell" },
-            { value: "dome", text: "Dome" }
-        ],
-        tension_only: [
-            { value: "surface_grid", text: "Tensile Canopy / Hypar" },
-            { value: "catenary_arch", text: "Suspended Net" }
-        ],
-        all_presets: [
-            { value: "vault", text: "Vault / Shell" },
-            { value: "dome", text: "Dome" },
-            { value: "surface_grid", text: "Tensile Canopy / Hypar" },
-            { value: "catenary_arch", text: "Suspended Net" }
-        ]
-    };
+    function setVoidGizmosVisible(visible) {
+        voidRegionGizmos.forEach(function(g) { g.visible = visible; });
+    }
+
+    function setBoundaryGizmosVisible(visible) {
+        supportGizmos.forEach(function(g) { g.visible = visible; });
+        forceArrows.forEach(function(a) { a.visible = visible; });
+    }
 
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
         var thresholdDiv = document.getElementById('stress_thresholds_div');
-        thresholdDiv.style.display = (mode === 'ec3_stress' && currentNodes.length > 0) ? 'flex' : 'none';
+        thresholdDiv.style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
     }
 
     function onStressSliderChange() {
@@ -486,68 +552,6 @@
         document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
         document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
         reRenderMesh();
-    }
-
-    function onMaterialChange() {
-        updateMaterialUI();
-        syncPresetsWithMaterial();
-        toggleSectionInputs();
-        togglePrestressVisibility();
-    }
-
-    function toggleSectionInputs() {
-        var matType = document.getElementById('mat_type').value;
-        var solidDiv = document.getElementById('section_solid_div');
-        var cableDiv = document.getElementById('section_cable_div');
-        var fabricDiv = document.getElementById('section_fabric_div');
-
-        solidDiv.style.display = 'none';
-        cableDiv.style.display = 'none';
-        fabricDiv.style.display = 'none';
-
-        if (matType === 'cable') {
-            cableDiv.style.display = 'flex';
-        } else if (matType === 'fabric') {
-            fabricDiv.style.display = 'flex';
-        } else {
-            solidDiv.style.display = 'flex';
-        }
-    }
-
-    function togglePrestressVisibility() {
-        var matType = document.getElementById('mat_type').value;
-        var prestressDiv = document.getElementById('prestress_container');
-        prestressDiv.style.display = (matType === 'cable' || matType === 'fabric') ? 'flex' : 'none';
-    }
-
-    function toggleSupportMode() {
-        var mode = document.getElementById('support_mode').value;
-        document.getElementById('preset_supports_div').style.display = (mode === 'preset') ? 'flex' : 'none';
-        updateDomainVisuals();
-    }
-
-    function syncPresetsWithMaterial() {
-        var matType = document.getElementById('mat_type').value;
-        var presetSelect = document.getElementById('preset');
-        presetSelect.innerHTML = '';
-
-        var optionsGroup;
-        if (matType === 'concrete' || matType === 'masonry' || matType === 'stone') {
-            optionsGroup = PRESET_CATALOGUE.compression_only;
-        } else if (matType === 'cable' || matType === 'fabric') {
-            optionsGroup = PRESET_CATALOGUE.tension_only;
-        } else {
-            optionsGroup = PRESET_CATALOGUE.all_presets;
-        }
-
-        optionsGroup.forEach(function(opt) {
-            var el = document.createElement('option');
-            el.value = opt.value;
-            el.innerText = opt.text;
-            presetSelect.appendChild(el);
-        });
-
-        updateDomainVisuals();
     }
 
     function updateMaterialUI() {
@@ -560,26 +564,17 @@
         stdDiv.style.display = 'none'; masDiv.style.display = 'none';
         stoneEDiv.style.display = 'none'; genDiv.style.display = 'none';
 
-        if (matType === 'steel' || matType === 'concrete' || matType === 'timber' || matType === 'cable' || matType === 'fabric') {
+        if (matType === 'steel' || matType === 'concrete' || matType === 'timber') {
             stdDiv.style.display = 'flex';
             var gradeSelect = document.getElementById('mat_grade');
             gradeSelect.innerHTML = '';
-            
-            var list = (matType === 'concrete') ? CONCRETE_GRADES : 
-                       ((matType === 'steel') ? STEEL_GRADES : 
-                       ((matType === 'timber') ? TIMBER_GRADES : 
-                       ((matType === 'cable') ? CABLE_GRADES : FABRIC_GRADES)));
-
+            var list = (matType === 'concrete') ? CONCRETE_GRADES : ((matType === 'steel') ? STEEL_GRADES : TIMBER_GRADES);
             list.forEach(function(g) {
                 var opt = document.createElement('option');
                 opt.value = g; opt.innerText = g;
                 gradeSelect.appendChild(opt);
             });
-            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : 
-                                ((matType === 'steel') ? 'S355' : 
-                                ((matType === 'timber') ? 'C24' : 
-                                ((matType === 'cable') ? 'Flexible Rope (7x19)' : 'PTFE Type II (Standard)')));
-
+            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : ((matType === 'steel') ? 'S355' : 'C24');
         } else if (matType === 'masonry' || matType === 'stone') {
             masDiv.style.display = 'flex';
             var uSelect = document.getElementById('masonry_unit_select');
@@ -620,8 +615,156 @@
         document.getElementById('mortar_fm').value = MORTAR_GRADES[key] || 6.0;
     }
 
+    function setupCutPlaneSliders() {
+        var sliderX = document.getElementById('cut_x');
+        var sliderY = document.getElementById('cut_y');
+        var sliderZ = document.getElementById('cut_z');
+        sliderX.max = activeLx; sliderX.value = activeLx;
+        sliderY.max = activeLy; sliderY.value = activeLy;
+        sliderZ.max = activeLz; sliderZ.value = activeLz;
+        updateCutPlanes();
+    }
+
+    function updateCutPlanes() {
+        clipPlaneX.constant = parseFloat(document.getElementById('cut_x').value);
+        clipPlaneY.constant = parseFloat(document.getElementById('cut_y').value);
+        clipPlaneZ.constant = parseFloat(document.getElementById('cut_z').value);
+    }
+
+    function initThree() {
+        var container = document.getElementById('viewport');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
+        camera.position.set(7000, 3000, 4000);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.localClippingEnabled = true;
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+        keyLight.position.set(5000, 8000, 4000);
+        scene.add(keyLight);
+        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+        fillLight.position.set(-3000, -2000, -2000);
+        scene.add(fillLight);
+
+        var grid = new THREE.GridHelper(20000, 200, 0x000000, 0xe0e0e0);
+        grid.position.y = -1;
+        scene.add(grid);
+
+        axesScene = new THREE.Scene();
+        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
+        axesCamera.position.set(0, 0, 5);
+        axesCamera.lookAt(0, 0, 0);
+
+        axesGroup = new THREE.Group();
+        axesScene.add(axesGroup);
+
+        var axisLen = 1.2;
+        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+        function addAxisLine(to) {
+            var geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), to
+            ]);
+            axesGroup.add(new THREE.Line(geo, axisMat));
+        }
+        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
+        addAxisLine(new THREE.Vector3(0, axisLen, 0));
+        addAxisLine(new THREE.Vector3(0, 0, axisLen));
+
+        function makeAxisLabel(text) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 68);
+            var tex = new THREE.CanvasTexture(canvas);
+            tex.needsUpdate = true;
+            var mat = new THREE.SpriteMaterial({
+                map: tex,
+                transparent: true,
+                depthTest: false,
+                depthWrite: false
+            });
+            var sprite = new THREE.Sprite(mat);
+            sprite.scale.set(0.55, 0.55, 1);
+            return sprite;
+        }
+
+        var lblX = makeAxisLabel('X');
+        lblX.position.set(axisLen + 0.35, 0, 0);
+        axesGroup.add(lblX);
+
+        var lblZ = makeAxisLabel('Z');
+        lblZ.position.set(0, axisLen + 0.35, 0);
+        axesGroup.add(lblZ);
+
+        var lblY = makeAxisLabel('Y');
+        lblY.position.set(0, 0, axisLen + 0.35);
+        axesGroup.add(lblY);
+
+        window.addEventListener('resize', onWindowResize);
+        updateMaterialUI();
+
+        // Default initial setup
+        addSupportRow(0, 150, 0, 'xyz');
+        addSupportRow(6000, 150, 0, 'xyz');
+        applyLoadPreset();
+        setupCutPlaneSliders();
+        animate();
+        updateDomainVisuals();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+
+        if (axesGroup && axesScene && axesCamera) {
+            axesGroup.quaternion.copy(camera.quaternion).invert();
+
+            var size = 110;
+            var margin = 16;
+            var container = document.getElementById('viewport');
+            var w = container.clientWidth;
+            var h = container.clientHeight;
+
+            renderer.autoClear = false;
+            renderer.clearDepth();
+            renderer.setScissorTest(true);
+            renderer.setScissor(margin, margin, size, size);
+            renderer.setViewport(margin, margin, size, size);
+            renderer.render(axesScene, axesCamera);
+            renderer.setScissorTest(false);
+            renderer.setViewport(0, 0, w, h);
+            renderer.autoClear = true;
+        }
+    }
+
+    function onWindowResize() {
+        var container = document.getElementById('viewport');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
     function addSupportRow(x, y, z, dofs) {
-        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y;
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 150 : y;
         z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tbody = document.getElementById('support_table_body');
         var tr = document.createElement('tr');
@@ -635,9 +778,29 @@
         updateDomainVisuals();
     }
 
+    function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
+        x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
+        x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
+        dofs = (dofs === undefined) ? 'xyz' : dofs;
+
+        var tbody = document.getElementById('line_support_table_body');
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tbody.appendChild(tr);
+        updateDomainVisuals();
+    }
+
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 3000 : y; z = (z === undefined) ? 2000 : z;
-        Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -10.0 : Fz;
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 150 : y; z = (z === undefined) ? 600 : z;
+        Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -12.5 : Fz;
         var tbody = document.getElementById('load_table_body');
         var tr = document.createElement('tr');
         tr.innerHTML =
@@ -653,41 +816,126 @@
     }
 
     function deleteRow(btn) {
-        var tr = btn.parentNode.parentNode;
-        tr.parentNode.removeChild(tr);
+        var row = btn.parentNode.parentNode;
+        row.parentNode.removeChild(row);
         updateDomainVisuals();
     }
 
     function clearAllSupports() {
-        document.getElementById('support_table_body').innerHTML = '';
+        var tbody = document.getElementById('support_table_body');
+        tbody.innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function clearAllLineSupports() {
+        var tbody = document.getElementById('line_support_table_body');
+        tbody.innerHTML = '';
         updateDomainVisuals();
     }
 
     function clearAllLoads() {
-        document.getElementById('load_table_body').innerHTML = '';
+        var tbody = document.getElementById('load_table_body');
+        tbody.innerHTML = '';
         document.getElementById('load_preset').value = 'custom';
         updateDomainVisuals();
     }
 
+    function addVoidRegionRow(xMin, xMax, yMin, yMax, zMin, zMax, regionType) {
+        xMin = (xMin === undefined) ? Math.round(activeLx * 0.4) : xMin;
+        xMax = (xMax === undefined) ? Math.round(activeLx * 0.6) : xMax;
+        yMin = (yMin === undefined) ? 0 : yMin;
+        yMax = (yMax === undefined) ? activeLy : yMax;
+        zMin = (zMin === undefined) ? 0 : zMin;
+        zMax = (zMax === undefined) ? Math.round(activeLz * 0.3) : zMax;
+        regionType = (regionType === undefined) ? 'void' : regionType;
+
+        var container = document.getElementById('void_region_list');
+        var card = document.createElement('div');
+        card.className = 'void-region-card';
+        card.style.cssText = 'background: #f9f9f9; border: 1px solid #e5e5e5; padding: 8px; display: flex; flex-direction: column; gap: 6px; position: relative;';
+
+        card.innerHTML = 
+            '<div style="display: flex; justify-content: space-between; align-items: center;">' +
+                '<select class="vr-type" onchange="updateDomainVisuals()" style="font-size: 0.72rem; font-weight: bold; padding: 2px 4px; width: 130px;">' +
+                    '<option value="void"' + (regionType === 'void' ? ' selected' : '') + '>Void (Keep-Out)</option>' +
+                    '<option value="solid"' + (regionType === 'solid' ? ' selected' : '') + '>Forced Solid</option>' +
+                '</select>' +
+                '<button class="btn-del" onclick="deleteVoidCard(this)" style="font-size: 0.85rem; padding: 0 4px;">×</button>' +
+            '</div>' +
+            '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">X [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-xmin" value="' + xMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-xmax" value="' + xMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Y [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-ymin" value="' + yMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-ymax" value="' + yMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Z [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-zmin" value="' + zMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-zmax" value="' + zMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        container.appendChild(card);
+        updateDomainVisuals();
+    }
+
+    function deleteVoidCard(btn) {
+        var card = btn.closest('.void-region-card');
+        if (card) card.parentNode.removeChild(card);
+        updateDomainVisuals();
+    }
+
+    function clearAllVoidRegions() {
+        var container = document.getElementById('void_region_list');
+        container.innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function getVoidRegionArrayData() {
+        var cards = document.querySelectorAll('#void_region_list .void-region-card');
+        var regions = [];
+        cards.forEach(function(c) {
+            regions.push({
+                x_min: parseFloat(c.querySelector('.vr-xmin').value) || 0,
+                x_max: parseFloat(c.querySelector('.vr-xmax').value) || 0,
+                y_min: parseFloat(c.querySelector('.vr-ymin').value) || 0,
+                y_max: parseFloat(c.querySelector('.vr-ymax').value) || 0,
+                z_min: parseFloat(c.querySelector('.vr-zmin').value) || 0,
+                z_max: parseFloat(c.querySelector('.vr-zmax').value) || 0,
+                region_type: c.querySelector('.vr-type').value || 'void'
+            });
+        });
+        return regions;
+    }
+
     function applyLoadPreset() {
         var preset = document.getElementById('load_preset').value;
-        var Lx = parseFloat(document.getElementById('Lx').value) || 6000;
-        var Ly = parseFloat(document.getElementById('Ly').value) || 6000;
-        var Lz = parseFloat(document.getElementById('Lz').value) || 2000;
         var tbody = document.getElementById('load_table_body');
 
-        if (preset === 'center_point') {
+        if (preset === 'top_udl') {
             tbody.innerHTML = '';
-            addLoadRow(Lx / 2.0, Ly / 2.0, Lz, 0, 0, -50.0);
-        } else if (preset === 'top_udl') {
-            tbody.innerHTML = '';
-            var num_x = 3, num_y = 3;
-            var load_per_pt = -100.0 / (num_x * num_y);
+            var num_x = 4, num_y = 2;
+            var load_per_point = -100.0 / (num_x * num_y);
             for (var ix = 1; ix <= num_x; ix++) {
                 for (var iy = 1; iy <= num_y; iy++) {
-                    addLoadRow((ix / (num_x + 1)) * Lx, (iy / (num_y + 1)) * Ly, Lz, 0, 0, load_per_pt);
+                    addLoadRow((ix / (num_x + 1)) * activeLx, (iy / (num_y + 1)) * activeLy, activeLz, 0, 0, load_per_point);
                 }
             }
+        } else if (preset === 'tip_center') {
+            tbody.innerHTML = '';
+            addLoadRow(activeLx / 2.0, activeLy / 2.0, activeLz, 0, 0, -100);
+        } else if (preset === 'third_points') {
+            tbody.innerHTML = '';
+            addLoadRow(activeLx / 3.0, activeLy / 2.0, activeLz, 0, 0, -50);
+            addLoadRow((2 * activeLx) / 3.0, activeLy / 2.0, activeLz, 0, 0, -50);
         }
         updateDomainVisuals();
     }
@@ -722,163 +970,164 @@
         return supports;
     }
 
-    function initThree() {
-        var container = document.getElementById('viewport');
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff);
-
-        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100000);
-        camera.position.set(9000, 6000, 7000);
-
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        container.appendChild(renderer.domElement);
-
-        controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-        var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
-        keyLight.position.set(5000, 8000, 4000);
-        scene.add(keyLight);
-        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
-        fillLight.position.set(-3000, -2000, -2000);
-        scene.add(fillLight);
-
-        mainGrid = new THREE.GridHelper(20000, 100, 0x000000, 0xd0d0d0);
-        mainGrid.position.y = 0;
-        scene.add(mainGrid);
-
-        networkGroup = new THREE.Group();
-        reactionGroup = new THREE.Group();
-        surfaceMeshGroup = new THREE.Group();
-        scene.add(networkGroup);
-        scene.add(reactionGroup);
-        scene.add(surfaceMeshGroup);
-
-        axesScene = new THREE.Scene();
-        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
-        axesCamera.position.set(0, 0, 5);
-        axesCamera.lookAt(0, 0, 0);
-
-        axesGroup = new THREE.Group();
-        axesScene.add(axesGroup);
-
-        var axisLen = 1.2;
-        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-
-        function addAxisLine(to) {
-            var geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0), to
-            ]);
-            axesGroup.add(new THREE.Line(geo, axisMat));
-        }
-        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
-        addAxisLine(new THREE.Vector3(0, axisLen, 0));
-        addAxisLine(new THREE.Vector3(0, 0, axisLen));
-
-        function makeAxisLabel(text) {
-            var canvas = document.createElement('canvas');
-            canvas.width = 128; canvas.height = 128;
-            var ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, 128, 128);
-            ctx.fillStyle = '#000000';
-            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(text, 64, 68);
-            var tex = new THREE.CanvasTexture(canvas);
-            tex.needsUpdate = true;
-            var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
-            var sprite = new THREE.Sprite(mat);
-            sprite.scale.set(0.55, 0.55, 1);
-            return sprite;
-        }
-
-        var lblX = makeAxisLabel('X'); lblX.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lblX);
-        var lblZ = makeAxisLabel('Z'); lblZ.position.set(0, axisLen + 0.35, 0); axesGroup.add(lblZ);
-        var lblY = makeAxisLabel('Y'); lblY.position.set(0, 0, axisLen + 0.35); axesGroup.add(lblY);
-
-        window.addEventListener('resize', onWindowResize);
-
-        onMaterialChange();
-        animate();
+    function getLineSupportArrayData() {
+        var rows = document.querySelectorAll('#line_support_table_body tr');
+        var lineSupports = [];
+        rows.forEach(function(r) {
+            lineSupports.push({
+                x1: parseFloat(r.querySelector('.lsp-x1').value) || 0,
+                y1: parseFloat(r.querySelector('.lsp-y1').value) || 0,
+                z1: parseFloat(r.querySelector('.lsp-z1').value) || 0,
+                x2: parseFloat(r.querySelector('.lsp-x2').value) || 0,
+                y2: parseFloat(r.querySelector('.lsp-y2').value) || 0,
+                z2: parseFloat(r.querySelector('.lsp-z2').value) || 0,
+                dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase()
+            });
+        });
+        return lineSupports;
     }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
+    function calculateBoundingBox() {
+        var pts = [];
+        getPointSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
+        getLineSupportArrayData().forEach(l => {
+            pts.push([l.x1, l.y1, l.z1]);
+            pts.push([l.x2, l.y2, l.z2]);
+        });
+        getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
 
-        if (axesGroup && axesScene && axesCamera) {
-            axesGroup.quaternion.copy(camera.quaternion).invert();
+        if (pts.length === 0) return { Lx: 6000, Ly: 300, Lz: 600 };
 
-            var size = 110, margin = 16;
-            var container = document.getElementById('viewport');
-            var w = container.clientWidth, h = container.clientHeight;
+        var maxX = Math.max(...pts.map(p => p[0]), 1000);
+        var maxY = Math.max(...pts.map(p => p[1]), 300);
+        var maxZ = Math.max(...pts.map(p => p[2]), 600);
 
-            renderer.autoClear = false;
-            renderer.clearDepth();
-            renderer.setScissorTest(true);
-            renderer.setScissor(margin, margin, size, size);
-            renderer.setViewport(margin, margin, size, size);
-            renderer.render(axesScene, axesCamera);
-            renderer.setScissorTest(false);
-            renderer.setViewport(0, 0, w, h);
-            renderer.autoClear = true;
-        }
-    }
-
-    function onWindowResize() {
-        var container = document.getElementById('viewport');
-        camera.aspect = container.clientWidth / container.clientHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(container.clientWidth, container.clientHeight);
+        return { Lx: maxX, Ly: maxY, Lz: maxZ };
     }
 
     function updateDomainVisuals() {
-        if (!scene) return;
+        var bounds = calculateBoundingBox();
+        activeLx = bounds.Lx;
+        activeLy = bounds.Ly;
+        activeLz = bounds.Lz;
 
-        var Lx = parseFloat(document.getElementById('Lx').value) || 6000;
-        var Ly = parseFloat(document.getElementById('Ly').value) || 6000;
-        var Lz = parseFloat(document.getElementById('Lz').value) || 2000;
+        var nz = parseInt(document.getElementById('nz').value) || 12;
 
         if (domainBox) scene.remove(domainBox);
-        var boxGeo = new THREE.BoxGeometry(Lx, Lz, Ly);
+        var boxGeo = new THREE.BoxGeometry(activeLx, activeLz, activeLy);
         var edges = new THREE.EdgesGeometry(boxGeo);
         domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, linewidth: 1 }));
-        domainBox.position.set(Lx / 2.0, Lz / 2.0, Ly / 2.0);
+        domainBox.position.set(activeLx / 2.0, activeLz / 2.0, activeLy / 2.0);
         scene.add(domainBox);
 
-        supportGizmos.forEach(function(g) { scene.remove(g); }); supportGizmos = [];
-        forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
+        supportGizmos.forEach(function(g) { scene.remove(g); });
+        supportGizmos = [];
 
-        var ptPinGeo = new THREE.ConeGeometry(120, 200, 4);
+        var dz = activeLz / nz;
+        var size = Math.min(180.0, Math.max(80.0, dz * 1.5));
+        
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
+        var rollerMat = new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.3 });
 
-        getPointSupportArrayData().forEach(function(ps) {
-            var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
-            ptMesh.position.set(ps.x, ps.z - 100, ps.y);
+        // Render Discrete Point Supports
+        var pointSups = getPointSupportArrayData();
+        var ptPinGeo = new THREE.ConeGeometry(size * 0.4, size * 0.7, 4);
+        var ptRollerGeo = new THREE.CylinderGeometry(size * 0.2, size * 0.2, size * 0.7, 16);
+
+        pointSups.forEach(function(ps) {
+            var isPin = ps.dofs.includes('x') && ps.dofs.includes('y') && ps.dofs.includes('z');
+            var ptMesh;
+
+            if (isPin) {
+                ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
+                ptMesh.position.set(ps.x, ps.z - size * 0.35, ps.y);
+            } else {
+                ptMesh = new THREE.Mesh(ptRollerGeo, rollerMat);
+                ptMesh.rotation.x = Math.PI / 2;
+                ptMesh.position.set(ps.x, ps.z - size * 0.2, ps.y);
+            }
+
             scene.add(ptMesh);
             supportGizmos.push(ptMesh);
         });
 
+        // Render Discrete 3D Line Support Gizmos
+        var lineSups = getLineSupportArrayData();
+        lineSups.forEach(function(ls) {
+            var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
+            var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
+            var lineVec = new THREE.Vector3().subVectors(p2, p1);
+            var len = lineVec.length();
+
+            if (len > 1e-3) {
+                var isPin = ls.dofs.includes('x') && ls.dofs.includes('y') && ls.dofs.includes('z');
+                var mat = isPin ? pinMat : rollerMat;
+                
+                var cylGeo = new THREE.CylinderGeometry(size * 0.15, size * 0.15, len, 12);
+                var cylMesh = new THREE.Mesh(cylGeo, mat);
+                
+                var mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                cylMesh.position.copy(mid);
+                
+                var axis = new THREE.Vector3(0, 1, 0);
+                cylMesh.quaternion.setFromUnitVectors(axis, lineVec.clone().normalize());
+                
+                scene.add(cylMesh);
+                supportGizmos.push(cylMesh);
+            }
+        });
+
+        forceArrows.forEach(function(a) { scene.remove(a); });
+        forceArrows = [];
         getLoadArrayData().forEach(function(ld) {
             var dirVector = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
             var forceMag = dirVector.length();
             if (forceMag > 1e-3) {
                 dirVector.normalize();
                 var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
-                var arrow = new THREE.ArrowHelper(dirVector, origin, 500, 0xcc0000, 120, 50);
+                var arrowLength = Math.min(Math.max(forceMag * 1.2, size), size * 2.5);
+                var arrow = new THREE.ArrowHelper(dirVector, origin, arrowLength, 0xcc0000, arrowLength * 0.25, arrowLength * 0.12);
                 scene.add(arrow);
                 forceArrows.push(arrow);
             }
         });
+
+        voidRegionGizmos.forEach(function(g) { scene.remove(g); });
+        voidRegionGizmos = [];
+        var voidFillMat = new THREE.MeshStandardMaterial({
+            color: 0xff9900, roughness: 0.6, transparent: true, opacity: 0.28,
+            side: THREE.DoubleSide, depthWrite: false
+        });
+        var solidFillMat = new THREE.MeshStandardMaterial({
+            color: 0x2255ee, roughness: 0.6, transparent: true, opacity: 0.28,
+            side: THREE.DoubleSide, depthWrite: false
+        });
+        getVoidRegionArrayData().forEach(function(vr) {
+            var dx = Math.max(vr.x_max - vr.x_min, 1.0);
+            var dy = Math.max(vr.y_max - vr.y_min, 1.0);
+            var dz_box = Math.max(vr.z_max - vr.z_min, 1.0);
+            var regGeo = new THREE.BoxGeometry(dx, dz_box, dy);
+            var fillMat = (vr.region_type === 'solid') ? solidFillMat : voidFillMat;
+            var regMesh = new THREE.Mesh(regGeo, fillMat);
+            regMesh.position.set(vr.x_min + dx / 2.0, vr.z_min + dz_box / 2.0, vr.y_min + dy / 2.0);
+            scene.add(regMesh);
+            voidRegionGizmos.push(regMesh);
+
+            var regEdges = new THREE.EdgesGeometry(regGeo);
+            var edgeColor = (vr.region_type === 'solid') ? 0x2255ee : 0xcc6600;
+            var regWire = new THREE.LineSegments(regEdges, new THREE.LineBasicMaterial({ color: edgeColor }));
+            regWire.position.copy(regMesh.position);
+            scene.add(regWire);
+            voidRegionGizmos.push(regWire);
+        });
+
+        setVoidGizmosVisible(true);
+        setBoundaryGizmosVisible(true);
+        setupCutPlaneSliders();
     }
 
     function initWasmEngine() {
-        worker = new Worker('worker_ff.js?cb=' + Date.now());
+        worker = new Worker('solver_worker.js?cb=' + Date.now());
         worker.onmessage = handleWorkerMessage;
         worker.postMessage({ action: 'init' });
     }
@@ -901,23 +1150,31 @@
             status.style.borderLeftColor = "#000000";
             status.innerText = "Wasm Engine Ready. Define problem parameters.";
             btnExec.disabled = false;
-            btnExec.innerText = "Execute Form-Finding Solver";
+            btnExec.innerText = "Execute Form Finding";
+
+        } else if (data.status === 'running') {
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            var phase = data.phase || "Solving";
+            var iterTxt = (data.total_iter ? (" — Iteration " + data.current_iter + " / " + data.total_iter) : "");
+            var speedTxt = data.last_iter_ms ? (" (" + data.last_iter_ms + " ms/iter)") : "";
+            status.innerText = phase + iterTxt + speedTxt;
 
         } else if (data.status === 'completed') {
             btnExec.disabled = false;
-            btnExec.innerText = "Execute Form-Finding Solver";
+            btnExec.innerText = "Execute Form Finding";
             btnStop.style.display = 'none';
             actionsGroup.style.display = 'flex';
 
-            currentNodes = data.data.nodes;
-            currentEdges = data.data.edges;
-            currentAxialForces = data.data.axial_forces || [];
+            currentVertices = data.data.vertices;
+            currentFaces = data.data.faces;
+            currentStressesMPa = data.data.stresses_mpa;
             currentDeflectionsMM = data.data.deflections_mm || [];
-            currentStressesMPa = data.data.stresses_mpa || [];
-
+            
             currentSigmaMaxTens = data.data.sigma_max_tens != null ? data.data.sigma_max_tens : Math.max(0.0, ...currentStressesMPa);
             currentSigmaMaxComp = data.data.sigma_max_comp != null ? data.data.sigma_max_comp : Math.min(0.0, ...currentStressesMPa);
-            currentUMax = data.data.u_max || 1.0;
+            currentUMax = data.data.u_max;
+            currentFk = data.data.f_k || 30.0;
 
             var compSlider = document.getElementById('stress_comp_slider');
             var tensSlider = document.getElementById('stress_tens_slider');
@@ -934,15 +1191,14 @@
 
             status.style.color = "#000000";
             status.style.borderLeftColor = "#000000";
-            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
-            
+            status.innerText = "Form finding complete in " + (data.data.solve_time_s || "?") + "s [" +
+                (data.data.material_name || "") + "]. Rendering...";
             toggleRenderModeUI();
             reRenderMesh();
-            displayReactions(data.data.reactions);
 
         } else if (data.status === 'error') {
             btnExec.disabled = false;
-            btnExec.innerText = "Execute Form-Finding Solver";
+            btnExec.innerText = "Execute Form Finding";
             btnStop.style.display = 'none';
             status.style.color = "#cc0000";
             status.style.borderLeftColor = "#cc0000";
@@ -955,13 +1211,13 @@
         var status = document.getElementById('status');
         status.style.color = "#000000";
         status.style.borderLeftColor = "#000000";
-        status.innerText = "Dispatching Dynamic Relaxation solver to Wasm worker...";
+        status.innerText = "Dispatching FE solver to Wasm worker...";
 
         document.getElementById('btn-exec').disabled = true;
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('results-actions-group').style.display = 'none';
 
-        var presetVal = document.getElementById('preset').value || 'vault';
+        var bounds = calculateBoundingBox();
 
         var payload = {
             material_type: document.getElementById('mat_type').value,
@@ -969,31 +1225,28 @@
             masonry_unit_fb: parseFloat(document.getElementById('masonry_unit_fb').value) || 20.0,
             mortar_fm: parseFloat(document.getElementById('mortar_fm').value) || 6.0,
             stone_E: parseFloat(document.getElementById('stone_E').value) || 35000.0,
-            custom_E: parseFloat(document.getElementById('custom_E').value) || 210000.0,
-            custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.30,
-            custom_fk: parseFloat(document.getElementById('custom_fk').value) || 355.0,
-            custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 78.5,
-            sec_b: parseFloat(document.getElementById('sec_b').value) || 300.0,
-            sec_h: parseFloat(document.getElementById('sec_h').value) || 300.0,
-            sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
-            sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
-            preset: presetVal,
-            support_mode: document.getElementById('support_mode').value,
-            support_preset: document.getElementById('support_preset').value,
-            point_supports: getPointSupportArrayData(),
-            load_preset: document.getElementById('load_preset').value,
-            loads: getLoadArrayData(),
-            include_self_weight: document.getElementById('self_weight_toggle').checked,
-            Lx: parseFloat(document.getElementById('Lx').value),
-            Ly: parseFloat(document.getElementById('Ly').value),
-            Lz: parseFloat(document.getElementById('Lz').value),
+            custom_E: parseFloat(document.getElementById('custom_E').value) || 33000.0,
+            custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.20,
+            custom_fk: parseFloat(document.getElementById('custom_fk').value) || 30.0,
+            custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
+            Lx: bounds.Lx,
+            Ly: bounds.Ly,
+            Lz: bounds.Lz,
             nx: parseInt(document.getElementById('nx').value),
             ny: parseInt(document.getElementById('ny').value),
-            prestress: parseFloat(document.getElementById('prestress').value),
-            iterations: parseInt(document.getElementById('iterations').value)
+            nz: parseInt(document.getElementById('nz').value),
+            volfrac: parseFloat(document.getElementById('volfrac').value),
+            support_mode: 'points_only',
+            point_supports: getPointSupportArrayData(),
+            line_supports: getLineSupportArrayData(),
+            load_preset: document.getElementById('load_preset').value,
+            loads: getLoadArrayData(),
+            void_regions: getVoidRegionArrayData(),
+            iterations: parseInt(document.getElementById('iterations').value),
+            include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
-        worker.postMessage({ action: 'form_find', payload: payload });
+        worker.postMessage({ action: 'solve', payload: payload });
     }
 
     function stopOptimisation() {
@@ -1013,12 +1266,15 @@
     }
 
     function clearResults() {
-        currentNodes = []; currentEdges = []; currentAxialForces = [];
-        currentDeflectionsMM = []; currentStressesMPa = [];
+        currentVertices = [];
+        currentFaces = [];
+        currentStressesMPa = [];
+        currentDeflectionsMM = [];
 
-        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
-        while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
-        while (surfaceMeshGroup.children.length > 0) surfaceMeshGroup.remove(surfaceMeshGroup.children[0]);
+        if (mesh) {
+            scene.remove(mesh);
+            mesh = null;
+        }
 
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
@@ -1032,15 +1288,23 @@
         updateDomainVisuals();
     }
 
-    function format2DP(val) { return Number(val).toFixed(2); }
-    function formatMPa(val) { return format2DP(val) + " MPa"; }
-    function formatMM(val) { return format2DP(val) + " mm"; }
+    function format2DP(val) {
+        return Number(val).toFixed(2);
+    }
+
+    function formatMPa(val) {
+        return format2DP(val) + " MPa";
+    }
+
+    function formatMM(val) {
+        return format2DP(val) + " mm";
+    }
 
     function updateLegendLabels(isDeflectionMode) {
         var legendTitle = document.getElementById('legend-title');
         if (isDeflectionMode) {
             legendTitle.innerText = "Displacement Map (mm)";
-            document.getElementById('lbl-100').innerText = formatMM(currentUMax) + " (Max)";
+            document.getElementById('lbl-100').innerText = formatMM(currentUMax) + " (Max Uz)";
             document.getElementById('lbl-075').innerText = formatMM(currentUMax * 0.75);
             document.getElementById('lbl-050').innerText = formatMM(currentUMax * 0.50);
             document.getElementById('lbl-025').innerText = formatMM(currentUMax * 0.25);
@@ -1061,10 +1325,12 @@
     function reRenderMesh() {
         var legend = document.getElementById('legend');
         var mode = document.getElementById('render_mode').value;
-        var matType = document.getElementById('mat_type').value;
         var isDeflectionMode = (mode === 'deflection');
 
-        if (!currentNodes || !currentNodes.length) return;
+        if (!currentVertices.length || !currentFaces.length) return;
+
+        setVoidGizmosVisible(false);
+        setBoundaryGizmosVisible(true);
 
         if (mode === 'ec3_stress' || mode === 'deflection') {
             updateLegendLabels(isDeflectionMode);
@@ -1073,8 +1339,11 @@
             legend.style.display = 'none';
         }
 
-        while (networkGroup.children.length > 0) networkGroup.remove(networkGroup.children[0]);
-        while (surfaceMeshGroup.children.length > 0) surfaceMeshGroup.remove(surfaceMeshGroup.children[0]);
+        if (mesh) scene.remove(mesh);
+
+        var geometry = new THREE.BufferGeometry();
+        var positions = [];
+        var colors = [];
 
         var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
         var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
@@ -1104,138 +1373,84 @@
             return c;
         };
 
-        var nx = parseInt(document.getElementById('nx').value) || 16;
-        var ny = parseInt(document.getElementById('ny').value) || 16;
-        var isSolidSurfaceMaterial = (matType === 'concrete' || matType === 'stone' || matType === 'masonry' || matType === 'fabric');
+        var activeFieldArray = isDeflectionMode ? currentDeflectionsMM : currentStressesMPa;
+        var hasFieldData = activeFieldArray && activeFieldArray.length === currentVertices.length;
 
-        if (isSolidSurfaceMaterial && currentNodes.length === (nx + 1) * (ny + 1)) {
-            // Render Continuous Solid Shell/Slab Geometry
-            var geometry = new THREE.BufferGeometry();
-            var positions = [];
-            var colors = [];
+        currentFaces.forEach(function(f) {
+            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
+            positions.push(p1[0], p1[2], p1[1]);
+            positions.push(p2[0], p2[2], p2[1]);
+            positions.push(p3[0], p3[2], p3[1]);
 
-            for (var iy = 0; iy < ny; iy++) {
-                for (var ix = 0; ix < nx; ix++) {
-                    var i1 = iy * (nx + 1) + ix;
-                    var i2 = i1 + 1;
-                    var i3 = (iy + 1) * (nx + 1) + ix;
-                    var i4 = i3 + 1;
-
-                    var p1 = currentNodes[i1], p2 = currentNodes[i2], p3 = currentNodes[i3], p4 = currentNodes[i4];
-
-                    // Triangles for quad (p1, p2, p3) & (p2, p4, p3)
-                    var triIndices = [i1, i2, i3, i2, i4, i3];
-                    triIndices.forEach(function(idx) {
-                        var pt = currentNodes[idx];
-                        positions.push(pt[0], pt[2], pt[1]);
-
-                        if (mode === 'grey') {
-                            colors.push(0.5, 0.5, 0.5);
-                        } else if (mode === 'deflection') {
-                            var u = currentDeflectionsMM[idx] || 0.0;
-                            var col = colorScaleUnsigned(u, currentUMax);
-                            colors.push(col.r, col.g, col.b);
-                        } else {
-                            var s = currentStressesMPa[idx] || 0.0;
-                            var col = colorScaleSignedAsymmetric(s, activeMaxTens, activeMaxComp);
-                            colors.push(col.r, col.g, col.b);
-                        }
-                    });
+            if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
+                var s1 = activeFieldArray[f[0]] || 0.0, s2 = activeFieldArray[f[1]] || 0.0, s3 = activeFieldArray[f[2]] || 0.0;
+                var c1, c2, c3;
+                
+                if (isDeflectionMode) {
+                    c1 = colorScaleUnsigned(s1, currentUMax);
+                    c2 = colorScaleUnsigned(s2, currentUMax);
+                    c3 = colorScaleUnsigned(s3, currentUMax);
+                } else {
+                    c1 = colorScaleSignedAsymmetric(s1, activeMaxTens, activeMaxComp);
+                    c2 = colorScaleSignedAsymmetric(s2, activeMaxTens, activeMaxComp);
+                    c3 = colorScaleSignedAsymmetric(s3, activeMaxTens, activeMaxComp);
                 }
-            }
-
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.computeVertexNormals();
-
-            var mat = new THREE.MeshStandardMaterial({
-                vertexColors: true,
-                roughness: 0.50,
-                metalness: 0.10,
-                side: THREE.DoubleSide
-            });
-
-            var surfaceMesh = new THREE.Mesh(geometry, mat);
-            surfaceMeshGroup.add(surfaceMesh);
-
-        } else {
-            // Render Frame/Truss Cylinders for Steel, Timber, Cables & Generic
-            currentEdges.forEach(function(edge, idx) {
-                var p1_raw = currentNodes[edge[0]];
-                var p2_raw = currentNodes[edge[1]];
-
-                if (p1_raw && p2_raw) {
-                    var p1 = new THREE.Vector3(p1_raw[0], p1_raw[2], p1_raw[1]);
-                    var p2 = new THREE.Vector3(p2_raw[0], p2_raw[2], p2_raw[1]);
-
-                    var direction = new THREE.Vector3().subVectors(p2, p1);
-                    var memberLen = direction.length();
-
-                    if (memberLen > 1e-3) {
-                        var cylGeo = new THREE.CylinderGeometry(30, 35, memberLen, 8);
-                        var mat;
-
-                        if (mode === 'grey') {
-                            mat = new THREE.MeshStandardMaterial({
-                                color: 0x808080, roughness: 0.50, metalness: 0.10
-                            });
-                        } else if (mode === 'deflection') {
-                            var u_val = currentDeflectionsMM[edge[0]] || 0.0;
-                            var col = colorScaleUnsigned(u_val, currentUMax);
-                            mat = new THREE.MeshStandardMaterial({
-                                color: col, roughness: 0.40, metalness: 0.10
-                            });
-                        } else {
-                            var s_val = currentStressesMPa[idx] || 0.0;
-                            var col = colorScaleSignedAsymmetric(s_val, activeMaxTens, activeMaxComp);
-                            mat = new THREE.MeshStandardMaterial({
-                                color: col, roughness: 0.40, metalness: 0.10
-                            });
-                        }
-
-                        var cylMesh = new THREE.Mesh(cylGeo, mat);
-                        var midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-                        cylMesh.position.copy(midpoint);
-                        cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
-
-                        networkGroup.add(cylMesh);
-                    }
-                }
-            });
-        }
-
-        var bbox = new THREE.Box3();
-        if (surfaceMeshGroup.children.length > 0) bbox.setFromObject(surfaceMeshGroup);
-        else if (networkGroup.children.length > 0) bbox.setFromObject(networkGroup);
-
-        if (!bbox.isEmpty()) {
-            var center = new THREE.Vector3();
-            bbox.getCenter(center);
-            controls.target.copy(center);
-            controls.update();
-        }
-    }
-
-    function displayReactions(reactions) {
-        while (reactionGroup.children.length > 0) reactionGroup.remove(reactionGroup.children[0]);
-
-        if (!reactions) return;
-
-        reactions.forEach(function(r) {
-            var origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
-            var dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
-            var mag = dir.length();
-
-            if (mag > 1e-2) {
-                dir.normalize();
-                var arrow = new THREE.ArrowHelper(dir, origin, Math.min(Math.max(mag * 20.0, 200.0), 1000.0), 0xcc0000, 120, 50);
-                reactionGroup.add(arrow);
+                
+                colors.push(c1.r, c1.g, c1.b); 
+                colors.push(c2.r, c2.g, c2.b); 
+                colors.push(c3.r, c3.g, c3.b);
             }
         });
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+        var material;
+        if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+            material = new THREE.MeshStandardMaterial({
+                vertexColors: true, roughness: 0.40, metalness: 0.10, side: THREE.DoubleSide,
+                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+            });
+        } else {
+            geometry.computeVertexNormals();
+            material = new THREE.MeshStandardMaterial({
+                color: 0x808080, roughness: 0.50, metalness: 0.10, side: THREE.DoubleSide,
+                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+            });
+        }
+
+        mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
     }
 
     function exportSTL() {
-        alert("Exporting solved form-finding network geometry...");
+        if (!currentVertices.length || !currentFaces.length) {
+            alert("No solved topology geometry available for export.");
+            return;
+        }
+        var stl = "solid DBSW_FormFound_Mesh\n";
+        currentFaces.forEach(function(f) {
+            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
+
+            var ux = p2[0]-p1[0], uy = p2[1]-p1[1], uz = p2[2]-p1[2];
+            var vx = p3[0]-p1[0], vy = p3[1]-p1[1], vz = p3[2]-p1[2];
+            var nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+            var nlen = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1.0;
+            nx /= nlen; ny /= nlen; nz /= nlen;
+
+            stl += "  facet normal " + nx + " " + ny + " " + nz + "\n    outer loop\n";
+            stl += "      vertex " + p1[0] + " " + p1[1] + " " + p1[2] + "\n";
+            stl += "      vertex " + p2[0] + " " + p2[1] + " " + p2[2] + "\n";
+            stl += "      vertex " + p3[0] + " " + p3[1] + " " + p3[2] + "\n";
+            stl += "    endloop\n  endfacet\n";
+        });
+        stl += "endsolid DBSW_FormFound_Mesh\n";
+        var blob = new Blob([stl], { type: 'text/plain' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'DBSW_FormFound_Mesh.stl';
+        link.click();
     }
 
     initThree();
