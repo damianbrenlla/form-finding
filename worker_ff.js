@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v12 — Updated material cross-section area parsing for concrete shell thickness, timber laths, cables, and membranes.
+ * v13 — Pass material_type to FormFindingDomain3D & export clean axial_forces array.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -103,7 +103,8 @@ domain = FormFindingDomain3D(
     Lz=Lz_val,
     nx=int(payload.get("nx", 36)),
     ny=int(payload.get("ny", 12)),
-    geometry_preset="surface_grid"
+    geometry_preset="surface_grid",
+    material_type=mat_type
 )
 
 # Discrete Point Supports
@@ -143,11 +144,11 @@ if mat_type in ("cables", "cable"):
 
 elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
-    area_mm2 = t_mm * 1000.0  # mm² per 1000mm strip width
+    area_mm2 = t_mm * 1000.0
 
 elif mat_type == "concrete":
     t_mm     = max(float(payload.get("sec_concrete_t", 150.0)), 10.0)
-    area_mm2 = t_mm * 1000.0  # mm² per 1000mm shell strip width
+    area_mm2 = t_mm * 1000.0
 
 elif mat_type == "timber":
     b_mm     = max(float(payload.get("sec_b", 60.0)), 1.0)
@@ -176,7 +177,6 @@ solver = FormFindingSolverFactory.create(
     point_loads     = payload.get("loads", [])
 )
 
-# Unpack 4 returned values strictly
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations = 500
 )
