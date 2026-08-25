@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v11 — Fixed tuple unpacking, support_preset resolution, and diagnostics payload integrity.
+ * v12 — Updated material cross-section area parsing for concrete shell thickness, timber laths, cables, and membranes.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -136,13 +136,24 @@ elif sup_preset == "two_opposite_lines":
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# Cross-Section Area Calculations
+# --- Material Cross-Section Area Parsing ---
 if mat_type in ("cables", "cable"):
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
+
 elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
-    area_mm2 = t_mm * 1000.0
+    area_mm2 = t_mm * 1000.0  # mm² per 1000mm strip width
+
+elif mat_type == "concrete":
+    t_mm     = max(float(payload.get("sec_concrete_t", 150.0)), 10.0)
+    area_mm2 = t_mm * 1000.0  # mm² per 1000mm shell strip width
+
+elif mat_type == "timber":
+    b_mm     = max(float(payload.get("sec_b", 60.0)), 1.0)
+    h_mm     = max(float(payload.get("sec_h", 120.0)), 1.0)
+    area_mm2 = b_mm * h_mm
+
 else:
     b_mm     = max(float(payload.get("sec_b", 300.0)), 1.0)
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
