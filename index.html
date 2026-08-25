@@ -74,8 +74,7 @@
 
         .btn-primary {
             background: #000000; color: #ffffff; border: 1px solid #000000;
-            padding: 12px; border-radius: 0px;
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            padding: 12px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px;
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease; margin-top: 4px;
         }
@@ -171,6 +170,7 @@
             <li>Six structural material classifications (Steel Cables, Fabric Membranes, Concrete Shells, Timber Gridshells, Vaulted Masonry, Custom Isotropic)</li>
             <li>Material-driven solver factory incorporating Force Density Method (FDM), Compression-Constrained Inverted Dynamic Relaxation, and Underwood DR</li>
             <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
+            <li>Interactive 3D viewport raycaster for graphical point load assignment along cable networks</li>
             <li>Optional self-weight inclusion and configurable external point load arrays</li>
             <li>Real-time stress/displacement maps with numerical reaction vectors and interactive 3D section cut-planes</li>
             <li>Direct .STL export of solved 3D network geometry</li>
@@ -326,6 +326,9 @@
             <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Fx</th><th>Fy</th><th>Fz</th><th></th></tr></thead>
             <tbody id="load_table_body"></tbody>
         </table>
+        <p id="cable_click_hint" style="font-size: 0.68rem; color: #00aa55; margin: 4px 0 0 0; font-weight: 500;">
+            Hint: With Cables selected, click directly on any cable segment in the 3D viewport to snap a point load automatically.
+        </p>
     </div>
 
     <hr>
@@ -395,6 +398,8 @@
     var supportGizmos = [], forceArrows = [];
     var reactionGroup = null;
     var axesScene, axesCamera, axesGroup;
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
 
@@ -444,11 +449,13 @@
         var masDiv = document.getElementById('mat_masonry_div');
         var genDiv = document.getElementById('mat_generic_div');
         var prestressContainer = document.getElementById('prestress_container');
+        var hintEl = document.getElementById('cable_click_hint');
 
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
         document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
         document.getElementById('sec_concrete_div').style.display = (matType === 'concrete') ? 'flex' : 'none';
         document.getElementById('sec_beam_div').style.display = (matType === 'timber') ? 'flex' : 'none';
+        hintEl.style.display = (matType === 'cables') ? 'block' : 'none';
 
         stdDiv.style.display = 'none'; masDiv.style.display = 'none'; genDiv.style.display = 'none';
 
@@ -543,6 +550,8 @@
         var ly = makeAxisLabel('Y'); ly.position.set(0, 0, axisLen + 0.35); axesGroup.add(ly);
 
         window.addEventListener('resize', onWindowResize);
+        container.addEventListener('click', onViewportClick, false);
+
         updateMaterialUI();
 
         addSupportRow(0, 0, 0, 'xyz');
@@ -551,6 +560,38 @@
         setupCutPlaneSliders();
         animate();
         updateDomainVisuals();
+    }
+
+    // Interactive 3D Cable Click-to-Load Raycaster
+    function onViewportClick(event) {
+        var matType = document.getElementById('mat_type').value;
+        if (matType !== 'cables' || !mesh) return;
+
+        var container = document.getElementById('viewport');
+        var rect = renderer.domElement.getBoundingClientRect();
+
+        mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        raycaster.params.Line.threshold = 150; // Snapping radius tolerance in mm
+
+        var intersects = raycaster.intersectObject(mesh);
+
+        if (intersects.length > 0) {
+            var hitPoint = intersects[0].point;
+            
+            // Three.js Y-up to Python Z-up conversion: [X, Z, Y] -> [X, Y, Z]
+            var snapX = Math.round(hitPoint.x);
+            var snapY = Math.round(hitPoint.z);
+            var snapZ = Math.round(hitPoint.y);
+
+            var loadFz = prompt(`Cable segment targeted at (${snapX}, ${snapY}, ${snapZ}) mm. Enter vertical load Fz (kN):`, "-12.5");
+            if (loadFz !== null && !isNaN(parseFloat(loadFz))) {
+                addLoadRow(snapX, snapY, snapZ, 0, 0, parseFloat(loadFz));
+                updateDomainVisuals();
+            }
+        }
     }
 
     function animate() {
