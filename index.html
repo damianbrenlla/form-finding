@@ -150,7 +150,6 @@
         }
         #intro-modal .author-line a { color: #000000; }
 
-        /* Clean Stacked Cards Layout */
         .span-builder-card {
             background: #f9f9f9;
             padding: 10px;
@@ -524,7 +523,6 @@
         document.getElementById('app-modal-overlay').style.display = 'none';
     }
 
-    /* Fixed Canvas Buffer Resolution to Prevent Text Truncation */
     function makeTextSprite(message, colorHex) {
         colorHex = colorHex || '#cc0000';
         var canvas = document.createElement('canvas');
@@ -542,7 +540,6 @@
         return sprite;
     }
 
-    /* Complete State Purge Function on Material Classification Change */
     function onMaterialChange() {
         clearAllSupports();
         clearAllLineSupports();
@@ -1207,7 +1204,11 @@
                 document.getElementById('lbl_tension_range').innerText = `0.01 - ${tensionSlider.max} kN`;
             }
 
-            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
+            // Surface Dynamic Relaxation Convergence Diagnostics
+            var diag = data.data.diagnostics || {};
+            var convText = diag.converged ? `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]` : `[Converged: NO (Iters: ${diag.iterations_run})]`;
+
+            status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
             reRenderMesh();
             displayReactions(data.data.reactions || []);
         } else if (data.status === 'error') {
