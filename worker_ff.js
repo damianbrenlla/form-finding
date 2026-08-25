@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * Pass 1 — Corrected self-weight payload processing, orthotropic membrane line tension, and exception propagation.
+ * Pass 2 — Forwarding DR convergence diagnostics & clean WASM exception propagation.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -151,7 +151,6 @@ if mat_type in ("cables", "cable"):
 elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
     area_mm2 = t_mm * 1000.0  # Equivalent 1m strip
-    # Convert kN/m to N/mm (1 kN/m = 1 N/mm)
     prestress_warp_N_mm = float(payload.get("prestress_warp_kn_m", 2.0))
     prestress_weft_N_mm = float(payload.get("prestress_weft_kn_m", 2.0))
     edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0
@@ -187,7 +186,8 @@ solver = FormFindingSolverFactory.create(
 )
 
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
-    iterations = 500
+    iterations = 1000,
+    rel_tol    = 1e-4
 )
 
 displacement_vecs = equilibrium_nodes - np.copy(domain.nodes).astype(float)
