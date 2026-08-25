@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v9 — Bilinear 3D pre-interpolation for 2D surface grids & robust 3D support snapping.
+# v10 — Direction-aware line projection tolerance & strict boundary candidate filtering.
 
 import numpy as np
 
@@ -94,7 +94,6 @@ class FormFindingDomain3D:
         if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
             return
 
-        # Resolve 3D Z-heights at domain corner bounds
         z00 = 0.0
         z10 = 0.0
         z01 = 0.0
@@ -160,9 +159,10 @@ class FormFindingDomain3D:
             self.fixed_nodes.add(int(idx))
 
     def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None):
-        if tol is None:
-            tol = self._auto_tolerance()
-
+        """
+        Constrains boundary nodes along a 3D line support vector.
+        Uses direction-aware tolerance and candidate filtering on boundary nodes only.
+        """
         p1_arr = np.array(p1, dtype=float)
         p2_arr = np.array(p2, dtype=float)
         line_vec = p2_arr - p1_arr
@@ -174,15 +174,27 @@ class FormFindingDomain3D:
 
         line_dir = line_vec / line_len
 
-        for idx, node in enumerate(self.nodes):
+        dx = self.Lx / self.nx if self.nx > 0 else 100.0
+        dy = self.Ly / self.ny if self.ny > 0 else 100.0
+
+        # Compute direction-aware perpendicular capture tolerance
+        perp_x = -line_dir[1]
+        perp_y = line_dir[0]
+        directional_spacing = np.sqrt((dx * perp_x) ** 2 + (dy * perp_y) ** 2)
+        effective_tol = max(directional_spacing * 1.25, 10.0) if tol is None else tol
+
+        # Filter candidates to boundary nodes only (prevents interior node capture)
+        candidate_indices = self.get_boundary_nodes() if self.material_type not in ("cables", "cable") else range(len(self.nodes))
+
+        for idx in candidate_indices:
+            node = self.nodes[idx]
             node_vec = node - p1_arr
             proj_len = np.dot(node_vec, line_dir)
 
-            # Restrict snap window to actual 3D segment length bounds to avoid swallowing interior nodes
-            if -tol <= proj_len <= line_len + tol:
+            if -effective_tol <= proj_len <= line_len + effective_tol:
                 proj_pt = p1_arr + np.clip(proj_len, 0.0, line_len) * line_dir
                 dist = np.linalg.norm(node - proj_pt)
-                if dist <= tol:
+                if dist <= effective_tol:
                     self.fixed_nodes.add(idx)
                     self.nodes[idx] = proj_pt
 
