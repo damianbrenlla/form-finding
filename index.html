@@ -6,7 +6,7 @@
     
     <!-- 1. SEO Primary Metadata -->
     <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
-    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode and specialized cable/membrane material logic and interactive 3D section cut-planes.">
+    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features specialized cable and membrane material logic.">
     <meta name="keywords" content="Structural Form Finding, Cable Net Form Finding, Tensile Membrane, WebAssembly Finite Element Analysis, Structural Engineering, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://topology.dbsw.uk/" />
@@ -202,10 +202,10 @@
         </p>
 
         <ul>
-            <li>Six structural material classifications (Steel Cables, Fabric Membranes, Concrete Shells, Timber Gridshells, Vaulted Masonry, Custom Isotropic)</li>
-            <li>Material-driven solver factory incorporating Force Density Method (FDM), Compression-Constrained Inverted Dynamic Relaxation, and Underwood DR</li>
+            <li>Structural material classifications (Steel Cables, Architectural Membranes)</li>
+            <li>Material-driven solver factory incorporating Force Density Method (FDM) and Dynamic Relaxation</li>
             <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
-            <li>Biaxial orthotropic prestress line tensions (kN/m) and boundary sleeve cable definitions for fabric membranes</li>
+            <li>Biaxial orthotropic prestress line tensions (kN/m) and boundary sleeve cable definitions for membrane elements</li>
             <li>Optional self-weight inclusion and configurable external point load arrays</li>
             <li>Real-time stress/displacement maps with numerical reaction vectors and interactive 3D section cut-planes</li>
             <li>Direct .STL export of solved 3D network geometry</li>
@@ -244,12 +244,8 @@
     <div class="control-group">
         <label>Structural Material Classification</label>
         <select id="mat_type" onchange="onMaterialChange()">
-            <option value="cables">High-Tensile Steel Cables / Tension Nets</option>
-            <option value="membrane" selected>Architectural Fabric Membrane (ETFE / PTFE / PVC)</option>
-            <option value="concrete">Reinforced Concrete Shell / Vault — BS EN 1992-1-1</option>
-            <option value="timber">Timber Grid-Shell — BS EN 1995-1-1</option>
-            <option value="masonry">Vaulted Masonry / Compression Structures — BS EN 1996-1-1</option>
-            <option value="generic">Custom / Generic Isotropic Material</option>
+            <option value="cables">Cables</option>
+            <option value="membrane" selected>Membranes</option>
         </select>
     </div>
 
@@ -267,39 +263,6 @@
     <div id="sec_fabric_div" class="control-group">
         <label>Membrane Thickness t (mm)</label>
         <input type="number" id="sec_fabric_t" value="1.2" step="0.1">
-    </div>
-
-    <div id="sec_concrete_div" class="control-group" style="display: none;">
-        <label>Concrete Shell Thickness t (mm)</label>
-        <input type="number" id="sec_concrete_t" value="150.0">
-    </div>
-
-    <div id="sec_beam_div" class="control-group" style="display: none;">
-        <label>Timber Lath Section b × h (mm)</label>
-        <div style="display: flex; gap: 6px;">
-            <input type="number" id="sec_b" value="60" style="width: 50%;">
-            <input type="number" id="sec_h" value="120" style="width: 50%;">
-        </div>
-    </div>
-
-    <div id="mat_masonry_div" style="display: none; flex-direction: column; gap: 6px;">
-        <div class="control-group">
-            <label>Masonry Unit Characteristic Strength fb (MPa)</label>
-            <select id="masonry_unit_select" onchange="syncCustomFb()"></select>
-            <input type="number" id="masonry_unit_fb" value="20" style="margin-top:2px;">
-        </div>
-        <div class="control-group">
-            <label>Mortar Strength Class fm (MPa)</label>
-            <select id="mortar_select" onchange="syncCustomFm()"></select>
-            <input type="number" id="mortar_fm" value="6" style="margin-top:2px;">
-        </div>
-    </div>
-
-    <div id="mat_generic_div" style="display: none; flex-direction: column; gap: 6px;">
-        <div class="control-group"><label>Young's Modulus E (MPa)</label><input type="number" id="custom_E" value="33000"></div>
-        <div class="control-group"><label>Poisson's Ratio ν</label><input type="number" step="0.01" id="custom_nu" value="0.20"></div>
-        <div class="control-group"><label>Characteristic Design Yield Strength fk (MPa)</label><input type="number" id="custom_fk" value="30"></div>
-        <div class="control-group"><label>Unit Weight γ (kN/m³)</label><input type="number" step="0.1" id="custom_gamma" value="25.0"></div>
     </div>
 
     <div class="control-group">
@@ -347,7 +310,7 @@
     <hr>
     <div class="section-header">Loading & Prestress Definition</div>
 
-    <!-- 1D Scalar Prestress (Cables / Generic) -->
+    <!-- 1D Scalar Prestress (Cables) -->
     <div id="prestress_container" class="control-group" style="display: none;">
         <label>Initial Cable Prestress Force (N)</label>
         <input type="number" id="prestress" value="5000">
@@ -440,11 +403,10 @@
         <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
     </div>
 
-    <!-- Tensile Stress Slider Container (Membrane / Fabrics Tensile-Only Control) -->
+    <!-- Tensile Stress Slider Container (Membrane Tensile-Only Control) -->
     <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
         <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem;">Interactive Tensile Stress Palette Fader</label>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
-            <!-- Compression Slider Hidden for Tensile Fabrics -->
             <div id="comp_slider_group" style="display: none;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span><span id="lbl_comp_val" style="font-family: monospace; font-weight: bold;">-0.01 MPa</span></div>
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
@@ -507,11 +469,6 @@
 
     var CABLE_GRADES = ["Spiral Strand (1x19)", "Flexible Rope (7x19)", "Locked Coil Cable", "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)"];
     var MEMBRANE_GRADES = ["PTFE Type II (Standard)", "PTFE Type I (Light)", "PTFE Type III (Medium)", "PTFE Type IV (Heavy)"];
-    var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
-    var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
-
-    var MASONRY_UNITS = { "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0, "Dense Concrete Block (20 MPa)": 20.0 };
-    var MORTAR_GRADES = { "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0 };
 
     function showAppModal(titleText, bodyText) {
         document.getElementById('app_modal_subtitle').innerText = titleText || "Notification";
@@ -627,8 +584,6 @@
     function updateMaterialUI() {
         var matType = document.getElementById('mat_type').value;
         var stdDiv = document.getElementById('mat_standard_div');
-        var masDiv = document.getElementById('mat_masonry_div');
-        var genDiv = document.getElementById('mat_generic_div');
         var prestressContainer = document.getElementById('prestress_container');
         var membranePrestressCard = document.getElementById('membrane_prestress_card');
         var cableSpanBuilder = document.getElementById('cable_span_load_builder');
@@ -670,52 +625,19 @@
             var opt3 = document.createElement('option'); opt3.value = "deflection"; opt3.innerText = "Displacement Map (Deflection mm)"; renderSelect.appendChild(opt3);
 
             renderSelect.value = ["ec3_stress", "grey", "deflection"].includes(currentMode) ? currentMode : "ec3_stress";
-
-        } else {
-            lineSupportContainer.style.display = 'flex';
-            cutPlanesContainer.style.display = 'block';
-            cableSpanBuilder.style.display = 'none';
-            membranePrestressCard.style.display = 'none';
-            prestressContainer.style.display = 'none';
-            meshLabel.innerText = "FE Mesh Divisions nx, ny";
-            nyContainer.style.display = 'block';
-
-            var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (+Tension / -Compression)"; renderSelect.appendChild(opt1);
-            var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
-            var opt3 = document.createElement('option'); opt3.value = "deflection"; opt3.innerText = "Displacement Map (Deflection mm)"; renderSelect.appendChild(opt3);
-
-            renderSelect.value = ["ec3_stress", "grey", "deflection"].includes(currentMode) ? currentMode : "ec3_stress";
         }
 
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
         document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
-        document.getElementById('sec_concrete_div').style.display = (matType === 'concrete') ? 'flex' : 'none';
-        document.getElementById('sec_beam_div').style.display = (matType === 'timber') ? 'flex' : 'none';
 
-        stdDiv.style.display = 'none'; masDiv.style.display = 'none'; genDiv.style.display = 'none';
-
-        if (['cables', 'membrane', 'concrete', 'timber'].includes(matType)) {
-            stdDiv.style.display = 'flex';
-            var gradeSelect = document.getElementById('mat_grade');
-            gradeSelect.innerHTML = '';
-            var list = (matType === 'cables') ? CABLE_GRADES : ((matType === 'membrane') ? MEMBRANE_GRADES : ((matType === 'concrete') ? CONCRETE_GRADES : TIMBER_GRADES));
-            list.forEach(function(g) { var opt = document.createElement('option'); opt.value = g; opt.innerText = g; gradeSelect.appendChild(opt); });
-        } else if (matType === 'masonry') {
-            masDiv.style.display = 'flex';
-            var uSelect = document.getElementById('masonry_unit_select'); var mSelect = document.getElementById('mortar_select');
-            uSelect.innerHTML = ''; mSelect.innerHTML = '';
-            for (var key in MASONRY_UNITS) { var opt = document.createElement('option'); opt.value = key; opt.innerText = key; uSelect.appendChild(opt); }
-            for (var mkey in MORTAR_GRADES) { var mopt = document.createElement('option'); mopt.value = mkey; mopt.innerText = mkey; mSelect.appendChild(mopt); }
-            syncCustomFb(); syncCustomFm();
-        } else if (matType === 'generic') {
-            genDiv.style.display = 'flex';
-        }
+        stdDiv.style.display = 'flex';
+        var gradeSelect = document.getElementById('mat_grade');
+        gradeSelect.innerHTML = '';
+        var list = (matType === 'cables') ? CABLE_GRADES : MEMBRANE_GRADES;
+        list.forEach(function(g) { var opt = document.createElement('option'); opt.value = g; opt.innerText = g; gradeSelect.appendChild(opt); });
 
         toggleRenderModeUI();
     }
-
-    function syncCustomFb() { document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[document.getElementById('masonry_unit_select').value] || 20.0; }
-    function syncCustomFm() { document.getElementById('mortar_fm').value = MORTAR_GRADES[document.getElementById('mortar_select').value] || 6.0; }
 
     function setupCutPlaneSliders() {
         document.getElementById('cut_x').max = activeLx; document.getElementById('cut_x').value = activeLx;
@@ -858,11 +780,9 @@
         updateDomainVisuals();
     }
 
-    /* Smart Line Support Row Generator with Automatic Opposite Edge Defaulting */
     function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
         var existingSups = getLineSupportArrayData();
         
-        // Smart default: If Line 1 sits along Y=0, default Line 2 to span parallel across the far boundary Y=Ly
         if (existingSups.length === 1 && y1 === undefined) {
             x1 = 0; y1 = activeLy; z1 = 0;
             x2 = activeLx; y2 = activeLy; z2 = 0;
@@ -975,7 +895,6 @@
             }
         });
 
-        /* Scaled Point Load Arrow Rendering */
         getLoadArrayData().forEach(function(ld) {
             var dir = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
             var mag = dir.length();
@@ -1002,7 +921,6 @@
         setupCutPlaneSliders();
     }
 
-    /* 3D Bilinear Pre-interpolated Mesh Preview Generator */
     function drawInitialPreviewMesh() {
         var matType = document.getElementById('mat_type').value;
         var pointSups = getPointSupportArrayData();
@@ -1032,7 +950,6 @@
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
 
-        // Extract 3D Support Elevations for Bilinear Corner Interpolation
         var z00 = 0.0, z10 = 0.0, z01 = 0.0, z11 = 0.0;
         pointSups.forEach(ps => {
             if (ps.x <= activeLx * 0.25 && ps.y <= activeLy * 0.25) z00 = ps.z;
@@ -1051,7 +968,6 @@
             var xi = i / nx;
             for (var j = 0; j <= ny; j++) {
                 var eta = j / ny;
-                // Bilinear spatial elevation interpolation across elevated corner anchors
                 var z_interp = (1.0 - xi) * (1.0 - eta) * z00 + xi * (1.0 - eta) * z10 + (1.0 - xi) * eta * z01 + xi * eta * z11;
                 previewNodes.push([xLin[i], z_interp, yLin[j]]);
                 gridMap[`${i},${j}`] = idx++;
@@ -1078,14 +994,12 @@
         scene.add(mesh);
     }
 
-    /* Elegant Resultant Vector Aggregation along Discrete Line Supports */
     function displayReactions(reactions) {
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
         if (!reactions || !reactions.length) return;
 
         var lineSups = getLineSupportArrayData();
 
-        // If discrete line supports are defined, aggregate nodal reactions along each line segment into a single vector
         if (lineSups.length > 0) {
             lineSups.forEach(ls => {
                 var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
@@ -1120,7 +1034,6 @@
             return;
         }
 
-        // Default Point Support Reaction Vector Display
         reactions.forEach(r => {
             const origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
             const dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
@@ -1215,7 +1128,6 @@
                 document.getElementById('lbl_tension_range').innerText = `0.01 - ${tensionSlider.max} kN`;
             }
 
-            // Surface Dynamic Relaxation Convergence Diagnostics
             var diag = data.data.diagnostics || {};
             var convText = diag.converged ? `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]` : `[Converged: NO (Iters: ${diag.iterations_run})]`;
 
@@ -1242,17 +1154,7 @@
             material_grade: document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '',
             sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
             sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
-            sec_concrete_t: parseFloat(document.getElementById('sec_concrete_t').value) || 150.0,
-            sec_b: parseFloat(document.getElementById('sec_b').value) || 60.0,
-            sec_h: parseFloat(document.getElementById('sec_h').value) || 120.0,
-            masonry_unit_fb: parseFloat(document.getElementById('masonry_unit_fb').value) || 20.0,
-            mortar_fm: parseFloat(document.getElementById('mortar_fm').value) || 6.0,
-            custom_E: parseFloat(document.getElementById('custom_E').value) || 33000.0,
-            custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.20,
-            custom_fk: parseFloat(document.getElementById('custom_fk').value) || 30.0,
-            custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
             
-            // Prestress Payload Switch
             prestress: (matType === 'cables') ? parseFloat(document.getElementById('prestress').value) || 0.0 : 0.0,
             prestress_warp_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_warp_kn_m').value) || 2.0 : 0.0,
             prestress_weft_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_weft_kn_m').value) || 2.0 : 0.0,
@@ -1286,7 +1188,6 @@
 
     function format2DP(val) { return Number(val).toFixed(2); }
 
-    /* Pass 2 Mesh Renderer - Supporting Line Segment Stress/Deflection HSL Mapping & Section Clipping */
     function reRenderMesh() {
         if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
@@ -1363,7 +1264,6 @@
         toggleRenderModeUI();
     }
 
-    /* Pass 2 Tubular / Surface Geometry STL Exporter */
     function exportSTL() {
         if (!currentVertices.length || !currentFaces.length) {
             showAppModal("Export Error", "No solved form-found geometry available for STL export.");
@@ -1371,7 +1271,7 @@
         }
 
         var stl = "solid DBSW_FormFound_Mesh\n";
-        var r = 15.0; // Tube radius for line elements (mm)
+        var r = 15.0;
 
         currentFaces.forEach(function(edge) {
             var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
@@ -1381,7 +1281,6 @@
             var len = dir.length();
             if (len < 1e-3) return;
 
-            // Generate 4-sided tubular prism box per edge for clean 3D printing STL export
             var axis = dir.clone().normalize();
             var perp1 = new THREE.Vector3(0, 1, 0);
             if (Math.abs(axis.y) > 0.9) perp1.set(1, 0, 0);
