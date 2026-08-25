@@ -8,12 +8,7 @@ import numpy as np
 class ForceDensitySolver:
     """
     Direct Linear Solver using the Force Density Method (FDM) for Cable Nets.
-    
-    NOTE ON CATENARY DEAD LOAD:
-    FDM is strictly linear for fixed force density ratios q = S / L. Element self-weight
-    is incorporated deterministically as a lumped vertical RHS load vector f_sw.
-    This solves exact spatial catenary equilibrium under dead load in a single linear pass
-    without requiring iterative q-optimisation loops.
+    Linear catenary dead-load lumping maintained.
     """
 
     def __init__(self, domain, E_modulus: float = 210000.0, area_mm2: float = 100.0, prestress_force: float = 0.0, point_loads: list = None, gamma_kn_m3: float = 78.5, **kwargs):
@@ -93,7 +88,6 @@ class ForceDensitySolver:
 
         P_ext = np.zeros((N_free, 3), dtype=float)
 
-        # Correct unit conversion: kN/m3 -> kg/mm3: gamma_kn_m3 / 9.81 * 1e-6
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -193,23 +187,19 @@ class InvertedGravityDRSolver:
         if num_nodes == 0 or num_edges == 0:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
 
-        # Build Node-Edge Incidence Matrix C (num_edges x num_nodes)
         C = np.zeros((num_edges, num_nodes), dtype=float)
         for i, (u, v) in enumerate(edges):
             C[i, u] = -1.0
             C[i, v] = 1.0
 
-        # Initial Rest Lengths
         edge_vecs = nodes[edges[:, 1]] - nodes[edges[:, 0]]
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        # External Forces Vector
         F_ext = np.zeros((num_nodes, 3), dtype=float)
         gamma_effective = self.gamma_kn_m3 if self.gamma_kn_m3 > 0 else 25.0
         density_kg_mm3 = (gamma_effective / 9.81) * 1e-6
 
-        # Lumped Member Mass & Gravity
         for i, (u, v) in enumerate(edges):
             L = rest_lengths[i]
             half_weight_N = ((density_kg_mm3 * self.area * L) * 9.81) / 2.0
@@ -227,7 +217,6 @@ class InvertedGravityDRSolver:
         if total_ext_force_mag < 1e-6:
             total_ext_force_mag = 1.0
 
-        # Vectorised Dynamic Relaxation Setup
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
         node_stiffness = np.abs(C.T) @ k_edges
@@ -242,11 +231,9 @@ class InvertedGravityDRSolver:
         final_rel_res = 1.0
         iters_run = 0
 
-        # Barnes-Style Kinetic Energy Peak-Reset DR Loop
         for it in range(max(iterations, 200)):
             iters_run = it + 1
             
-            # Vectorised Edge Vectors & Lengths
             dXYZ = nodes[edges[:, 1]] - nodes[edges[:, 0]]
             curr_lengths = np.linalg.norm(dXYZ, axis=1)
             curr_lengths = np.where(curr_lengths < 1e-6, 1e-6, curr_lengths)
@@ -254,33 +241,27 @@ class InvertedGravityDRSolver:
 
             strains = (curr_lengths - rest_lengths) / rest_lengths
             axial_forces = self.E * self.area * strains
-            axial_forces = np.maximum(0.0, axial_forces)  # Tension-only cable analogue during hanging pass
+            axial_forces = np.maximum(0.0, axial_forces)
 
-            # Internal Force Vector Assembly via Transpose Incidence Matrix
             f_vecs = axial_forces[:, None] * unit_vecs
             F_int = np.zeros((num_nodes, 3), dtype=float)
             np.add.at(F_int, edges[:, 0], f_vecs)
             np.add.at(F_int, edges[:, 1], -f_vecs)
 
-            # Unbalanced Residual Force
             R_residual = F_ext + F_int
             R_residual[~free_mask] = 0.0
 
-            # Residual Convergence Check
             max_res = np.max(np.linalg.norm(R_residual, axis=1))
             final_rel_res = max_res / total_ext_force_mag
             if final_rel_res < rel_tol and it > 50:
                 converged = True
                 break
 
-            # Mid-step Acceleration and Velocity Integration
             accel = R_residual / nodal_mass
             velocities[free_mask] += accel[free_mask] * dt
 
-            # Kinetic Energy Calculation across Free Nodes
             ke = 0.5 * np.sum(nodal_mass[free_mask] * (velocities[free_mask] ** 2))
 
-            # KE Peak Reset Check (Barnes Peak-Reset Damping)
             if ke < prev_ke and it > 5:
                 velocities[free_mask] = 0.0
                 prev_ke = 0.0
@@ -289,17 +270,15 @@ class InvertedGravityDRSolver:
 
             nodes[free_mask] += velocities[free_mask] * dt
 
-        # Calculate Reaction Vectors
         reactions = np.zeros((num_nodes, 3), dtype=float)
         reactions[~free_mask] = -(F_int[~free_mask] + F_ext[~free_mask])
 
-        # Mirror Catenary Network about Support Plane to yield Compression Vault/Dome
         free_indices = np.where(free_mask)[0]
         support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
 
         nodes[free_indices, 2] = support_z + (support_z - nodes[free_indices, 2])
         reactions[:, 2] = -reactions[:, 2]
-        axial_forces = -np.abs(axial_forces)  # Pure Compression Result
+        axial_forces = -np.abs(axial_forces)
 
         diagnostics = {
             "method": "Vectorised Inverted Kinetic DR",
@@ -352,7 +331,6 @@ class UnderwoodDRSolver:
         if num_nodes == 0 or num_edges == 0:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
 
-        # Build Node-Edge Incidence Matrix C
         C = np.zeros((num_edges, num_nodes), dtype=float)
         for i, (u, v) in enumerate(edges):
             C[i, u] = -1.0
@@ -362,7 +340,6 @@ class UnderwoodDRSolver:
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        # Prestress Array Construction per Edge Direction (Orthotropic Membrane Support)
         prestress_array = np.full(num_edges, self.prestress, dtype=float)
         if self.prestress_warp_N_mm > 0.0 or self.prestress_weft_N_mm > 0.0:
             dx = np.abs(edge_vecs[:, 0])
@@ -421,7 +398,6 @@ class UnderwoodDRSolver:
             strains = (curr_lengths - rest_lengths) / rest_lengths
             axial_forces = (self.E * self.area * strains) + prestress_array
             
-            # Unilateral Membrane Wrinkling Constraint: Zero Compressive Resistance
             if str(getattr(self.domain, "material_type", "")).lower() in ("membrane", "fabric"):
                 axial_forces = np.maximum(0.0, axial_forces)
 
