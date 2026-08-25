@@ -312,8 +312,8 @@
     <div class="control-group">
         <label>Load Presets</label>
         <select id="load_preset" onchange="applyLoadPreset()">
+            <option value="custom" selected>Custom Point Load Array</option>
             <option value="top_udl">Top Surface Uniform Patch Load</option>
-            <option value="custom">Custom Point Load Array</option>
             <option value="tip_center">Single Center Point Load</option>
             <option value="third_points">Third-Point Flexure Loads</option>
         </select>
@@ -417,7 +417,6 @@
 
 <script>
     var scene, camera, renderer, controls, mesh;
-    var domainBox;
     var supportGizmos = [];
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     
@@ -562,12 +561,10 @@
         window.addEventListener('resize', onWindowResize);
         updateMaterialUI();
 
+        // Exactly 2 default point supports (No default loads)
         addSupportRow(0, 0, 0, 'xyz');
         addSupportRow(6000, 0, 0, 'xyz');
-        addSupportRow(0, 3000, 0, 'xyz');
-        addSupportRow(6000, 3000, 0, 'xyz');
         
-        applyLoadPreset();
         setupCutPlaneSliders();
         animate();
         updateDomainVisuals();
@@ -622,7 +619,7 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 0 : z;
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z;
         Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -12.5 : Fz;
         var tbody = document.getElementById('load_table_body');
         var tr = document.createElement('tr');
@@ -680,6 +677,8 @@
             tbody.innerHTML = '';
             addLoadRow(activeLx / 3.0, activeLy / 2.0, 0, 0, 0, -50);
             addLoadRow((2 * activeLx) / 3.0, activeLy / 2.0, 0, 0, 0, -50);
+        } else if (preset === 'custom') {
+            tbody.innerHTML = '';
         }
         updateDomainVisuals();
     }
@@ -753,13 +752,7 @@
         var bounds = calculateBoundingBox();
         activeLx = bounds.Lx; activeLy = bounds.Ly; activeLz = bounds.Lz;
 
-        if (domainBox) scene.remove(domainBox);
-        var boxGeo = new THREE.BoxGeometry(activeLx, activeLz, activeLy);
-        var edges = new THREE.EdgesGeometry(boxGeo);
-        domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999 }));
-        domainBox.position.set(activeLx / 2.0, activeLz / 2.0, activeLy / 2.0);
-        scene.add(domainBox);
-
+        // Clean up previous support gizmos
         supportGizmos.forEach(function(g) { scene.remove(g); });
         supportGizmos = [];
 
