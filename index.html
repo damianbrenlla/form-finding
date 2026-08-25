@@ -198,7 +198,7 @@
 
     <div class="control-group">
         <label>Structural Material Classification</label>
-        <select id="mat_type" onchange="updateMaterialUI()">
+        <select id="mat_type" onchange="updateMaterialUI(); updateDomainVisuals();">
             <option value="cables" selected>High-Tensile Steel Cables / Tension Nets</option>
             <option value="membrane">Architectural Fabric Membrane (ETFE / PTFE / PVC)</option>
             <option value="concrete">Reinforced Concrete Shell / Vault — BS EN 1992-1-1</option>
@@ -260,8 +260,8 @@
     <div class="control-group">
         <label>FE Mesh Divisions nx, ny</label>
         <div style="display: flex; gap: 6px;">
-            <input type="number" id="nx" value="36" style="width: 50%; font-family: monospace;">
-            <input type="number" id="ny" value="12" style="width: 50%; font-family: monospace;">
+            <input type="number" id="nx" value="36" style="width: 50%; font-family: monospace;" onchange="updateDomainVisuals();">
+            <input type="number" id="ny" value="12" style="width: 50%; font-family: monospace;" onchange="updateDomainVisuals();">
         </div>
     </div>
 
@@ -749,7 +749,56 @@
             }
         });
 
+        // Draw initial un-deformed mesh preview if no solved result mesh is active
+        if (!currentVertices.length) {
+            drawInitialPreviewMesh();
+        }
+
         setupCutPlaneSliders();
+    }
+
+    function drawInitialPreviewMesh() {
+        var nx = parseInt(document.getElementById('nx').value) || 36;
+        var ny = parseInt(document.getElementById('ny').value) || 12;
+        var matType = document.getElementById('mat_type').value;
+        var isPureCable = (matType === 'cables');
+
+        var previewNodes = [], previewEdges = [];
+        var xLin = Array.from({length: nx + 1}, (_, i) => (i / nx) * activeLx);
+        var yLin = Array.from({length: ny + 1}, (_, j) => (j / ny) * activeLy);
+
+        var gridMap = {};
+        var idx = 0;
+        for (var i = 0; i <= nx; i++) {
+            for (var j = 0; j <= ny; j++) {
+                previewNodes.push([xLin[i], 0, yLin[j]]);
+                gridMap[`${i},${j}`] = idx++;
+            }
+        }
+
+        for (var i = 0; i <= nx; i++) {
+            for (var j = 0; j <= ny; j++) {
+                var curr = gridMap[`${i},${j}`];
+                if (i < nx) previewEdges.push([curr, gridMap[`${i+1},${j}`]]);
+                if (j < ny) previewEdges.push([curr, gridMap[`${i},${j+1}`]]);
+                if (!isPureCable && i < nx && j < ny) {
+                    previewEdges.push([curr, gridMap[`${i+1},${j+1}`]]);
+                    previewEdges.push([gridMap[`${i+1},${j}`], gridMap[`${i},${j+1}`]]);
+                }
+            }
+        }
+
+        var positions = [];
+        previewEdges.forEach(function(edge) {
+            var p1 = previewNodes[edge[0]], p2 = previewNodes[edge[1]];
+            positions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
+        });
+
+        if (mesh) scene.remove(mesh);
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 }));
+        scene.add(mesh);
     }
 
     function displayReactions(reactions) {
