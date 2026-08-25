@@ -441,16 +441,18 @@
         <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
     </div>
 
+    <!-- Tensile Stress Slider Container (Membrane / Fabrics Tensile-Only Control) -->
     <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
-        <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem;">Interactive Stress Palette Faders</label>
+        <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem;">Interactive Tensile Stress Palette Fader</label>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
-            <div>
+            <!-- Compression Slider Hidden for Tensile Fabrics -->
+            <div id="comp_slider_group" style="display: none;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span><span id="lbl_comp_val" style="font-family: monospace; font-weight: bold;">-0.01 MPa</span></div>
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tension Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+0.01 MPa</span></div>
-                <input type="range" id="stress_tens_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+1.00 MPa</span></div>
+                <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
             </div>
         </div>
     </div>
@@ -482,10 +484,10 @@
             <div id="legend-bar"></div>
             <div class="legend-labels">
                 <span id="lbl-100">+Max</span>
-                <span id="lbl-075">+50%</span>
-                <span id="lbl-050">0.0</span>
-                <span id="lbl-025">-50%</span>
-                <span id="lbl-000">-Max</span>
+                <span id="lbl-075">+75%</span>
+                <span id="lbl-050">+50%</span>
+                <span id="lbl-025">+25%</span>
+                <span id="lbl-000">0.0</span>
             </div>
         </div>
     </div>
@@ -522,7 +524,6 @@
         document.getElementById('app-modal-overlay').style.display = 'none';
     }
 
-    /* Fixed Canvas Buffer Resolution to Prevent Text Truncation */
     function makeTextSprite(message, colorHex) {
         colorHex = colorHex || '#cc0000';
         var canvas = document.createElement('canvas');
@@ -540,7 +541,6 @@
         return sprite;
     }
 
-    /* Complete State Purge Function on Material Classification Change */
     function onMaterialChange() {
         clearAllSupports();
         clearAllLineSupports();
@@ -553,7 +553,7 @@
             addSupportRow(0, 0, 0, 'xyz');
             addSupportRow(6000, 0, 0, 'xyz');
         } else if (matType === 'membrane') {
-            // Default Hypar Corner Restraints
+            // Default 3D Hypar Corner Anchors
             addSupportRow(0, 0, 1000, 'xyz');
             addSupportRow(6000, 0, 0, 'xyz');
             addSupportRow(6000, 3000, 1000, 'xyz');
@@ -568,9 +568,13 @@
         var mode = document.getElementById('render_mode').value;
         var matType = document.getElementById('mat_type').value;
         var legend = document.getElementById('legend');
+        var compGroup = document.getElementById('comp_slider_group');
 
         document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
         document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
+
+        // Hide compression slider for tensile fabrics & cables
+        compGroup.style.display = (['cables', 'membrane'].includes(matType)) ? 'none' : 'block';
 
         if (mode === 'cable_tension' && currentVertices.length > 0) {
             legend.style.display = 'flex';
@@ -581,19 +585,36 @@
             document.getElementById('lbl-050').innerText = `${(maxVal * 0.50).toFixed(1)} kN`;
             document.getElementById('lbl-025').innerText = `${(maxVal * 0.25).toFixed(1)} kN`;
             document.getElementById('lbl-000').innerText = `0.01 kN`;
-        } else if (mode === 'ec3_stress' || mode === 'deflection') {
-            legend.style.display = (currentVertices.length > 0) ? 'flex' : 'none';
-            document.getElementById('legend-title').innerText = mode === 'ec3_stress' ? "Stress Field" : "Deflection";
+
+        } else if (mode === 'ec3_stress' && currentVertices.length > 0) {
+            legend.style.display = 'flex';
+            document.getElementById('legend-title').innerText = "Tensile Stress (MPa)";
+            var maxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 5.0;
+            document.getElementById('lbl-100').innerText = `+${maxTens.toFixed(2)} MPa`;
+            document.getElementById('lbl-075').innerText = `+${(maxTens * 0.75).toFixed(2)} MPa`;
+            document.getElementById('lbl-050').innerText = `+${(maxTens * 0.50).toFixed(2)} MPa`;
+            document.getElementById('lbl-025').innerText = `+${(maxTens * 0.25).toFixed(2)} MPa`;
+            document.getElementById('lbl-000').innerText = `0.00 MPa`;
+
+        } else if (mode === 'deflection' && currentVertices.length > 0) {
+            legend.style.display = 'flex';
+            document.getElementById('legend-title').innerText = "Displacement (mm)";
+            var maxD = Math.max(...currentDeflectionsMM, 1e-3);
+            document.getElementById('lbl-100').innerText = `${maxD.toFixed(1)} mm`;
+            document.getElementById('lbl-075').innerText = `${(maxD * 0.75).toFixed(1)} mm`;
+            document.getElementById('lbl-050').innerText = `${(maxD * 0.50).toFixed(1)} mm`;
+            document.getElementById('lbl-025').innerText = `${(maxD * 0.25).toFixed(1)} mm`;
+            document.getElementById('lbl-000').innerText = `0.0 mm`;
+
         } else {
             legend.style.display = 'none';
         }
     }
 
     function onStressSliderChange() {
-        var compVal = parseFloat(document.getElementById('stress_comp_slider').value) || 0.01;
         var tensVal = parseFloat(document.getElementById('stress_tens_slider').value) || 0.01;
-        document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
         document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
+        toggleRenderModeUI();
         reRenderMesh();
     }
 
@@ -1033,9 +1054,50 @@
         scene.add(mesh);
     }
 
+    /* Elegant Resultant Vector Aggregation along Discrete Line Supports */
     function displayReactions(reactions) {
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
+        if (!reactions || !reactions.length) return;
 
+        var lineSups = getLineSupportArrayData();
+
+        // If discrete line supports are defined, aggregate nodal reactions along each line segment into a single vector
+        if (lineSups.length > 0) {
+            lineSups.forEach(ls => {
+                var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
+                var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
+                var midPos = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+
+                var totalRx = 0.0, totalRy = 0.0, totalRz = 0.0;
+                reactions.forEach(r => {
+                    var rPos = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
+                    // Check if reaction node lies along or near this line support
+                    if (rPos.distanceTo(p1) <= activeLx * 1.5 || rPos.distanceTo(p2) <= activeLx * 1.5) {
+                        totalRx += r.Rx_kN;
+                        totalRy += r.Ry_kN;
+                        totalRz += r.Rz_kN;
+                    }
+                });
+
+                var dir = new THREE.Vector3(totalRx, totalRz, totalRy);
+                var mag = dir.length();
+
+                if (mag > 1e-3) {
+                    dir.normalize();
+                    var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
+                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0xcc0000, 140, 70);
+                    reactionGroup.add(arrow);
+
+                    var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
+                    var sprite = makeTextSprite(labelText, '#cc0000');
+                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
+                    reactionGroup.add(sprite);
+                }
+            });
+            return;
+        }
+
+        // Default Point Support Reaction Vector Display
         reactions.forEach(r => {
             const origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
             const dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
@@ -1214,7 +1276,6 @@
         var positions = [], colors = [];
 
         var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-        var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || 1.0);
         var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 1.0;
 
         currentFaces.forEach(function(edge, idx) {
@@ -1235,9 +1296,9 @@
                 var s2 = currentStressesMPa[edge[1]] || 0.0;
 
                 var mapStressColor = function(s) {
-                    if (s > activeMaxTens || s < activeMaxComp) return new THREE.Color(0x808080);
-                    var h = (s >= 0) ? (1.0 - Math.min(s / activeMaxTens, 1.0)) * 0.33 : (0.33 + Math.min(Math.abs(s / activeMaxComp), 1.0) * 0.33);
-                    var c = new THREE.Color(); c.setHSL(h, 0.85, 0.45); return c;
+                    if (s > activeMaxTens) return new THREE.Color(0x808080);
+                    var norm = Math.min(Math.max(s / activeMaxTens, 0.0), 1.0);
+                    var c = new THREE.Color(); c.setHSL((1.0 - norm) * 0.33, 0.85, 0.45); return c;
                 };
                 c1 = mapStressColor(s1);
                 c2 = mapStressColor(s2);
