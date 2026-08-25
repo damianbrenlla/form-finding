@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v16 — Wires domain bilinear surface Z-interpolation & passes prestress line tension baselines.
+ * v17 — Universal support elevation sourcing from point and 3D line supports for bilinear Z-seeding.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -107,21 +107,26 @@ domain = FormFindingDomain3D(
     material_type=mat_type
 )
 
-# Discrete Point Supports & Corner Z Map Assembly
+# Discrete Point Supports & Universal Corner Z-Map Sourcing
 point_sups = payload.get("point_supports", [])
+line_sups  = payload.get("line_supports", [])
 corner_z_map = {}
 
+# 1. Source Elevations from Discrete Point Supports
 for pt in point_sups:
     px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
     domain.add_point_support(px, py, pz)
     corner_z_map[(px, py)] = pz
 
-# Discrete 3D Line Supports
-for l_sup in payload.get("line_supports", []):
+# 2. Discrete 3D Line Supports & Endpoints Elevation Sourcing
+for l_sup in line_sups:
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
+    # Populate corner elevations from line endpoints if point supports are empty
+    corner_z_map[(p1[0], p1[1])] = p1[2]
+    corner_z_map[(p2[0], p2[1])] = p2[2]
 
 # Fallback Preset Support Resolution
 sup_preset = payload.get("support_preset", "")
