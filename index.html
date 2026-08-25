@@ -418,6 +418,7 @@
 <script>
     var scene, camera, renderer, controls, mesh;
     var supportGizmos = [];
+    var reactionGroup = null;
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     
     var worker = null;
@@ -557,6 +558,9 @@
         var grid = new THREE.GridHelper(20000, 200, 0x000000, 0xe0e0e0);
         grid.position.y = -1;
         scene.add(grid);
+
+        reactionGroup = new THREE.Group();
+        scene.add(reactionGroup);
 
         window.addEventListener('resize', onWindowResize);
         updateMaterialUI();
@@ -752,13 +756,13 @@
         var bounds = calculateBoundingBox();
         activeLx = bounds.Lx; activeLy = bounds.Ly; activeLz = bounds.Lz;
 
-        // Clean up previous support gizmos
         supportGizmos.forEach(function(g) { scene.remove(g); });
         supportGizmos = [];
 
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
         var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
 
+        // Fixed Three.js Y-up mapping for Point Supports
         getPointSupportArrayData().forEach(function(ps) {
             var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
             ptMesh.position.set(ps.x, ps.z - 75, ps.y);
@@ -766,6 +770,7 @@
             supportGizmos.push(ptMesh);
         });
 
+        // Fixed Three.js Y-up mapping for Line Supports
         getLineSupportArrayData().forEach(function(ls) {
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
             var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
@@ -783,6 +788,25 @@
         });
 
         setupCutPlaneSliders();
+    }
+
+    function displayReactions(reactions) {
+        while (reactionGroup.children.length > 0) {
+            reactionGroup.remove(reactionGroup.children[0]);
+        }
+
+        reactions.forEach(r => {
+            // Fixed Three.js Y-up mapping: Python [X, Y, Z] -> Three [X, Z, Y]
+            const origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
+            const dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
+            const length = dir.length() * 10;
+
+            if (length > 1e-3) {
+                dir.normalize();
+                const arrow = new THREE.ArrowHelper(dir, origin, Math.min(Math.max(length, 100), 1000), 0xd32f2f, 100, 40);
+                reactionGroup.add(arrow);
+            }
+        });
     }
 
     function initWasmEngine() {
@@ -824,6 +848,7 @@
 
             status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
             reRenderMesh();
+            displayReactions(data.data.reactions || []);
 
         } else if (data.status === 'error') {
             btnExec.disabled = false;
@@ -884,6 +909,7 @@
     function clearResults() {
         currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = [];
         if (mesh) { scene.remove(mesh); mesh = null; }
+        while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
         updateDomainVisuals();
@@ -899,6 +925,7 @@
         var lineGeometry = new THREE.BufferGeometry();
         var positions = [];
 
+        // Fixed Three.js Y-up mapping: Python [X, Y, Z] -> Three [X, Z, Y]
         currentFaces.forEach(function(edge) {
             var p1 = currentVertices[edge[0]];
             var p2 = currentVertices[edge[1]];
