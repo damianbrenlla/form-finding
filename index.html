@@ -574,7 +574,7 @@
         mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
 
         raycaster.setFromCamera(mouse, camera);
-        raycaster.params.Line.threshold = 150; // Snapping radius tolerance in mm
+        raycaster.params.Line.threshold = 150;
 
         var intersects = raycaster.intersectObject(mesh);
 
@@ -749,7 +749,6 @@
             }
         });
 
-        // Draw initial un-deformed mesh preview if no solved result mesh is active
         if (!currentVertices.length) {
             drawInitialPreviewMesh();
         }
@@ -758,10 +757,44 @@
     }
 
     function drawInitialPreviewMesh() {
+        var matType = document.getElementById('mat_type').value;
+        var pointSups = getPointSupportArrayData();
+
+        if (mesh) scene.remove(mesh);
+
+        // Single 1D Cable Line Preview Spanning Between Supports
+        if (matType === 'cables' && pointSups.length >= 2) {
+            var p1 = pointSups[0];
+            var p2 = pointSups[1];
+            var nx = parseInt(document.getElementById('nx').value) || 36;
+
+            var positions = [];
+            for (var i = 0; i < nx; i++) {
+                var t1 = i / nx;
+                var t2 = (i + 1) / nx;
+
+                var x1 = p1.x + t1 * (p2.x - p1.x);
+                var y1 = p1.y + t1 * (p2.y - p1.y);
+                var z1 = p1.z + t1 * (p2.z - p1.z);
+
+                var x2 = p1.x + t2 * (p2.x - p1.x);
+                var y2 = p1.y + t2 * (p2.y - p1.y);
+                var z2 = p1.z + t2 * (p2.z - p1.z);
+
+                // Three.js Y-Up mapping: [X, Z, Y]
+                positions.push(x1, z1, y1, x2, z2, y2);
+            }
+
+            var geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
+            scene.add(mesh);
+            return;
+        }
+
+        // Default 2D Surface Grid Preview for Membranes, Vaults, and Gridshells
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
-        var matType = document.getElementById('mat_type').value;
-        var isPureCable = (matType === 'cables');
 
         var previewNodes = [], previewEdges = [];
         var xLin = Array.from({length: nx + 1}, (_, i) => (i / nx) * activeLx);
@@ -781,10 +814,6 @@
                 var curr = gridMap[`${i},${j}`];
                 if (i < nx) previewEdges.push([curr, gridMap[`${i+1},${j}`]]);
                 if (j < ny) previewEdges.push([curr, gridMap[`${i},${j+1}`]]);
-                if (!isPureCable && i < nx && j < ny) {
-                    previewEdges.push([curr, gridMap[`${i+1},${j+1}`]]);
-                    previewEdges.push([gridMap[`${i+1},${j}`], gridMap[`${i},${j+1}`]]);
-                }
             }
         }
 
@@ -794,7 +823,6 @@
             positions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
         });
 
-        if (mesh) scene.remove(mesh);
         var geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 }));
