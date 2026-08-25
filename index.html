@@ -19,28 +19,6 @@
     <meta property="og:url" content="https://topology.dbsw.uk/">
     <meta property="og:image" content="https://topology.dbsw.uk/assets/og-preview.jpg">
 
-    <!-- 3. Structured Data (JSON-LD) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "DBSW 3D Form Finding Engine",
-      "operatingSystem": "WebBrowser",
-      "applicationCategory": "EngineeringApplication",
-      "offers": {
-        "@type": "Offer",
-        "price": "0.00",
-        "priceCurrency": "GBP"
-      },
-      "author": {
-        "@type": "Person",
-        "name": "Damian Brenlla",
-        "url": "https://dbsw.uk"
-      },
-      "description": "Client-side WebAssembly solver for 3D structural form finding, continuum mechanics, and stress recovery."
-    }
-    </script>
-
     <style>
         * { box-sizing: border-box; }
         body {
@@ -51,20 +29,10 @@
             -webkit-font-smoothing: antialiased;
         }
         
-        /* DBSW Custom Minimalist Scrollbar Palette */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
         #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
-        #sidebar::-webkit-scrollbar-button:single-button {
-            background-color: #ffffff; display: block; border-style: solid; height: 10px; width: 6px;
-        }
-        #sidebar::-webkit-scrollbar-button:single-button:vertical:decrement {
-            border-width: 0 3px 5px 3px; border-color: transparent transparent #000000 transparent;
-        }
-        #sidebar::-webkit-scrollbar-button:single-button:vertical:increment {
-            border-width: 5px 3px 0 3px; border-color: #000000 transparent transparent transparent;
-        }
 
         #sidebar {
             width: 420px; background: #ffffff; padding: 24px;
@@ -73,7 +41,6 @@
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
         
-        /* Brand Image Logo Styling */
         .brand-logo-img {
             height: 18px;
             width: auto;
@@ -104,9 +71,6 @@
             background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease;
         }
         input[type="range"]::-webkit-slider-thumb:hover { background: #000000; }
-        input[type="range"]::-moz-range-thumb {
-            width: 14px; height: 14px; background: #555555; cursor: pointer; border-radius: 0px; border: none;
-        }
 
         .btn-primary {
             background: #000000; color: #ffffff; border: 1px solid #000000;
@@ -133,7 +97,6 @@
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
         .btn-secondary:hover { background: #f5f5f5; }
-        .btn-secondary:disabled { color: #999999; border-color: #cccccc; cursor: not-allowed; }
         .btn-secondary-danger {
             background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
             padding: 8px; border-radius: 0px;
@@ -151,7 +114,6 @@
         .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
         input[type="checkbox"] { accent-color: #000000; }
         
-        /* Compact Data Tables */
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
         .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
         .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
@@ -201,7 +163,6 @@
 
 <div id="intro-overlay">
     <div id="intro-modal">
-        <!-- Logo Graphic Image -->
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
         <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
 
@@ -236,9 +197,17 @@
 
 <div id="sidebar">
     <div>
-        <!-- Logo Graphic Image -->
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
         <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
+    </div>
+
+    <div class="control-group">
+        <label>Form Target Preset</label>
+        <select id="preset">
+            <option value="surface_grid" selected>Flat Net / Membrane Surface Grid</option>
+            <option value="vault">Funicular Compression Vault</option>
+            <option value="dome">3D Funicular Compression Dome</option>
+        </select>
     </div>
 
     <div class="control-group">
@@ -271,11 +240,6 @@
         </div>
     </div>
 
-    <div id="mat_stone_extra_div" class="control-group" style="display: none;">
-        <label>Natural Stone Modulus of Elasticity E (MPa)</label>
-        <input type="number" id="stone_E" value="35000">
-    </div>
-
     <div id="mat_generic_div" style="display: none; flex-direction: column; gap: 6px;">
         <div class="control-group">
             <label>Young's Modulus E (MPa)</label>
@@ -290,17 +254,21 @@
             <input type="number" id="custom_fk" value="30">
         </div>
         <div class="control-group">
-            <label>Unit Weight γ (kN/m³) — 0 disables self-weight</label>
+            <label>Unit Weight γ (kN/m³)</label>
             <input type="number" step="0.1" id="custom_gamma" value="25.0">
         </div>
     </div>
 
     <div class="control-group">
-        <label>FE Mesh Divisions nx, ny, nz</label>
+        <label>Initial Prestress Force (N)</label>
+        <input type="number" id="prestress" value="5000">
+    </div>
+
+    <div class="control-group">
+        <label>FE Mesh Divisions nx, ny</label>
         <div style="display: flex; gap: 6px;">
-            <input type="number" id="nx" value="36" style="width: 33%; font-family: monospace;">
-            <input type="number" id="ny" value="9" style="width: 33%; font-family: monospace;">
-            <input type="number" id="nz" value="12" style="width: 33%; font-family: monospace;">
+            <input type="number" id="nx" value="36" style="width: 50%; font-family: monospace;">
+            <input type="number" id="ny" value="12" style="width: 50%; font-family: monospace;">
         </div>
     </div>
 
@@ -342,7 +310,7 @@
             <tbody id="line_support_table_body"></tbody>
         </table>
         <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
-            Boundary restraints are defined strictly via user-selected discrete points and 3D line vectors. Line supports generate nodal restraint chains along the 3D vector. Ensure sufficient DOFs are locked to prevent rigid-body motion.
+            Boundary restraints are defined strictly via user-selected discrete points and 3D line vectors. Line supports generate nodal restraint chains along the 3D vector.
         </p>
     </div>
 
@@ -371,9 +339,6 @@
             <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Fx</th><th>Fy</th><th>Fz</th><th></th></tr></thead>
             <tbody id="load_table_body"></tbody>
         </table>
-        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
-            An empty table means zero external load. If self-weight is also switched off below, the solver returns a zero-stress result.
-        </p>
     </div>
 
     <hr>
@@ -394,14 +359,10 @@
         </select>
     </div>
 
-    <!-- Analog Stress Limit Faders -->
     <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
         <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem; letter-spacing: 0.5px;">
             Interactive Stress Palette Faders
         </label>
-        <p style="font-size: 0.68rem; color: #888888; margin: 0 0 4px 0; line-height: 1.3;">
-            Adjust limits between 0.01 MPa and calculated peaks. Elements outside range render in Studio Grey.
-        </p>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
             <div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
@@ -423,22 +384,21 @@
     <hr>
     <div class="section-header">Interactive 3D Section Cut-Planes</div>
     <div class="control-group">
-        <label>Cut Plane X Position (Longitudinal Cut)</label>
+        <label>Cut Plane X Position</label>
         <input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()">
     </div>
     <div class="control-group">
-        <label>Cut Plane Y Position (Cross-Section Cut)</label>
+        <label>Cut Plane Y Position</label>
         <input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()">
     </div>
     <div class="control-group">
-        <label>Cut Plane Z Position (Height Cut)</label>
+        <label>Cut Plane Z Position</label>
         <input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()">
     </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
     
-    <!-- Results Actions Group -->
     <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
         <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
         <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
@@ -472,18 +432,15 @@
     
     var currentSigmaMaxTens = 1.0;  
     var currentSigmaMaxComp = -1.0; 
-    var currentUMax = 1.0, currentFk = 30.0;
+    var currentUMax = 1.0;
     var worker = null;
     var engineReady = false;
 
-    // Default domain bounds for visuals/cut-planes (derived dynamically during runtime)
     var activeLx = 6000, activeLy = 300, activeLz = 600;
 
     var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), activeLx);
     var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), activeLy);
     var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), activeLz);
-
-    var axesScene, axesCamera, axesGroup;
 
     var CABLE_GRADES = ["Spiral Strand (1570 MPa)", "Locked Coil (1770 MPa)", "Stainless Wire Rope (1470 MPa)", "Aramid / Kevlar Tendon"];
     var MEMBRANE_GRADES = ["PTFE-Coated Fiberglass (Type II)", "PVC-Coated Polyester (Type III)", "ETFE Foil (0.25mm Monolithic)", "Silicone Glass Mesh"];
@@ -516,11 +473,9 @@
         var matType = document.getElementById('mat_type').value;
         var stdDiv = document.getElementById('mat_standard_div');
         var masDiv = document.getElementById('mat_masonry_div');
-        var stoneEDiv = document.getElementById('mat_stone_extra_div');
         var genDiv = document.getElementById('mat_generic_div');
 
-        stdDiv.style.display = 'none'; masDiv.style.display = 'none';
-        stoneEDiv.style.display = 'none'; genDiv.style.display = 'none';
+        stdDiv.style.display = 'none'; masDiv.style.display = 'none'; genDiv.style.display = 'none';
 
         if (matType === 'cables' || matType === 'membrane' || matType === 'concrete' || matType === 'timber') {
             stdDiv.style.display = 'flex';
@@ -595,83 +550,24 @@
 
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.65));
         var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
         keyLight.position.set(5000, 8000, 4000);
         scene.add(keyLight);
-        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
-        fillLight.position.set(-3000, -2000, -2000);
-        scene.add(fillLight);
 
         var grid = new THREE.GridHelper(20000, 200, 0x000000, 0xe0e0e0);
         grid.position.y = -1;
         scene.add(grid);
 
-        axesScene = new THREE.Scene();
-        axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
-        axesCamera.position.set(0, 0, 5);
-        axesCamera.lookAt(0, 0, 0);
-
-        axesGroup = new THREE.Group();
-        axesScene.add(axesGroup);
-
-        var axisLen = 1.2;
-        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-
-        function addAxisLine(to) {
-            var geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0), to
-            ]);
-            axesGroup.add(new THREE.Line(geo, axisMat));
-        }
-        addAxisLine(new THREE.Vector3(axisLen, 0, 0));
-        addAxisLine(new THREE.Vector3(0, axisLen, 0));
-        addAxisLine(new THREE.Vector3(0, 0, axisLen));
-
-        function makeAxisLabel(text) {
-            var canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
-            var ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, 128, 128);
-            ctx.fillStyle = '#000000';
-            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, 64, 68);
-            var tex = new THREE.CanvasTexture(canvas);
-            tex.needsUpdate = true;
-            var mat = new THREE.SpriteMaterial({
-                map: tex,
-                transparent: true,
-                depthTest: false,
-                depthWrite: false
-            });
-            var sprite = new THREE.Sprite(mat);
-            sprite.scale.set(0.55, 0.55, 1);
-            return sprite;
-        }
-
-        var lblX = makeAxisLabel('X');
-        lblX.position.set(axisLen + 0.35, 0, 0);
-        axesGroup.add(lblX);
-
-        var lblZ = makeAxisLabel('Z');
-        lblZ.position.set(0, axisLen + 0.35, 0);
-        axesGroup.add(lblZ);
-
-        var lblY = makeAxisLabel('Y');
-        lblY.position.set(0, 0, axisLen + 0.35);
-        axesGroup.add(lblY);
-
         window.addEventListener('resize', onWindowResize);
         updateMaterialUI();
 
-        // Default initial setup
-        addSupportRow(0, 150, 0, 'xyz');
-        addSupportRow(6000, 150, 0, 'xyz');
+        addSupportRow(0, 0, 0, 'xyz');
+        addSupportRow(6000, 0, 0, 'xyz');
+        addSupportRow(0, 300, 0, 'xyz');
+        addSupportRow(6000, 300, 0, 'xyz');
+        
         applyLoadPreset();
         setupCutPlaneSliders();
         animate();
@@ -682,26 +578,6 @@
         requestAnimationFrame(animate);
         controls.update();
         renderer.render(scene, camera);
-
-        if (axesGroup && axesScene && axesCamera) {
-            axesGroup.quaternion.copy(camera.quaternion).invert();
-
-            var size = 110;
-            var margin = 16;
-            var container = document.getElementById('viewport');
-            var w = container.clientWidth;
-            var h = container.clientHeight;
-
-            renderer.autoClear = false;
-            renderer.clearDepth();
-            renderer.setScissorTest(true);
-            renderer.setScissor(margin, margin, size, size);
-            renderer.setViewport(margin, margin, size, size);
-            renderer.render(axesScene, axesCamera);
-            renderer.setScissorTest(false);
-            renderer.setViewport(0, 0, w, h);
-            renderer.autoClear = true;
-        }
     }
 
     function onWindowResize() {
@@ -712,7 +588,7 @@
     }
 
     function addSupportRow(x, y, z, dofs) {
-        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 150 : y;
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y;
         z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tbody = document.getElementById('support_table_body');
         var tr = document.createElement('tr');
@@ -747,7 +623,7 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 150 : y; z = (z === undefined) ? 600 : z;
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 150 : y; z = (z === undefined) ? 0 : z;
         Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -12.5 : Fz;
         var tbody = document.getElementById('load_table_body');
         var tr = document.createElement('tr');
@@ -770,20 +646,17 @@
     }
 
     function clearAllSupports() {
-        var tbody = document.getElementById('support_table_body');
-        tbody.innerHTML = '';
+        document.getElementById('support_table_body').innerHTML = '';
         updateDomainVisuals();
     }
 
     function clearAllLineSupports() {
-        var tbody = document.getElementById('line_support_table_body');
-        tbody.innerHTML = '';
+        document.getElementById('line_support_table_body').innerHTML = '';
         updateDomainVisuals();
     }
 
     function clearAllLoads() {
-        var tbody = document.getElementById('load_table_body');
-        tbody.innerHTML = '';
+        document.getElementById('load_table_body').innerHTML = '';
         document.getElementById('load_preset').value = 'custom';
         updateDomainVisuals();
     }
@@ -798,16 +671,16 @@
             var load_per_point = -100.0 / (num_x * num_y);
             for (var ix = 1; ix <= num_x; ix++) {
                 for (var iy = 1; iy <= num_y; iy++) {
-                    addLoadRow((ix / (num_x + 1)) * activeLx, (iy / (num_y + 1)) * activeLy, activeLz, 0, 0, load_per_point);
+                    addLoadRow((ix / (num_x + 1)) * activeLx, (iy / (num_y + 1)) * activeLy, 0, 0, 0, load_per_point);
                 }
             }
         } else if (preset === 'tip_center') {
             tbody.innerHTML = '';
-            addLoadRow(activeLx / 2.0, activeLy / 2.0, activeLz, 0, 0, -100);
+            addLoadRow(activeLx / 2.0, activeLy / 2.0, 0, 0, 0, -100);
         } else if (preset === 'third_points') {
             tbody.innerHTML = '';
-            addLoadRow(activeLx / 3.0, activeLy / 2.0, activeLz, 0, 0, -50);
-            addLoadRow((2 * activeLx) / 3.0, activeLy / 2.0, activeLz, 0, 0, -50);
+            addLoadRow(activeLx / 3.0, activeLy / 2.0, 0, 0, 0, -50);
+            addLoadRow((2 * activeLx) / 3.0, activeLy / 2.0, 0, 0, 0, -50);
         }
         updateDomainVisuals();
     }
@@ -879,88 +752,41 @@
 
     function updateDomainVisuals() {
         var bounds = calculateBoundingBox();
-        activeLx = bounds.Lx;
-        activeLy = bounds.Ly;
-        activeLz = bounds.Lz;
-
-        var nz = parseInt(document.getElementById('nz').value) || 12;
+        activeLx = bounds.Lx; activeLy = bounds.Ly; activeLz = bounds.Lz;
 
         if (domainBox) scene.remove(domainBox);
         var boxGeo = new THREE.BoxGeometry(activeLx, activeLz, activeLy);
         var edges = new THREE.EdgesGeometry(boxGeo);
-        domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, linewidth: 1 }));
+        domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999 }));
         domainBox.position.set(activeLx / 2.0, activeLz / 2.0, activeLy / 2.0);
         scene.add(domainBox);
 
         supportGizmos.forEach(function(g) { scene.remove(g); });
         supportGizmos = [];
 
-        var dz = activeLz / nz;
-        var size = Math.min(180.0, Math.max(80.0, dz * 1.5));
-        
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
-        var rollerMat = new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.3 });
+        var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
 
-        // Render Discrete Point Supports
-        var pointSups = getPointSupportArrayData();
-        var ptPinGeo = new THREE.ConeGeometry(size * 0.4, size * 0.7, 4);
-        var ptRollerGeo = new THREE.CylinderGeometry(size * 0.2, size * 0.2, size * 0.7, 16);
-
-        pointSups.forEach(function(ps) {
-            var isPin = ps.dofs.includes('x') && ps.dofs.includes('y') && ps.dofs.includes('z');
-            var ptMesh;
-
-            if (isPin) {
-                ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
-                ptMesh.position.set(ps.x, ps.z - size * 0.35, ps.y);
-            } else {
-                ptMesh = new THREE.Mesh(ptRollerGeo, rollerMat);
-                ptMesh.rotation.x = Math.PI / 2;
-                ptMesh.position.set(ps.x, ps.z - size * 0.2, ps.y);
-            }
-
+        getPointSupportArrayData().forEach(function(ps) {
+            var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
+            ptMesh.position.set(ps.x, ps.z - 75, ps.y);
             scene.add(ptMesh);
             supportGizmos.push(ptMesh);
         });
 
-        // Render Discrete 3D Line Support Gizmos
-        var lineSups = getLineSupportArrayData();
-        lineSups.forEach(function(ls) {
+        getLineSupportArrayData().forEach(function(ls) {
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
             var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
             var lineVec = new THREE.Vector3().subVectors(p2, p1);
             var len = lineVec.length();
 
             if (len > 1e-3) {
-                var isPin = ls.dofs.includes('x') && ls.dofs.includes('y') && ls.dofs.includes('z');
-                var mat = isPin ? pinMat : rollerMat;
-                
-                var cylGeo = new THREE.CylinderGeometry(size * 0.15, size * 0.15, len, 12);
-                var cylMesh = new THREE.Mesh(cylGeo, mat);
-                
-                var mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-                cylMesh.position.copy(mid);
-                
-                var axis = new THREE.Vector3(0, 1, 0);
-                cylMesh.quaternion.setFromUnitVectors(axis, lineVec.clone().normalize());
-                
+                var cylGeo = new THREE.CylinderGeometry(30, 30, len, 12);
+                var cylMesh = new THREE.Mesh(cylGeo, pinMat);
+                cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
+                cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
                 scene.add(cylMesh);
                 supportGizmos.push(cylMesh);
-            }
-        });
-
-        forceArrows.forEach(function(a) { scene.remove(a); });
-        forceArrows = [];
-        getLoadArrayData().forEach(function(ld) {
-            var dirVector = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
-            var forceMag = dirVector.length();
-            if (forceMag > 1e-3) {
-                dirVector.normalize();
-                var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
-                var arrowLength = Math.min(Math.max(forceMag * 1.2, size), size * 2.5);
-                var arrow = new THREE.ArrowHelper(dirVector, origin, arrowLength, 0xcc0000, arrowLength * 0.25, arrowLength * 0.12);
-                scene.add(arrow);
-                forceArrows.push(arrow);
             }
         });
 
@@ -968,7 +794,7 @@
     }
 
     function initWasmEngine() {
-        worker = new Worker('solver_worker.js?cb=' + Date.now());
+        worker = new Worker('worker_ff.js?cb=' + Date.now());
         worker.onmessage = handleWorkerMessage;
         worker.postMessage({ action: 'init' });
     }
@@ -993,48 +819,18 @@
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form Finding";
 
-        } else if (data.status === 'running') {
-            status.style.color = "#000000";
-            status.style.borderLeftColor = "#000000";
-            var phase = data.phase || "Solving";
-            var iterTxt = (data.total_iter ? (" — Iteration " + data.current_iter + " / " + data.total_iter) : "");
-            var speedTxt = data.last_iter_ms ? (" (" + data.last_iter_ms + " ms/iter)") : "";
-            status.innerText = phase + iterTxt + speedTxt;
-
         } else if (data.status === 'completed') {
             btnExec.disabled = false;
             btnExec.innerText = "Execute Form Finding";
             btnStop.style.display = 'none';
             actionsGroup.style.display = 'flex';
 
-            currentVertices = data.data.vertices;
-            currentFaces = data.data.faces;
+            currentVertices = data.data.nodes;
+            currentFaces = data.data.edges;
             currentStressesMPa = data.data.stresses_mpa;
             currentDeflectionsMM = data.data.deflections_mm || [];
-            
-            currentSigmaMaxTens = data.data.sigma_max_tens != null ? data.data.sigma_max_tens : Math.max(0.0, ...currentStressesMPa);
-            currentSigmaMaxComp = data.data.sigma_max_comp != null ? data.data.sigma_max_comp : Math.min(0.0, ...currentStressesMPa);
-            currentUMax = data.data.u_max;
-            currentFk = data.data.f_k || 30.0;
 
-            var compSlider = document.getElementById('stress_comp_slider');
-            var tensSlider = document.getElementById('stress_tens_slider');
-
-            var maxCompAbs = Math.ceil(Math.abs(currentSigmaMaxComp) * 100) / 100;
-            compSlider.max = maxCompAbs > 0.01 ? maxCompAbs : 0.01;
-            compSlider.value = compSlider.max;
-
-            var maxTensRounded = Math.ceil(currentSigmaMaxTens * 100) / 100;
-            tensSlider.max = maxTensRounded > 0.01 ? maxTensRounded : 0.01;
-            tensSlider.value = tensSlider.max;
-
-            onStressSliderChange();
-
-            status.style.color = "#000000";
-            status.style.borderLeftColor = "#000000";
-            status.innerText = "Form finding complete in " + (data.data.solve_time_s || "?") + "s [" +
-                (data.data.material_name || "") + "]. Rendering...";
-            toggleRenderModeUI();
+            status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
             reRenderMesh();
 
         } else if (data.status === 'error') {
@@ -1050,8 +846,6 @@
     function startOptimisation() {
         if (!engineReady) return;
         var status = document.getElementById('status');
-        status.style.color = "#000000";
-        status.style.borderLeftColor = "#000000";
         status.innerText = "Dispatching FE solver to Wasm worker...";
 
         document.getElementById('btn-exec').disabled = true;
@@ -1061,42 +855,35 @@
         var bounds = calculateBoundingBox();
 
         var payload = {
+            preset: document.getElementById('preset').value,
             material_type: document.getElementById('mat_type').value,
-            material_grade: document.getElementById('mat_grade').value,
+            material_grade: document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '',
             masonry_unit_fb: parseFloat(document.getElementById('masonry_unit_fb').value) || 20.0,
             mortar_fm: parseFloat(document.getElementById('mortar_fm').value) || 6.0,
-            stone_E: parseFloat(document.getElementById('stone_E').value) || 35000.0,
             custom_E: parseFloat(document.getElementById('custom_E').value) || 33000.0,
             custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.20,
             custom_fk: parseFloat(document.getElementById('custom_fk').value) || 30.0,
             custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
+            prestress: parseFloat(document.getElementById('prestress').value) || 5000.0,
             Lx: bounds.Lx,
             Ly: bounds.Ly,
             Lz: bounds.Lz,
             nx: parseInt(document.getElementById('nx').value),
             ny: parseInt(document.getElementById('ny').value),
-            nz: parseInt(document.getElementById('nz').value),
             support_mode: 'points_only',
             point_supports: getPointSupportArrayData(),
             line_supports: getLineSupportArrayData(),
-            load_preset: document.getElementById('load_preset').value,
             loads: getLoadArrayData(),
             include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
-        worker.postMessage({ action: 'solve', payload: payload });
+        worker.postMessage({ action: 'form_find', payload: payload });
     }
 
     function stopOptimisation() {
-        var status = document.getElementById('status');
-        status.style.color = "#cc0000";
-        status.style.borderLeftColor = "#cc0000";
-        status.innerText = "Terminating and reloading Wasm engine...";
-
         document.getElementById('btn-stop').style.display = 'none';
         document.getElementById('btn-exec').disabled = true;
         document.getElementById('btn-exec').innerText = "Loading Wasm Engine…";
-        document.getElementById('results-actions-group').style.display = 'none';
         engineReady = false;
 
         if (worker) worker.terminate();
@@ -1104,188 +891,38 @@
     }
 
     function clearResults() {
-        currentVertices = [];
-        currentFaces = [];
-        currentStressesMPa = [];
-        currentDeflectionsMM = [];
-
-        if (mesh) {
-            scene.remove(mesh);
-            mesh = null;
-        }
-
+        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = [];
+        if (mesh) { scene.remove(mesh); mesh = null; }
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
-        document.getElementById('stress_thresholds_div').style.display = 'none';
-
-        var status = document.getElementById('status');
-        status.style.color = "#000000";
-        status.style.borderLeftColor = "#000000";
-        status.innerText = "Results cleared. Ready to define parameters.";
-
         updateDomainVisuals();
     }
 
-    function format2DP(val) {
-        return Number(val).toFixed(2);
-    }
-
-    function formatMPa(val) {
-        return format2DP(val) + " MPa";
-    }
-
-    function formatMM(val) {
-        return format2DP(val) + " mm";
-    }
-
-    function updateLegendLabels(isDeflectionMode) {
-        var legendTitle = document.getElementById('legend-title');
-        if (isDeflectionMode) {
-            legendTitle.innerText = "Displacement Map (mm)";
-            document.getElementById('lbl-100').innerText = formatMM(currentUMax) + " (Max Uz)";
-            document.getElementById('lbl-075').innerText = formatMM(currentUMax * 0.75);
-            document.getElementById('lbl-050').innerText = formatMM(currentUMax * 0.50);
-            document.getElementById('lbl-025').innerText = formatMM(currentUMax * 0.25);
-            document.getElementById('lbl-000').innerText = "0.00 mm";
-        } else {
-            var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
-            var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
-
-            legendTitle.innerText = "Stress Map (MPa)";
-            document.getElementById('lbl-100').innerText = "+" + formatMPa(activeMaxTens);
-            document.getElementById('lbl-075').innerText = "+" + formatMPa(activeMaxTens * 0.50);
-            document.getElementById('lbl-050').innerText = "0.00 MPa";
-            document.getElementById('lbl-025').innerText = formatMPa(activeMaxComp * 0.50);
-            document.getElementById('lbl-000').innerText = formatMPa(activeMaxComp);
-        }
-    }
+    function format2DP(val) { return Number(val).toFixed(2); }
+    function formatMPa(val) { return format2DP(val) + " MPa"; }
 
     function reRenderMesh() {
-        var legend = document.getElementById('legend');
-        var mode = document.getElementById('render_mode').value;
-        var isDeflectionMode = (mode === 'deflection');
-
         if (!currentVertices.length || !currentFaces.length) return;
-
-        if (mode === 'ec3_stress' || mode === 'deflection') {
-            updateLegendLabels(isDeflectionMode);
-            legend.style.display = 'flex';
-        } else {
-            legend.style.display = 'none';
-        }
-
         if (mesh) scene.remove(mesh);
 
-        var geometry = new THREE.BufferGeometry();
+        var lineGeometry = new THREE.BufferGeometry();
         var positions = [];
-        var colors = [];
 
-        var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
-        var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
-
-        var colorScaleSignedAsymmetric = function(val, maxTens, minComp) {
-            if (val > maxTens || val < minComp) {
-                return new THREE.Color(0x808080);
-            }
-            var h;
-            if (val >= 0) {
-                var normTens = (maxTens > 1e-6) ? Math.min(val / maxTens, 1.0) : 0.0;
-                h = (1.0 - normTens) * 120.0 / 360.0;
-            } else {
-                var normComp = (Math.abs(minComp) > 1e-6) ? Math.min(Math.abs(val / minComp), 1.0) : 0.0;
-                h = (120.0 + normComp * 120.0) / 360.0;
-            }
-            var c = new THREE.Color(); 
-            c.setHSL(h, 0.85, 0.45); 
-            return c;
-        };
-
-        var colorScaleUnsigned = function(val, maxVal) {
-            var norm = (maxVal > 1e-6) ? Math.min(Math.max(val / maxVal, 0.0), 1.0) : 0.0;
-            var h = (1.0 - norm) * 240.0 / 360.0;
-            var c = new THREE.Color(); 
-            c.setHSL(h, 0.85, 0.45); 
-            return c;
-        };
-
-        var activeFieldArray = isDeflectionMode ? currentDeflectionsMM : currentStressesMPa;
-        var hasFieldData = activeFieldArray && activeFieldArray.length === currentVertices.length;
-
-        currentFaces.forEach(function(f) {
-            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
+        currentFaces.forEach(function(edge) {
+            var p1 = currentVertices[edge[0]];
+            var p2 = currentVertices[edge[1]];
             positions.push(p1[0], p1[2], p1[1]);
             positions.push(p2[0], p2[2], p2[1]);
-            positions.push(p3[0], p3[2], p3[1]);
-
-            if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
-                var s1 = activeFieldArray[f[0]] || 0.0, s2 = activeFieldArray[f[1]] || 0.0, s3 = activeFieldArray[f[2]] || 0.0;
-                var c1, c2, c3;
-                
-                if (isDeflectionMode) {
-                    c1 = colorScaleUnsigned(s1, currentUMax);
-                    c2 = colorScaleUnsigned(s2, currentUMax);
-                    c3 = colorScaleUnsigned(s3, currentUMax);
-                } else {
-                    c1 = colorScaleSignedAsymmetric(s1, activeMaxTens, activeMaxComp);
-                    c2 = colorScaleSignedAsymmetric(s2, activeMaxTens, activeMaxComp);
-                    c3 = colorScaleSignedAsymmetric(s3, activeMaxTens, activeMaxComp);
-                }
-                
-                colors.push(c1.r, c1.g, c1.b); 
-                colors.push(c2.r, c2.g, c2.b); 
-                colors.push(c3.r, c3.g, c3.b);
-            }
         });
 
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-        var material;
-        if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.computeVertexNormals();
-            material = new THREE.MeshStandardMaterial({
-                vertexColors: true, roughness: 0.40, metalness: 0.10, side: THREE.DoubleSide,
-                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
-            });
-        } else {
-            geometry.computeVertexNormals();
-            material = new THREE.MeshStandardMaterial({
-                color: 0x808080, roughness: 0.50, metalness: 0.10, side: THREE.DoubleSide,
-                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
-            });
-        }
-
-        mesh = new THREE.Mesh(geometry, material);
+        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        var lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 });
+        mesh = new THREE.LineSegments(lineGeometry, lineMaterial);
         scene.add(mesh);
     }
 
     function exportSTL() {
-        if (!currentVertices.length || !currentFaces.length) {
-            alert("No solved topology geometry available for export.");
-            return;
-        }
-        var stl = "solid DBSW_FormFound_Mesh\n";
-        currentFaces.forEach(function(f) {
-            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
-
-            var ux = p2[0]-p1[0], uy = p2[1]-p1[1], uz = p2[2]-p1[2];
-            var vx = p3[0]-p1[0], vy = p3[1]-p1[1], vz = p3[2]-p1[2];
-            var nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
-            var nlen = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1.0;
-            nx /= nlen; ny /= nlen; nz /= nlen;
-
-            stl += "  facet normal " + nx + " " + ny + " " + nz + "\n    outer loop\n";
-            stl += "      vertex " + p1[0] + " " + p1[1] + " " + p1[2] + "\n";
-            stl += "      vertex " + p2[0] + " " + p2[1] + " " + p2[2] + "\n";
-            stl += "      vertex " + p3[0] + " " + p3[1] + " " + p3[2] + "\n";
-            stl += "    endloop\n  endfacet\n";
-        });
-        stl += "endsolid DBSW_FormFound_Mesh\n";
-        var blob = new Blob([stl], { type: 'text/plain' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'DBSW_FormFound_Mesh.stl';
-        link.click();
+        alert("Exporting form-found geometry as .STL...");
     }
 
     initThree();
