@@ -1,6 +1,6 @@
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 2 — Robust prestress residual normalization for DR solvers.
+# Pass 2 — Kinematic stability validation & prestress-assembled residual normalization.
 
 import numpy as np
 
@@ -187,6 +187,15 @@ class InvertedGravityDRSolver:
         if num_nodes == 0 or num_edges == 0:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
 
+        # Kinematic Stability Validation: Ensure supports exist and are non-collinear
+        if len(fixed_nodes) < 3:
+            raise ValueError("Kinematically unstable boundary conditions: Fewer than 3 fixed support nodes resolved.")
+
+        fixed_pts = nodes[list(fixed_nodes)]
+        vecs = fixed_pts[1:] - fixed_pts[0]
+        if np.linalg.matrix_rank(vecs) < 2:
+            raise ValueError("Kinematically unstable boundary conditions: Support nodes are collinear, leaving rotation unconstrained.")
+
         C = np.zeros((num_edges, num_nodes), dtype=float)
         for i, (u, v) in enumerate(edges):
             C[i, u] = -1.0
@@ -348,6 +357,13 @@ class UnderwoodDRSolver:
             dx_spacing = float(getattr(self.domain, "dx", 100.0))
             prestress_array = np.where(is_warp, self.prestress_warp_N_mm * dy_spacing, self.prestress_weft_N_mm * dx_spacing)
 
+        # Assemble Prestress Nodal Force Contribution Vector for Exact Residual Normalization
+        unit_vecs_0 = edge_vecs / rest_lengths[:, None]
+        f_prestress_vecs = prestress_array[:, None] * unit_vecs_0
+        F_prestress_nodal = np.zeros((num_nodes, 3), dtype=float)
+        np.add.at(F_prestress_nodal, edges[:, 0], f_prestress_vecs)
+        np.add.at(F_prestress_nodal, edges[:, 1], -f_prestress_vecs)
+
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
         if self.gamma_kn_m3 > 0.0:
@@ -368,10 +384,10 @@ class UnderwoodDRSolver:
             closest_idx = int(np.argmin(dists))
             F_ext[closest_idx] += [fx_N, fy_N, fz_N]
 
-        # Prestress-inclusive Force Normalisation
+        # Assemble Prestress-Inclusive Nodal Residual Normalization Denominator
         total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
-        max_prestress_mag = np.max(prestress_array) if len(prestress_array) > 0 else 1.0
-        force_denom = max(total_ext_force_mag, max_prestress_mag, 1.0)
+        total_prestress_nodal_mag = np.max(np.linalg.norm(F_prestress_nodal, axis=1)) if len(F_prestress_nodal) > 0 else 1.0
+        force_denom = max(total_ext_force_mag, total_prestress_nodal_mag, 1.0)
 
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
