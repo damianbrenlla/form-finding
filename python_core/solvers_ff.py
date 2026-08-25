@@ -6,13 +6,22 @@ import numpy as np
 
 
 class ForceDensitySolver:
-    """Direct Linear Solver using the Force Density Method (FDM) for Cable Nets."""
+    """
+    Direct Linear Solver using the Force Density Method (FDM) for Cable Nets.
+    
+    NOTE ON CATENARY DEAD LOAD:
+    FDM is strictly linear for fixed force density ratios q = S / L. Element self-weight
+    is incorporated deterministically as a lumped vertical RHS load vector f_sw.
+    This solves exact spatial catenary equilibrium under dead load in a single linear pass
+    without requiring iterative q-optimisation loops.
+    """
 
-    def __init__(self, domain, E_modulus: float = 210000.0, area_mm2: float = 100.0, prestress_force: float = 0.0, point_loads: list = None, **kwargs):
+    def __init__(self, domain, E_modulus: float = 210000.0, area_mm2: float = 100.0, prestress_force: float = 0.0, point_loads: list = None, gamma_kn_m3: float = 78.5, **kwargs):
         self.domain = domain
         self.E = max(float(E_modulus), 1.0)
         self.area = max(float(area_mm2), 1e-4)
         self.prestress = float(prestress_force)
+        self.gamma_kn_m3 = max(float(gamma_kn_m3), 0.0)
         self.point_loads = point_loads if point_loads is not None else []
 
     def solve_equilibrium(self, iterations: int = 1, invert_form: bool = False):
@@ -82,7 +91,22 @@ class ForceDensitySolver:
                     iu_f = fixed_map[u]
                     Df[iv, iu_f] -= q_k
 
+        # --- External and Self-Weight Load Assembly ---
         P_ext = np.zeros((N_free, 3), dtype=float)
+
+        # Cable Dead Load (kN/m3 -> kg/mm3: gamma_kn_m3 * 1000 / 9.81 / 1e9 = gamma / 9.81 * 1e-6)
+        if self.gamma_kn_m3 > 0.0:
+            density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
+            for i, (u, v) in enumerate(edges):
+                L = rest_lengths[i]
+                member_mass_kg = density_kg_mm3 * self.area * L
+                half_weight_N = (member_mass_kg * 9.81) / 2.0
+                if u in free_map:
+                    P_ext[free_map[u], 2] -= half_weight_N
+                if v in free_map:
+                    P_ext[free_map[v], 2] -= half_weight_N
+
+        # External Point Loads
         for ld in self.point_loads:
             px, py, pz = float(ld.get("x", 0)), float(ld.get("y", 0)), float(ld.get("z", 0))
             fx_N = float(ld.get("Fx", 0)) * 1000.0
@@ -97,12 +121,17 @@ class ForceDensitySolver:
 
         X_fixed = nodes[fixed_indices]
         RHS = P_ext - np.dot(Df, X_fixed)
+
+        # Fast Pivot Conditioning Check (Prevents silent inversion of unconstrained systems)
+        diag_D = np.abs(np.diag(D))
+        if np.any(diag_D < 1e-12):
+            raise ValueError("Singular force density matrix: cable network is under-constrained or missing boundary supports.")
+
         try:
             X_free = np.linalg.solve(D, RHS)
             nodes[free_indices] = X_free
         except np.linalg.LinAlgError:
-            X_free = np.dot(np.linalg.pinv(D), RHS)
-            nodes[free_indices] = X_free
+            raise ValueError("Unstable boundary conditions: Force density matrix linear solve failed.")
 
         axial_forces = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
@@ -171,8 +200,9 @@ class InvertedGravityDRSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
-        gamma_effective = self.gamma_kn_m3 if self.gamma_kn_m3 > 0 else 20.0
-        density_kg_mm3 = (gamma_effective / 9.81) * 1e-9
+        # Correct unit conversion: kN/m3 -> kg/mm3 = gamma * 1000 / 9.81 / 1e9 = gamma / 9.81 * 1e-6
+        gamma_effective = self.gamma_kn_m3 if self.gamma_kn_m3 > 0 else 25.0
+        density_kg_mm3 = (gamma_effective / 9.81) * 1e-6
         for i, (u, v) in enumerate(edges):
             L = rest_lengths[i]
             member_mass_kg = density_kg_mm3 * self.area * L
@@ -290,8 +320,9 @@ class UnderwoodDRSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
+        # Correct unit conversion: kN/m3 -> kg/mm3 = gamma * 1000 / 9.81 / 1e9 = gamma / 9.81 * 1e-6
         if self.gamma_kn_m3 > 0.0:
-            density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-9
+            density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
                 L = rest_lengths[i]
                 member_mass_kg = density_kg_mm3 * self.area * L
