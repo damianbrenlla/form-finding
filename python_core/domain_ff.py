@@ -42,7 +42,7 @@ class FormFindingDomain3D:
         is_pure_cable = self.material_type in ("cables", "cable")
 
         if is_pure_cable:
-            # Construct 1D Cable Nodal Chain along primary domain diagonal/span
+            # Construct 1D Cable Nodal Chain along primary span
             x_lin = np.linspace(0, self.Lx, self.nx + 1)
             y_lin = np.linspace(0, self.Ly if self.Ly > 0 else 0, self.nx + 1)
             
@@ -81,13 +81,16 @@ class FormFindingDomain3D:
         self.edges = np.array(self.edges, dtype=int)
 
     def _auto_tolerance(self) -> float:
+        """
+        Calculates node-proximity tolerance from grid spacing.
+        """
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
         return max(dx, dy) * 0.75
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
         """
-        Fixes the closest node evaluating XY planar proximity and updates 3D positions.
+        Fixes the closest node evaluating XY planar proximity so Z elevation changes don't fail snapping.
         """
         if tol is None:
             tol = self._auto_tolerance()
