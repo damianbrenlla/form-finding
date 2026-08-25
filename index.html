@@ -130,18 +130,18 @@
         }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: monospace; font-size: 0.70rem; color: #333333; }
 
-        #intro-overlay {
+        #intro-overlay, #load-prompt-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
             z-index: 1000;
         }
-        #intro-modal {
+        #intro-modal, #load-prompt-modal {
             background: #ffffff; border: 1px solid #000000;
             max-width: 480px; width: 90%; padding: 28px 28px 22px 28px;
             box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
         }
-        #intro-modal .subtitle { margin-bottom: 16px; }
-        #intro-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
+        #intro-modal .subtitle, #load-prompt-modal .subtitle { margin-bottom: 16px; }
+        #intro-modal p, #load-prompt-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
         #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
         #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 4px; }
         #intro-modal .author-line {
@@ -155,6 +155,7 @@
 </head>
 <body>
 
+<!-- Startup Intro Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
@@ -184,9 +185,28 @@
             Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
         </div>
 
-        <button class="btn-primary" style="margin-top: 0;" onclick="document.getElementById('intro-overlay').style.display='none';">
+        <button class="btn-primary" style="margin-top: 0; width: 100%;" onclick="document.getElementById('intro-overlay').style.display='none';">
             Enter Application
         </button>
+    </div>
+</div>
+
+<!-- Custom Minimalist Click-to-Load Modal -->
+<div id="load-prompt-overlay" style="display: none;">
+    <div id="load-prompt-modal">
+        <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
+        <div class="subtitle">Assign Cable Point Load</div>
+        <p id="load_prompt_coords_text">Cable segment targeted at (0, 0, 0) mm.</p>
+        
+        <div class="control-group" style="margin-bottom: 16px;">
+            <label>Vertical Point Load Fz (kN)</label>
+            <input type="number" id="prompt_fz_input" value="-12.5" step="0.5" style="font-family: monospace; font-size: 0.85rem; padding: 8px;">
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+            <button class="btn-primary" style="flex: 1; margin-top: 0;" onclick="confirmCableLoadPrompt()">Confirm Load</button>
+            <button class="btn-secondary-danger" style="flex: 1;" onclick="closeCableLoadPrompt()">Cancel</button>
+        </div>
     </div>
 </div>
 
@@ -282,7 +302,8 @@
         </table>
     </div>
 
-    <div class="control-group" style="margin-top: 6px;">
+    <!-- Line Supports Container (Hidden strictly when material_type == cables) -->
+    <div id="line_supports_container" class="control-group" style="margin-top: 6px;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
             <div class="btn-group">
@@ -400,6 +421,7 @@
     var axesScene, axesCamera, axesGroup;
     var raycaster = new THREE.Raycaster();
     var mouse = new THREE.Vector2();
+    var pendingSnapCoords = null;
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
 
@@ -450,6 +472,15 @@
         var genDiv = document.getElementById('mat_generic_div');
         var prestressContainer = document.getElementById('prestress_container');
         var hintEl = document.getElementById('cable_click_hint');
+        var lineSupportContainer = document.getElementById('line_supports_container');
+
+        // Disable line supports strictly when Cables is selected
+        if (matType === 'cables') {
+            lineSupportContainer.style.display = 'none';
+            clearAllLineSupports();
+        } else {
+            lineSupportContainer.style.display = 'flex';
+        }
 
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
         document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
@@ -586,12 +617,24 @@
             var snapY = Math.round(hitPoint.z);
             var snapZ = Math.round(hitPoint.y);
 
-            var loadFz = prompt(`Cable segment targeted at (${snapX}, ${snapY}, ${snapZ}) mm. Enter vertical load Fz (kN):`, "-12.5");
-            if (loadFz !== null && !isNaN(parseFloat(loadFz))) {
-                addLoadRow(snapX, snapY, snapZ, 0, 0, parseFloat(loadFz));
-                updateDomainVisuals();
-            }
+            pendingSnapCoords = { x: snapX, y: snapY, z: snapZ };
+            document.getElementById('load_prompt_coords_text').innerText = `Cable segment targeted at (${snapX}, ${snapY}, ${snapZ}) mm.`;
+            document.getElementById('load-prompt-overlay').style.display = 'flex';
         }
+    }
+
+    function confirmCableLoadPrompt() {
+        var fzVal = parseFloat(document.getElementById('prompt_fz_input').value);
+        if (pendingSnapCoords && !isNaN(fzVal)) {
+            addLoadRow(pendingSnapCoords.x, pendingSnapCoords.y, pendingSnapCoords.z, 0, 0, fzVal);
+            updateDomainVisuals();
+        }
+        closeCableLoadPrompt();
+    }
+
+    function closeCableLoadPrompt() {
+        pendingSnapCoords = null;
+        document.getElementById('load-prompt-overlay').style.display = 'none';
     }
 
     function animate() {
@@ -762,10 +805,10 @@
 
         if (mesh) scene.remove(mesh);
 
-        // Single 1D Cable Line Preview Spanning Between Supports
-        if (matType === 'cables' && pointSups.length >= 2) {
-            var p1 = pointSups[0];
-            var p2 = pointSups[1];
+        // Single 1D Cable Line Preview Spanning Directly Between Support 1 & Support 2 in 3D
+        if (matType === 'cables') {
+            var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
+            var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
             var nx = parseInt(document.getElementById('nx').value) || 36;
 
             var positions = [];
