@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * Pass 2 — Forwarding DR convergence diagnostics & clean WASM exception propagation.
+ * v15 — Wires domain bilinear surface Z-interpolation & passes prestress line tension baselines.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -108,12 +108,13 @@ domain = FormFindingDomain3D(
 )
 
 # Discrete Point Supports
-for pt in payload.get("point_supports", []):
-    domain.add_point_support(
-        float(pt.get("x", 0)),
-        float(pt.get("y", 0)),
-        float(pt.get("z", 0))
-    )
+point_sups = payload.get("point_supports", [])
+corner_z_map = {}
+
+for pt in point_sups:
+    px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
+    domain.add_point_support(px, py, pz)
+    corner_z_map[(px, py)] = pz
 
 # Discrete 3D Line Supports
 for l_sup in payload.get("line_supports", []):
@@ -136,6 +137,11 @@ elif sup_preset == "two_opposite_lines":
 
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
+
+# --- SEED INTERIOR 3D ELEVATIONS VIA BILINEAR INTERPOLATION ---
+# Fixes flat Z=0 initial mesh collapse for membranes/shells prior to running DR
+if hasattr(domain, 'apply_bilinear_surface_interpolation') and mat_type not in ("cables", "cable"):
+    domain.apply_bilinear_surface_interpolation(corner_z_map)
 
 # --- Material Cross-Section Area & Prestress Parsing ---
 prestress_warp_N_mm = 0.0
