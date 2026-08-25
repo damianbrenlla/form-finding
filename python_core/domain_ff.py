@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v5 — 1D linear cable chain topology & planar 2D support snapping (fixes non-zero Z elevations)
+# v6 — 1D spatial cable chain interpolating directly between 3D support vectors.
 
 import numpy as np
 
@@ -37,15 +37,17 @@ class FormFindingDomain3D:
 
     def _build_network_topology(self):
         """
-        Generates 1D cable chain for cables, or 2D flat node-edge grid for shells/membranes.
+        Generates 1D spatial cable chain for cables, or 2D flat node-edge grid for shells/membranes.
         """
         is_pure_cable = self.material_type in ("cables", "cable")
 
         if is_pure_cable:
-            # Construct 1D Cable Nodal Chain along X-axis between 0 and Lx
+            # Construct 1D Cable Nodal Chain along primary domain diagonal/span
             x_lin = np.linspace(0, self.Lx, self.nx + 1)
-            for i, x in enumerate(x_lin):
-                self.nodes.append([x, 0.0, 0.0])
+            y_lin = np.linspace(0, self.Ly if self.Ly > 0 else 0, self.nx + 1)
+            
+            for i in range(self.nx + 1):
+                self.nodes.append([x_lin[i], y_lin[i], 0.0])
                 if i < self.nx:
                     self.edges.append([i, i + 1])
         else:
@@ -79,16 +81,13 @@ class FormFindingDomain3D:
         self.edges = np.array(self.edges, dtype=int)
 
     def _auto_tolerance(self) -> float:
-        """
-        Calculates node-proximity tolerance from grid spacing.
-        """
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
-        return max(dx, dy) * 0.55
+        return max(dx, dy) * 0.75
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
         """
-        Fixes the closest node evaluating XY planar proximity so Z elevation changes don't fail snapping.
+        Fixes the closest node evaluating XY planar proximity and updates 3D positions.
         """
         if tol is None:
             tol = self._auto_tolerance()
@@ -98,13 +97,20 @@ class FormFindingDomain3D:
 
         if dists_2d[idx] <= tol:
             self.fixed_nodes.add(idx)
-            # Update node's initial spatial elevation to match input support Z
-            self.nodes[idx, 2] = float(z)
+            self.nodes[idx, :3] = [float(x), float(y), float(z)]
+
+            # Re-interpolate internal cable nodes in 3D between end supports
+            if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
+                fixed_list = sorted(list(self.fixed_nodes))
+                p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
+                
+                pos1 = self.nodes[p1_idx].copy()
+                pos2 = self.nodes[p2_idx].copy()
+                
+                for axis in range(3):
+                    self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
 
     def add_line_support(self, axis: str = "x", value: float = 0.0, tol: float = None):
-        """
-        Fixes all nodes along an axis alignment at the given coordinate.
-        """
         if tol is None:
             tol = self._auto_tolerance()
 
@@ -115,9 +121,6 @@ class FormFindingDomain3D:
             self.fixed_nodes.add(int(idx))
 
     def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None):
-        """
-        Fixes all nodes lying along a 3D line segment vector between p1 and p2.
-        """
         if tol is None:
             tol = self._auto_tolerance()
 
@@ -141,12 +144,9 @@ class FormFindingDomain3D:
                 dist = np.linalg.norm(node - proj_pt)
                 if dist <= tol:
                     self.fixed_nodes.add(idx)
-                    self.nodes[idx, 2] = float(proj_pt[2])
+                    self.nodes[idx] = proj_pt
 
     def add_edge_support(self, edge: str = "all"):
-        """
-        Fixes nodes along named boundary edges.
-        """
         tol = self._auto_tolerance()
         if edge in ("all", "x0"):
             self.add_line_support("x", 0.0, tol)
@@ -158,7 +158,6 @@ class FormFindingDomain3D:
             self.add_line_support("y", self.Ly, tol)
 
     def get_boundary_nodes(self) -> np.ndarray:
-        """Returns indices of all perimeter nodes."""
         tol = self._auto_tolerance()
         mask = (
             (np.abs(self.nodes[:, 0]) < tol) |
