@@ -4,7 +4,7 @@
 
 class FormFindingMaterialRegistry:
     """Centralized Registry for Structural Materials adhering to Eurocodes (EC2, EC3, EC5, EC6)
-    plus Structural Cables, Architectural Fabrics, and Custom Isotropic logic.
+    plus Structural Cables, Architectural Fabrics, ETFE Foils, and Custom Isotropic logic.
     """
 
     STEEL_GRADES = {
@@ -33,7 +33,7 @@ class FormFindingMaterialRegistry:
     }
 
     CABLE_GRADES = {
-        "Flexible Rope (7x19)":      {"E": 110000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
+        "Flexible Rope (7x19)":        {"E": 110000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
         "Spiral Strand (1x19)":      {"E": 140000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
         "Locked Coil Cable":          {"E": 165000.0, "nu": 0.30, "f_k": 1570.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
         "High-Tensile Wire (1860)":   {"E": 195000.0, "nu": 0.30, "f_k": 1860.0, "gamma_M": 1.15, "gamma_kn_m3": 78.5},
@@ -47,6 +47,8 @@ class FormFindingMaterialRegistry:
         "PTFE Type III (Medium)":  {"E": 1600.0, "nu": 0.25, "f_k": 110.0, "gamma_M": 1.40, "gamma_kn_m3": 15.0},
         "PTFE Type IV (Heavy)":    {"E": 2000.0, "nu": 0.25, "f_k": 140.0, "gamma_M": 1.40, "gamma_kn_m3": 16.5},
         "PTFE Type V (Extreme)":   {"E": 2400.0, "nu": 0.25, "f_k": 170.0, "gamma_M": 1.40, "gamma_kn_m3": 18.0},
+        "ETFE Foil (0.25mm)":       {"E": 650.0,  "nu": 0.40, "f_k": 50.0,  "gamma_M": 1.30, "gamma_kn_m3": 17.5},
+        "PVC / Polyester Type II":  {"E": 950.0,  "nu": 0.30, "f_k": 70.0,  "gamma_M": 1.40, "gamma_kn_m3": 14.0},
     }
 
     MASONRY_GAMMA_KN_M3 = 19.0
@@ -59,9 +61,25 @@ class FormFindingMaterialRegistry:
     @classmethod
     def resolve_properties(cls, payload: dict) -> dict:
         mat_type = str(payload.get("material_type", "cables")).lower()
+        grade = payload.get("material_grade", "")
 
-        if mat_type in ("cables", "cable"):
-            grade = payload.get("material_grade", "Spiral Strand (1x19)")
+        # Generic / Custom Isotropic Override
+        if mat_type == "generic" or "custom" in grade.lower():
+            E_val = float(payload.get("custom_E", 33000.0))
+            nu_val = float(payload.get("custom_nu", 0.20))
+            fk_val = float(payload.get("custom_fk", 30.0))
+            gamma_val = float(payload.get("custom_gamma_kn_m3", 25.0))
+            return {
+                "material_type": mat_type,
+                "material_name": "Custom Isotropic Material",
+                "E": E_val,
+                "nu": nu_val,
+                "f_k": fk_val,
+                "f_d": fk_val,
+                "gamma_kn_m3": gamma_val,
+            }
+
+        elif mat_type in ("cables", "cable"):
             props = cls.CABLE_GRADES.get(grade, cls.CABLE_GRADES["Spiral Strand (1x19)"])
             return {
                 "material_type": "cables",
@@ -74,11 +92,10 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type in ("membrane", "fabric"):
-            grade = payload.get("material_grade", "PTFE Type II (Standard)")
             props = cls.FABRIC_GRADES.get(grade, cls.FABRIC_GRADES["PTFE Type II (Standard)"])
             return {
                 "material_type": "membrane",
-                "material_name": f"Fabric {grade}",
+                "material_name": f"Membrane {grade}",
                 "E": props["E"],
                 "nu": props["nu"],
                 "f_k": props["f_k"],
@@ -87,7 +104,6 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type == "steel":
-            grade = payload.get("material_grade", "S355")
             props = cls.STEEL_GRADES.get(grade, cls.STEEL_GRADES["S355"])
             return {
                 "material_type": "steel",
@@ -100,7 +116,6 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type == "concrete":
-            grade = payload.get("material_grade", "C30/37")
             props = cls.CONCRETE_GRADES.get(grade, cls.CONCRETE_GRADES["C30/37"])
             f_cd = props["alpha_cc"] * props["f_k"] / props["gamma_M"]
             return {
@@ -114,7 +129,6 @@ class FormFindingMaterialRegistry:
             }
 
         elif mat_type == "timber":
-            grade = payload.get("material_grade", "C24")
             props = cls.TIMBER_GRADES.get(grade, cls.TIMBER_GRADES["C24"])
             return {
                 "material_type": "timber",
@@ -154,21 +168,6 @@ class FormFindingMaterialRegistry:
                 "f_k": fk_eff,
                 "f_d": fk_eff / 1.5,
                 "gamma_kn_m3": cls.STONE_GAMMA_KN_M3,
-            }
-
-        elif mat_type == "generic":
-            E_val = float(payload.get("custom_E", 33000.0))
-            nu_val = float(payload.get("custom_nu", 0.20))
-            fk_val = float(payload.get("custom_fk", 30.0))
-            gamma_val = float(payload.get("custom_gamma_kn_m3", 25.0))
-            return {
-                "material_type": "generic",
-                "material_name": "Custom / Generic Isotropic Material",
-                "E": E_val,
-                "nu": nu_val,
-                "f_k": fk_val,
-                "f_d": fk_val,
-                "gamma_kn_m3": gamma_val,
             }
 
         raise ValueError(f"Unsupported material type: {mat_type}")
