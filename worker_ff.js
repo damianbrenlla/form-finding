@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v8 — Inversion and solver routing driven directly by material_type.
+ * v10 — Multi-Algorithm Factory Integration (FDM, Inverted Compression DR, Underwood DR)
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -29,18 +29,9 @@ async function initEngine() {
         const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
         for (const file of files) {
             const url = corePythonUrl(file) + `?cb=${Date.now()}`;
-            let response;
-            try {
-                response = await fetch(url);
-            } catch (networkErr) {
-                throw new Error(
-                    `Network error fetching ${file} at ${url}: ${networkErr.message}.`
-                );
-            }
+            let response = await fetch(url);
             if (!response.ok) {
-                throw new Error(
-                    `HTTP ${response.status} ${response.statusText} fetching ${file} at ${url}.`
-                );
+                throw new Error(`HTTP ${response.status} fetching ${file} at ${url}.`);
             }
             const code = await response.text();
             pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
@@ -82,18 +73,18 @@ import json
 import numpy as np
 from core.domain_ff import FormFindingDomain3D
 from core.materials import FormFindingMaterialRegistry
-from core.solvers_ff import UniversalFormFindingSolver
+from core.solvers_ff import FormFindingSolverFactory
 
 payload = json.loads(payload_json)
 
-# --- Material Properties ---
+# 1. Resolve Material Properties
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
-mat_type  = payload.get("material_type", "cables")
+mat_type  = payload.get("material_type", "cables").lower()
 
-# --- Domain Construction ---
+# 2. Construct Spatial Domain
 Lx_val = float(payload.get("Lx", 6000))
-Ly_val = float(payload.get("Ly", 300))
-Lz_val = float(payload.get("Lz", 600))
+Ly_val = float(payload.get("Ly", 3000))
+Lz_val = float(payload.get("Lz", 1000))
 
 domain = FormFindingDomain3D(
     Lx=Lx_val,
@@ -104,7 +95,7 @@ domain = FormFindingDomain3D(
     geometry_preset="surface_grid"
 )
 
-# --- Discrete Point Supports ---
+# 3. Add Point Supports
 for pt in payload.get("point_supports", []):
     domain.add_point_support(
         float(pt.get("x", 0)),
@@ -112,27 +103,21 @@ for pt in payload.get("point_supports", []):
         float(pt.get("z", 0))
     )
 
-# --- Discrete 3D Line Supports ---
+# 4. Add 3D Line Supports
 for l_sup in payload.get("line_supports", []):
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
-    
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
-    else:
-        domain.add_point_support(*p1)
-        domain.add_point_support(*p2)
 
 if len(domain.fixed_nodes) == 0:
-    raise ValueError(
-        "No support nodes resolved. Add at least one discrete point or line support in the tables."
-    )
+    raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# --- Cross-Section Area ---
-if mat_type == "cables":
+# 5. Determine Cross-Section Area
+if mat_type in ("cables", "cable"):
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
-elif mat_type == "membrane":
+elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
     area_mm2 = t_mm * 1000.0
 else:
@@ -140,44 +125,37 @@ else:
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
     area_mm2 = b_mm * h_mm
 
-# --- Prestress (Only applied if cable/membrane/generic) ---
 prestress_N = float(payload.get("prestress", 0.0))
-if mat_type not in ("cables", "membrane", "generic"):
+if mat_type not in ("cables", "cable", "membrane", "fabric", "generic"):
     prestress_N = 0.0
 
-# --- Self-Weight ---
 include_sw = bool(payload.get("include_self_weight", True))
 gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
-# --- Solver Route ---
-solver = UniversalFormFindingSolver(
+# 6. Instantiate Material-Specific Algorithm via Factory
+solver = FormFindingSolverFactory.create(
+    material_type   = mat_type,
     domain          = domain,
-    E_modulus       = mat_props.get("E", 210000.0),
+    mat_props       = mat_props,
     gamma_kn_m3     = gamma,
     area_mm2        = area_mm2,
     prestress_force = prestress_N,
-    point_loads     = payload.get("loads", []),
-    material_type   = mat_type,
+    point_loads     = payload.get("loads", [])
 )
 
-# Compression structures (concrete, timber grid-shells, vaulted masonry) invert upside-down after hanging solve
-invert_flag = mat_type in ("concrete", "timber", "masonry")
-iters       = 500
-
-initial_nodes = np.copy(domain.nodes).astype(float)
-
+# Execute Solver
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
-    iterations  = iters,
-    invert_form = invert_flag,
+    iterations = 500
 )
 
-displacement_vecs = equilibrium_nodes - initial_nodes
+# 7. Stress and Deflection Calculations
+displacement_vecs = equilibrium_nodes - np.copy(domain.nodes).astype(float)
 deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
 u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
 element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
 
-# Nodal Stress Recovery
+# Nodal Stress Averaging
 num_nodes = len(equilibrium_nodes)
 nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
 node_degree = np.zeros(num_nodes, dtype=float)
@@ -195,7 +173,6 @@ nodal_stresses_mpa /= node_degree
 sigma_max_tens = float(np.max(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 
-# Reactions
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
@@ -211,7 +188,6 @@ for idx in fixed_indices:
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
-# Output Formatting
 clean_nodes    = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
 clean_forces   = np.nan_to_num(axial_forces,        nan=0.0, posinf=0.0, neginf=0.0)
 clean_stresses = np.nan_to_num(nodal_stresses_mpa, nan=0.0, posinf=0.0, neginf=0.0)
