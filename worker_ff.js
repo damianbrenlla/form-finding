@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * Pass 1 — Corrected self-weight payload processing & exception propagation.
+ * Pass 1 — Corrected self-weight payload processing, orthotropic membrane line tension, and exception propagation.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -137,14 +137,24 @@ elif sup_preset == "two_opposite_lines":
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# --- Material Cross-Section Area Parsing ---
+# --- Material Cross-Section Area & Prestress Parsing ---
+prestress_warp_N_mm = 0.0
+prestress_weft_N_mm = 0.0
+edge_cable_prestress_N = 0.0
+prestress_N = 0.0
+
 if mat_type in ("cables", "cable"):
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
+    prestress_N = float(payload.get("prestress", 0.0))
 
 elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
-    area_mm2 = t_mm * 1000.0
+    area_mm2 = t_mm * 1000.0  # Equivalent 1m strip
+    # Convert kN/m to N/mm (1 kN/m = 1 N/mm)
+    prestress_warp_N_mm = float(payload.get("prestress_warp_kn_m", 2.0))
+    prestress_weft_N_mm = float(payload.get("prestress_weft_kn_m", 2.0))
+    edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0
 
 elif mat_type == "concrete":
     t_mm     = max(float(payload.get("sec_concrete_t", 150.0)), 10.0)
@@ -160,21 +170,20 @@ else:
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
     area_mm2 = b_mm * h_mm
 
-prestress_N = float(payload.get("prestress", 0.0))
-if mat_type not in ("cables", "cable", "membrane", "fabric", "generic"):
-    prestress_N = 0.0
-
 include_sw = bool(payload.get("include_self_weight", True))
 gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
 solver = FormFindingSolverFactory.create(
-    material_type   = mat_type,
-    domain          = domain,
-    mat_props       = mat_props,
-    gamma_kn_m3     = gamma,
-    area_mm2        = area_mm2,
-    prestress_force = prestress_N,
-    point_loads     = payload.get("loads", [])
+    material_type          = mat_type,
+    domain                 = domain,
+    mat_props              = mat_props,
+    gamma_kn_m3            = gamma,
+    area_mm2               = area_mm2,
+    prestress_force        = prestress_N,
+    prestress_warp_N_mm    = prestress_warp_N_mm,
+    prestress_weft_N_mm    = prestress_weft_N_mm,
+    edge_cable_prestress_N = edge_cable_prestress_N,
+    point_loads            = payload.get("loads", [])
 )
 
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
