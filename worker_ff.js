@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v15 — Wires domain bilinear surface Z-interpolation & passes prestress line tension baselines.
+ * v16 — Wires domain bilinear surface Z-interpolation & passes prestress line tension baselines.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -107,7 +107,7 @@ domain = FormFindingDomain3D(
     material_type=mat_type
 )
 
-# Discrete Point Supports
+# Discrete Point Supports & Corner Z Map Assembly
 point_sups = payload.get("point_supports", [])
 corner_z_map = {}
 
