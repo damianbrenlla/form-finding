@@ -145,29 +145,31 @@
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.70rem; color: #333333; 
         }
 
-        /* Hover Reaction Tooltip Styling */
+        /* Minimalist Black and White Hover Reaction Tooltip Styling */
         #reaction-tooltip {
             position: absolute;
             display: none;
             pointer-events: none;
-            background: rgba(0, 0, 0, 0.88);
-            color: #ffffff;
-            padding: 8px 10px;
-            border-radius: 2px;
+            background: #ffffff;
+            color: #000000;
+            padding: 10px 12px;
+            border-radius: 0px;
             font-size: 0.72rem;
-            line-height: 1.4;
+            line-height: 1.45;
             z-index: 1000;
-            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.15);
-            border: 1px solid #333333;
+            box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.15);
+            border: 1px solid #000000;
+            min-width: 150px;
         }
         #reaction-tooltip .tt-title {
             font-weight: 700;
-            color: #40c4ff;
+            color: #000000;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
-            border-bottom: 1px solid #555555;
-            padding-bottom: 2px;
+            letter-spacing: 0.8px;
+            font-size: 0.68rem;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #e5e5e5;
+            padding-bottom: 4px;
         }
 
         #intro-overlay, #app-modal-overlay {
@@ -292,7 +294,20 @@
 
     <div id="mat_standard_div" class="control-group">
         <label>Material Specification / Grade</label>
-        <select id="mat_grade"></select>
+        <select id="mat_grade" onchange="onGradeChange()"></select>
+    </div>
+
+    <!-- Custom Isotropic Properties Builder Card (Revealed on selecting Custom) -->
+    <div id="mat_generic_div" class="span-builder-card" style="display: none;">
+        <label style="font-weight: 700; color: #000000; margin: 0;">Custom Isotropic Material Definition</label>
+        <div class="span-builder-fields">
+            <div class="control-subgroup"><label>Modulus E (MPa)</label><input type="number" id="custom_E" value="33000"></div>
+            <div class="control-subgroup"><label>Poisson's ν</label><input type="number" step="0.01" id="custom_nu" value="0.20"></div>
+        </div>
+        <div class="span-builder-fields">
+            <div class="control-subgroup"><label>Yield Strength fk (MPa)</label><input type="number" id="custom_fk" value="30"></div>
+            <div class="control-subgroup"><label>Density γ (kN/m³)</label><input type="number" step="0.1" id="custom_gamma" value="25.0"></div>
+        </div>
     </div>
 
     <!-- Dynamic Section Geometry Inputs per Material -->
@@ -443,7 +458,7 @@
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+1.00 MPa</span></div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-weight: bold;">+1.00 MPa</span></div>
                 <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
             </div>
         </div>
@@ -483,7 +498,7 @@
             </div>
         </div>
     </div>
-    <!-- Hover Reaction Vector Inspector Tooltip -->
+    <!-- Minimalist Hover Reaction Vector Inspector Tooltip -->
     <div id="reaction-tooltip"></div>
 </div>
 
@@ -504,8 +519,27 @@
     var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), activeLy);
     var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), activeLz);
 
-    var CABLE_GRADES = ["Spiral Strand (1x19)", "Flexible Rope (7x19)", "Locked Coil Cable", "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)"];
-    var MEMBRANE_GRADES = ["PTFE Type II (Standard)", "PTFE Type I (Light)", "PTFE Type III (Medium)", "PTFE Type IV (Heavy)"];
+    // Expanded Multi-Material Specifications
+    var CABLE_GRADES = [
+        "Spiral Strand (1x19)", 
+        "Flexible Rope (7x19)", 
+        "Locked Coil Cable", 
+        "High-Tensile Wire (1860)", 
+        "Stainless Strand (AISI 316)",
+        "Aramid / Synthetic Fiber",
+        "Custom Isotropic Cable"
+    ];
+    
+    var MEMBRANE_GRADES = [
+        "PTFE Type II (Standard)", 
+        "PTFE Type I (Light)", 
+        "PTFE Type III (Medium)", 
+        "PTFE Type IV (Heavy)",
+        "PTFE Type V (Extreme)",
+        "ETFE Foil (0.25mm)",
+        "PVC / Polyester Type II",
+        "Custom Isotropic Membrane"
+    ];
 
     function showAppModal(titleText, bodyText) {
         document.getElementById('app_modal_subtitle').innerText = titleText || "Notification";
@@ -557,6 +591,12 @@
         updateDomainVisuals();
     }
 
+    function onGradeChange() {
+        var grade = document.getElementById('mat_grade').value;
+        var isCustom = grade.toLowerCase().includes('custom');
+        document.getElementById('mat_generic_div').style.display = isCustom ? 'flex' : 'none';
+    }
+
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
         var matType = document.getElementById('mat_type').value;
@@ -566,7 +606,6 @@
         document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
         document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
 
-        // Hide compression slider for tensile fabrics & cables
         compGroup.style.display = (['cables', 'membrane'].includes(matType)) ? 'none' : 'block';
 
         if (mode === 'cable_tension' && currentVertices.length > 0) {
@@ -673,6 +712,7 @@
         var list = (matType === 'cables') ? CABLE_GRADES : MEMBRANE_GRADES;
         list.forEach(function(g) { var opt = document.createElement('option'); opt.value = g; opt.innerText = g; gradeSelect.appendChild(opt); });
 
+        onGradeChange();
         toggleRenderModeUI();
     }
 
@@ -754,7 +794,7 @@
         updateDomainVisuals();
     }
 
-    /* Raycasting Hover Event for Interactive Force Component Inspection */
+    /* Raycasting Hover Event for Minimalist Black/White Force Vector Component Inspection */
     function onViewportMouseMove(event) {
         var container = document.getElementById('viewport');
         var rect = container.getBoundingClientRect();
@@ -773,7 +813,6 @@
 
         if (intersects.length > 0) {
             var obj = intersects[0].object;
-            // Traverse parent hierarchy to locate reaction metadata attached to the group element
             while (obj && !obj.userData.reactionData && obj.parent) {
                 obj = obj.parent;
             }
@@ -785,11 +824,11 @@
                 tooltip.style.top = (event.clientY - rect.top + 15) + 'px';
 
                 tooltip.innerHTML = `
-                    <div class="tt-title">${d.type || "Support Reaction"}</div>
-                    <div><b>R_x:</b> ${d.Rx.toFixed(2)} kN</div>
-                    <div><b>R_y:</b> ${d.Ry.toFixed(2)} kN</div>
-                    <div><b>R_z:</b> ${d.Rz.toFixed(2)} kN</div>
-                    <div style="border-top: 1px solid #555; margin-top: 4px; padding-top: 2px;"><b>R_total:</b> ${d.Rtotal.toFixed(2)} kN</div>
+                    <div class="tt-title">${d.type || "Reaction Vector"}</div>
+                    <div><b>R<sub>x</sub>:</b> ${d.Rx.toFixed(2)} kN</div>
+                    <div><b>R<sub>y</sub>:</b> ${d.Ry.toFixed(2)} kN</div>
+                    <div><b>R<sub>z</sub>:</b> ${d.Rz.toFixed(2)} kN</div>
+                    <div style="border-top: 1px solid #e5e5e5; margin-top: 4px; padding-top: 3px;"><b>R<sub>total</sub>:</b> ${d.Rtotal.toFixed(2)} kN</div>
                 `;
                 return;
             }
@@ -1095,8 +1134,8 @@
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
                     var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0xcc0000, 140, 70);
                     
-                    // Attach Reaction Vector Data for Mouse Hover Inspector
-                    arrow.userData.reactionData = { type: "Line Reaction Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
+                    // Attach Reaction Vector Data for Hover Inspector
+                    arrow.userData.reactionData = { type: "Line Support Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
                     
                     reactionGroup.add(arrow);
 
@@ -1119,7 +1158,7 @@
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
                 const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, 140, 70);
                 
-                // Attach Reaction Vector Data for Mouse Hover Inspector
+                // Attach Reaction Vector Data for Hover Inspector
                 arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
                 
                 reactionGroup.add(arrow);
@@ -1227,13 +1266,21 @@
         document.getElementById('results-actions-group').style.display = 'none';
 
         var matType = document.getElementById('mat_type').value;
+        var gradeVal = document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '';
+        var isCustomGrade = gradeVal.toLowerCase().includes('custom');
+
         var bounds = calculateBoundingBox();
         var payload = {
-            material_type: matType,
-            material_grade: document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '',
+            material_type: isCustomGrade ? "generic" : matType,
+            material_grade: gradeVal,
             sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
             sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
             
+            custom_E: parseFloat(document.getElementById('custom_E').value) || 33000.0,
+            custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.20,
+            custom_fk: parseFloat(document.getElementById('custom_fk').value) || 30.0,
+            custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
+
             prestress: (matType === 'cables') ? parseFloat(document.getElementById('prestress').value) || 0.0 : 0.0,
             prestress_warp_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_warp_kn_m').value) || 2.0 : 0.0,
             prestress_weft_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_weft_kn_m').value) || 2.0 : 0.0,
@@ -1419,8 +1466,9 @@
         stl += "endsolid DBSW_FormFound_Mesh\n";
         var blob = new Blob([stl], { type: 'text/plain' });
         var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        link.href = URL.click ? link.click() : null;
         link.download = 'DBSW_FormFound_Mesh.stl';
+        link.href = URL.createObjectURL(blob);
         link.click();
     }
 
