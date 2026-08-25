@@ -150,32 +150,39 @@
         }
         #intro-modal .author-line a { color: #000000; }
 
-        /* Cleaned Grid Alignment for Cable Span Load Builder */
-        .span-builder-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
+        /* Clean 2-Row Stacked Grid Layout for Sidebar Bounds */
+        .span-builder-card {
+            background: #f9f9f9;
+            padding: 10px;
+            border: 1px solid #e5e5e5;
+            margin-bottom: 6px;
+            display: flex;
+            flex-direction: column;
             gap: 8px;
-            align-items: end;
         }
-        .span-builder-grid .control-subgroup {
+        .span-builder-fields {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+        }
+        .span-builder-fields .control-subgroup {
+            flex: 1;
             display: flex;
             flex-direction: column;
             gap: 3px;
+            min-width: 0;
         }
-        .span-builder-grid label {
+        .span-builder-fields label {
             font-size: 0.65rem;
             color: #555555;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .span-builder-grid input {
+        .span-builder-fields input {
+            width: 100%;
             height: 28px;
             padding: 4px 6px;
-        }
-        .span-builder-grid button {
-            height: 28px;
-            padding: 0 10px;
-            font-size: 0.70rem;
-            white-space: nowrap;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -344,13 +351,13 @@
         <input type="number" id="prestress" value="5000">
     </div>
 
-    <!-- Aligned Cable Point Load Generator Grid -->
-    <div id="cable_span_load_builder" class="control-group" style="background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5; margin-bottom: 4px;">
-        <label style="font-weight: 700; color: #000000; margin-bottom: 2px;">Cable Span Point Load Generator</label>
-        <p style="font-size: 0.68rem; color: #666666; margin: 0 0 6px 0; line-height: 1.3;">
+    <!-- Re-architected 2-Row Cable Point Load Generator -->
+    <div id="cable_span_load_builder" class="span-builder-card">
+        <label style="font-weight: 700; color: #000000; margin: 0;">Cable Span Point Load Generator</label>
+        <p style="font-size: 0.68rem; color: #666666; margin: 0; line-height: 1.3;">
             Position loads along the cable length from Start (0.0) to End (1.0).
         </p>
-        <div class="span-builder-grid">
+        <div class="span-builder-fields">
             <div class="control-subgroup">
                 <label>Position Ratio (0.0 - 1.0)</label>
                 <input type="number" id="cable_load_ratio" value="0.50" min="0.0" max="1.0" step="0.05" style="font-family: monospace;">
@@ -359,8 +366,8 @@
                 <label>Vertical Load Fz (kN)</label>
                 <input type="number" id="cable_load_fz" value="-12.5" step="0.5" style="font-family: monospace;">
             </div>
-            <button class="btn-secondary" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
         </div>
+        <button class="btn-secondary" style="width: 100%; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
     </div>
 
     <div class="control-group">
@@ -583,7 +590,7 @@
         if (matType === 'cables') {
             lineSupportContainer.style.display = 'none';
             cutPlanesContainer.style.display = 'none';
-            cableSpanBuilder.style.display = 'block';
+            cableSpanBuilder.style.display = 'flex';
 
             var opt1 = document.createElement('option'); opt1.value = "grey"; opt1.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "cable_sag"; opt2.innerText = "Maximum Sag Drop-Line Indicator"; renderSelect.appendChild(opt2);
@@ -894,7 +901,7 @@
             }
         });
 
-        /* Scaled Point Load Arrow Rendering with Black Text Sprites */
+        /* Scaled Point Load Arrow Rendering with Capped Scaling */
         getLoadArrayData().forEach(function(ld) {
             var dir = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
             var mag = dir.length();
@@ -902,9 +909,9 @@
                 dir.normalize();
                 var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
                 
-                // Controlled scale relative to domain size (prevents giant red arrows)
-                var maxArrowLen = Math.min(activeLx, activeLy, activeLz) * 0.4;
-                var arrowLen = Math.min(Math.max(mag * 15, 200), maxArrowLen);
+                // Controlled scale relative to domain size (caps at 20% of domain span)
+                var maxArrowLen = Math.min(activeLx, activeLy, activeLz) * 0.20;
+                var arrowLen = Math.min(Math.max(mag * 15, 150), maxArrowLen);
                 
                 var arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, arrowLen * 0.25, arrowLen * 0.12);
                 scene.add(arrow); forceArrows.push(arrow);
@@ -912,7 +919,7 @@
                 // Black numerical force text sprite above arrow
                 var fzText = `${ld.Fz.toFixed(1)} kN`;
                 var labelSprite = makeTextSprite(fzText, '#000000');
-                labelSprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 80));
+                labelSprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 60));
                 scene.add(labelSprite); forceArrows.push(labelSprite);
             }
         });
