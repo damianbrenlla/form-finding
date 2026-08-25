@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v6 — 1D spatial cable chain interpolating directly between 3D support vectors.
+# v7 — Robust 3D spatial cable interpolation & fixed planar proximity support snapping.
 
 import numpy as np
 
@@ -81,12 +81,9 @@ class FormFindingDomain3D:
         self.edges = np.array(self.edges, dtype=int)
 
     def _auto_tolerance(self) -> float:
-        """
-        Calculates node-proximity tolerance from grid spacing.
-        """
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
-        return max(dx, dy) * 0.75
+        return max(dx, dy) * 1.5
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
         """
@@ -95,12 +92,15 @@ class FormFindingDomain3D:
         if tol is None:
             tol = self._auto_tolerance()
 
-        dists_2d = np.linalg.norm(self.nodes[:, :2] - np.array([x, y]), axis=1)
+        # Planar 2D distance calculation (X, Y)
+        pt_2d = np.array([float(x), float(y)])
+        dists_2d = np.linalg.norm(self.nodes[:, :2] - pt_2d, axis=1)
         idx = int(np.argmin(dists_2d))
 
-        if dists_2d[idx] <= tol:
+        # Always fix closest endpoint node for 1D cables or within tolerance
+        if dists_2d[idx] <= tol or self.material_type in ("cables", "cable"):
             self.fixed_nodes.add(idx)
-            self.nodes[idx, :3] = [float(x), float(y), float(z)]
+            self.nodes[idx] = [float(x), float(y), float(z)]
 
             # Re-interpolate internal cable nodes in 3D between end supports
             if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
