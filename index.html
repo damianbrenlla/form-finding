@@ -730,6 +730,15 @@
     }
 
     function addSupportRow(x, y, z, dofs) {
+        var matType = document.getElementById('mat_type').value;
+        var currentCount = document.querySelectorAll('#support_table_body tr').length;
+        
+        // Strictly restrict cable materials to a maximum of 2 point supports
+        if (matType === 'cables' && currentCount >= 2) {
+            alert("Cable structures are restricted to a maximum of 2 boundary supports.");
+            return;
+        }
+
         x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
         tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
@@ -973,12 +982,10 @@
         var maxSagNodePos = null;
         var chordProjPos = null;
 
-        // Iterate through calculated node coordinates in Three.js space [X, Z, Y]
         currentVertices.forEach(function(v) {
             var nodePos = new THREE.Vector3(v[0], v[2], v[1]);
             var vVec = new THREE.Vector3().subVectors(nodePos, p1);
             
-            // Project node onto straight chord vector
             var t = chordLenSq > 1e-6 ? vVec.dot(chordVec) / chordLenSq : 0.0;
             t = Math.max(0.0, Math.min(1.0, t));
             
