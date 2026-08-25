@@ -145,6 +145,31 @@
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.70rem; color: #333333; 
         }
 
+        /* Hover Reaction Tooltip Styling */
+        #reaction-tooltip {
+            position: absolute;
+            display: none;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.88);
+            color: #ffffff;
+            padding: 8px 10px;
+            border-radius: 2px;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            z-index: 1000;
+            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid #333333;
+        }
+        #reaction-tooltip .tt-title {
+            font-weight: 700;
+            color: #40c4ff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #555555;
+            padding-bottom: 2px;
+        }
+
         #intro-overlay, #app-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
@@ -458,6 +483,8 @@
             </div>
         </div>
     </div>
+    <!-- Hover Reaction Vector Inspector Tooltip -->
+    <div id="reaction-tooltip"></div>
 </div>
 
 <script>
@@ -467,6 +494,10 @@
     var axesScene, axesCamera, axesGroup;
     var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
+
+    // Interactive Hover Raycaster Inspection Variables
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
 
     var activeLx = 6000, activeLy = 3000, activeLz = 1000;
     var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), activeLx);
@@ -709,6 +740,7 @@
         var ly = makeAxisLabel('Y'); ly.position.set(0, 0, axisLen + 0.35); axesGroup.add(ly);
 
         window.addEventListener('resize', onWindowResize);
+        container.addEventListener('mousemove', onViewportMouseMove);
 
         updateMaterialUI();
 
@@ -720,6 +752,49 @@
         setupCutPlaneSliders();
         animate();
         updateDomainVisuals();
+    }
+
+    /* Raycasting Hover Event for Interactive Force Component Inspection */
+    function onViewportMouseMove(event) {
+        var container = document.getElementById('viewport');
+        var rect = container.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+        var tooltip = document.getElementById('reaction-tooltip');
+
+        if (!reactionGroup || reactionGroup.children.length === 0) {
+            tooltip.style.display = 'none';
+            return;
+        }
+
+        raycaster.setFromCamera(mouse, camera);
+        var intersects = raycaster.intersectObjects(reactionGroup.children, true);
+
+        if (intersects.length > 0) {
+            var obj = intersects[0].object;
+            // Traverse parent hierarchy to locate reaction metadata attached to the group element
+            while (obj && !obj.userData.reactionData && obj.parent) {
+                obj = obj.parent;
+            }
+
+            if (obj && obj.userData.reactionData) {
+                var d = obj.userData.reactionData;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.clientX - rect.left + 15) + 'px';
+                tooltip.style.top = (event.clientY - rect.top + 15) + 'px';
+
+                tooltip.innerHTML = `
+                    <div class="tt-title">${d.type || "Support Reaction"}</div>
+                    <div><b>R_x:</b> ${d.Rx.toFixed(2)} kN</div>
+                    <div><b>R_y:</b> ${d.Ry.toFixed(2)} kN</div>
+                    <div><b>R_z:</b> ${d.Rz.toFixed(2)} kN</div>
+                    <div style="border-top: 1px solid #555; margin-top: 4px; padding-top: 2px;"><b>R_total:</b> ${d.Rtotal.toFixed(2)} kN</div>
+                `;
+                return;
+            }
+        }
+        tooltip.style.display = 'none';
     }
 
     function addCableSpanLoad() {
@@ -1019,6 +1094,10 @@
                     dir.normalize();
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
                     var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0xcc0000, 140, 70);
+                    
+                    // Attach Reaction Vector Data for Mouse Hover Inspector
+                    arrow.userData.reactionData = { type: "Line Reaction Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
+                    
                     reactionGroup.add(arrow);
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
@@ -1039,9 +1118,13 @@
                 dir.normalize();
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
                 const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, 140, 70);
+                
+                // Attach Reaction Vector Data for Mouse Hover Inspector
+                arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
+                
                 reactionGroup.add(arrow);
 
-                const labelText = `${r.R_total_kN.toFixed(1)} kN`;
+                const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText, '#cc0000');
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
@@ -1184,6 +1267,7 @@
 
     function format2DP(val) { return Number(val).toFixed(2); }
 
+    /* Pass 2 Volumetric Geometry Renderer: 3D Surface Solid Mesh (Membranes) & Physical Cable Tubes (Cables) */
     function reRenderMesh() {
         if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
@@ -1196,64 +1280,96 @@
             renderCableSagIndicator();
         }
 
-        var lineGeometry = new THREE.BufferGeometry();
-        var positions = [], colors = [];
-
         var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
         var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 1.0;
 
-        currentFaces.forEach(function(edge, idx) {
-            var p1 = currentVertices[edge[0]], p2 = currentVertices[edge[1]];
-            positions.push(p1[0], p1[2], p1[1]); positions.push(p2[0], p2[2], p2[1]);
+        // Render Volumetric Cables (Physical 3D Tubes)
+        if (matType === 'cables') {
+            var cableGroup = new THREE.Group();
+            var d = parseFloat(document.getElementById('sec_cable_d').value) || 24.0;
+            var radius = Math.max(d / 2.0, 10.0); // mm
 
-            var c1 = new THREE.Color(0x000000);
-            var c2 = new THREE.Color(0x000000);
+            currentFaces.forEach(function(edge, idx) {
+                var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][2], currentVertices[edge[0]][1]);
+                var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][2], currentVertices[edge[1]][1]);
+                
+                var curve = new THREE.LineCurve3(p1, p2);
+                var tubeGeo = new THREE.TubeGeometry(curve, 1, radius, 8, false);
 
-            if (renderMode === 'cable_tension' && currentForcesN.length) {
-                var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
-                var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
-                c1.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
-                c2.copy(c1);
+                var matColor = new THREE.Color(0x333333);
+                if (renderMode === 'cable_tension' && currentForcesN.length) {
+                    var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
+                    var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
+                    matColor.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+                }
 
-            } else if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
-                var s1 = currentStressesMPa[edge[0]] || 0.0;
-                var s2 = currentStressesMPa[edge[1]] || 0.0;
+                var tubeMat = new THREE.MeshStandardMaterial({
+                    color: matColor, roughness: 0.35, metalness: 0.40,
+                    clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+                });
 
-                var mapStressColor = function(s) {
-                    if (s > activeMaxTens) return new THREE.Color(0x808080);
+                cableGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+            });
+
+            mesh = cableGroup;
+            scene.add(mesh);
+            toggleRenderModeUI();
+            return;
+        }
+
+        // Render Volumetric Membrane Surface Mesh (3D Solid Shaded Surface)
+        var nx = parseInt(document.getElementById('nx').value) || 36;
+        var ny = parseInt(document.getElementById('ny').value) || 12;
+
+        var surfaceGeo = new THREE.BufferGeometry();
+        var positions = [], colors = [], indices = [];
+
+        currentVertices.forEach(function(v, idx) {
+            positions.push(v[0], v[2], v[1]);
+
+            var c = new THREE.Color(0x808080);
+            if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
+                var s = currentStressesMPa[idx] || 0.0;
+                if (s <= activeMaxTens) {
                     var norm = Math.min(Math.max(s / activeMaxTens, 0.0), 1.0);
-                    var c = new THREE.Color(); c.setHSL((1.0 - norm) * 0.33, 0.85, 0.45); return c;
-                };
-                c1 = mapStressColor(s1);
-                c2 = mapStressColor(s2);
-
+                    c.setHSL((1.0 - norm) * 0.33, 0.85, 0.45);
+                }
             } else if (renderMode === 'deflection' && currentDeflectionsMM.length) {
-                var d1 = currentDeflectionsMM[edge[0]] || 0.0;
-                var d2 = currentDeflectionsMM[edge[1]] || 0.0;
+                var d = currentDeflectionsMM[idx] || 0.0;
                 var maxD = Math.max(...currentDeflectionsMM, 1e-3);
-
-                var mapDeflColor = function(d) {
-                    var norm = Math.min(Math.max(d / maxD, 0.0), 1.0);
-                    var c = new THREE.Color(); c.setHSL((1.0 - norm) * 0.66, 0.85, 0.45); return c;
-                };
-                c1 = mapDeflColor(d1);
-                c2 = mapDeflColor(d2);
+                var norm = Math.min(Math.max(d / maxD, 0.0), 1.0);
+                c.setHSL((1.0 - norm) * 0.66, 0.85, 0.45);
             }
-
-            colors.push(c1.r, c1.g, c1.b, c2.r, c2.g, c2.b);
+            colors.push(c.r, c.g, c.b);
         });
 
-        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        
-        var matOptions = { linewidth: 1.5, clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true };
+        for (var i = 0; i < nx; i++) {
+            for (var j = 0; j < ny; j++) {
+                var row1 = i * (ny + 1);
+                var row2 = (i + 1) * (ny + 1);
 
-        if (['cable_tension', 'ec3_stress', 'deflection'].includes(renderMode)) {
-            lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                var a = row1 + j, b = row2 + j, c = row2 + j + 1, d = row1 + j + 1;
+                indices.push(a, b, d);
+                indices.push(b, c, d);
+            }
+        }
+
+        surfaceGeo.setIndex(indices);
+        surfaceGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        surfaceGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        surfaceGeo.computeVertexNormals();
+
+        var matOptions = {
+            roughness: 0.40, metalness: 0.10, side: THREE.DoubleSide,
+            clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+        };
+
+        if (['ec3_stress', 'deflection'].includes(renderMode)) {
             matOptions.vertexColors = true;
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial(matOptions));
+            mesh = new THREE.Mesh(surfaceGeo, new THREE.MeshStandardMaterial(matOptions));
         } else {
-            matOptions.color = 0x000000;
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial(matOptions));
+            matOptions.color = 0xdddddd;
+            mesh = new THREE.Mesh(surfaceGeo, new THREE.MeshStandardMaterial(matOptions));
         }
 
         scene.add(mesh);
