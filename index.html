@@ -304,10 +304,12 @@
     </div>
 
     <div class="control-group">
-        <label>FE Mesh Divisions nx, ny</label>
+        <label id="mesh_div_label">Cable Segments (nx)</label>
         <div style="display: flex; gap: 6px;">
             <input type="number" id="nx" value="36" style="width: 50%; font-family: monospace;" onchange="updateDomainVisuals();">
-            <input type="number" id="ny" value="12" style="width: 50%; font-family: monospace;" onchange="updateDomainVisuals();">
+            <div id="ny_input_container" style="width: 50%; display: none;">
+                <input type="number" id="ny" value="12" style="width: 100%; font-family: monospace;" onchange="updateDomainVisuals();">
+            </div>
         </div>
     </div>
 
@@ -583,6 +585,8 @@
         var lineSupportContainer = document.getElementById('line_supports_container');
         var cutPlanesContainer = document.getElementById('cut_planes_container');
         var renderSelect = document.getElementById('render_mode');
+        var meshLabel = document.getElementById('mesh_div_label');
+        var nyContainer = document.getElementById('ny_input_container');
 
         var currentMode = renderSelect.value;
         renderSelect.innerHTML = '';
@@ -591,6 +595,8 @@
             lineSupportContainer.style.display = 'none';
             cutPlanesContainer.style.display = 'none';
             cableSpanBuilder.style.display = 'flex';
+            meshLabel.innerText = "Cable Segments (nx)";
+            nyContainer.style.display = 'none';
 
             var opt1 = document.createElement('option'); opt1.value = "grey"; opt1.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "cable_sag"; opt2.innerText = "Maximum Sag Drop-Line Indicator"; renderSelect.appendChild(opt2);
@@ -605,6 +611,8 @@
             lineSupportContainer.style.display = 'flex';
             cutPlanesContainer.style.display = 'block';
             cableSpanBuilder.style.display = 'none';
+            meshLabel.innerText = "FE Mesh Divisions nx, ny";
+            nyContainer.style.display = 'block';
 
             var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (+Tension / -Compression)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
@@ -1115,9 +1123,10 @@
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('results-actions-group').style.display = 'none';
 
+        var matType = document.getElementById('mat_type').value;
         var bounds = calculateBoundingBox();
         var payload = {
-            material_type: document.getElementById('mat_type').value,
+            material_type: matType,
             material_grade: document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '',
             sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
             sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
@@ -1132,7 +1141,8 @@
             custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
             prestress: parseFloat(document.getElementById('prestress').value) || 0.0,
             Lx: bounds.Lx, Ly: bounds.Ly, Lz: bounds.Lz,
-            nx: parseInt(document.getElementById('nx').value), ny: parseInt(document.getElementById('ny').value),
+            nx: parseInt(document.getElementById('nx').value),
+            ny: (matType === 'cables') ? 1 : parseInt(document.getElementById('ny').value),
             point_supports: getPointSupportArrayData(), line_supports: getLineSupportArrayData(),
             loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
         };
