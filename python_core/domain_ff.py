@@ -1,15 +1,12 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v11 — Direction-aware line projection tolerance & strict boundary candidate filtering.
+# v12 — Fixed: fixed-node protection during bilinear seeding, line-support coordinate
+#       preservation for already-fixed nodes, tightened boundary tolerance, dx/dy exposure.
 
 import numpy as np
 
 
 class FormFindingDomain3D:
-    """
-    Node-Edge Spatial Network for Vaults, Domes, Cable Nets, and Tensile Fabrics.
-    """
-
     def __init__(
         self,
         Lx: float,
@@ -35,28 +32,25 @@ class FormFindingDomain3D:
 
         self._build_network_topology()
 
+        # Expose grid spacing so solvers see real membrane strip widths
+        self.dx = self.Lx / self.nx if self.nx > 0 else 0.0
+        self.dy = self.Ly / self.ny if self.ny > 0 else 0.0
+
     def _build_network_topology(self):
-        """
-        Generates 1D spatial cable chain for cables, or 2D node-edge grid for shells/membranes.
-        """
         is_pure_cable = self.material_type in ("cables", "cable")
 
         if is_pure_cable:
-            # Construct 1D Cable Nodal Chain along primary span
             x_lin = np.linspace(0, self.Lx, self.nx + 1)
             y_lin = np.linspace(0, self.Ly if self.Ly > 0 else 0, self.nx + 1)
-            
             for i in range(self.nx + 1):
                 self.nodes.append([x_lin[i], y_lin[i], 0.0])
                 if i < self.nx:
                     self.edges.append([i, i + 1])
         else:
-            # Construct 2D Surface Grid for membranes, shells, vaults
             x_lin = np.linspace(0, self.Lx, self.nx + 1)
             y_lin = np.linspace(0, self.Ly, self.ny + 1)
             grid_map = {}
             node_idx = 0
-
             for i, x in enumerate(x_lin):
                 for j, y in enumerate(y_lin):
                     self.nodes.append([x, y, 0.0])
@@ -66,13 +60,10 @@ class FormFindingDomain3D:
             for i in range(self.nx + 1):
                 for j in range(self.ny + 1):
                     curr = grid_map[(i, j)]
-
                     if i < self.nx:
                         self.edges.append([curr, grid_map[(i + 1, j)]])
-
                     if j < self.ny:
                         self.edges.append([curr, grid_map[(i, j + 1)]])
-
                     if i < self.nx and j < self.ny:
                         self.edges.append([curr, grid_map[(i + 1, j + 1)]])
                         self.edges.append([grid_map[(i + 1, j)], grid_map[(i, j + 1)]])
@@ -88,8 +79,8 @@ class FormFindingDomain3D:
     def apply_bilinear_surface_interpolation(self, corner_z_map: dict):
         """
         Smooths initial 2D surface grid Z-elevations using 3D bilinear corner interpolation.
-        Prevents initial shear distortion ('hatching') during Dynamic Relaxation for membranes/shells.
         STRICT GUARDRAIL: Only executes for 2D surface manifolds, never 1D cables.
+        CRITICAL FIX: Preserves Z of nodes already locked by point supports.
         """
         if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
             return
@@ -109,7 +100,6 @@ class FormFindingDomain3D:
             elif pt_x >= self.Lx * 0.75 and pt_y >= self.Ly * 0.75:
                 z11 = float(pt_z)
 
-        # Perform 2D bilinear spatial interpolation
         xi = self.nodes[:, 0] / max(self.Lx, 1e-3)
         eta = self.nodes[:, 1] / max(self.Ly, 1e-3)
 
@@ -120,12 +110,13 @@ class FormFindingDomain3D:
             xi * eta * z11
         )
 
-        self.nodes[:, 2] = interpolated_z
+        # CRITICAL FIX: Do not overwrite Z of nodes already fixed by point supports
+        free_mask = np.ones(len(self.nodes), dtype=bool)
+        if self.fixed_nodes:
+            free_mask[list(self.fixed_nodes)] = False
+        self.nodes[free_mask, 2] = interpolated_z[free_mask]
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
-        """
-        Fixes the closest node evaluating XY planar proximity and updates 3D positions.
-        """
         if tol is None:
             tol = self._auto_tolerance()
 
@@ -137,14 +128,11 @@ class FormFindingDomain3D:
             self.fixed_nodes.add(idx)
             self.nodes[idx] = [float(x), float(y), float(z)]
 
-            # Re-interpolate internal cable nodes in 3D between end supports (Cables Only)
             if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
                 fixed_list = sorted(list(self.fixed_nodes))
                 p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
-                
                 pos1 = self.nodes[p1_idx].copy()
                 pos2 = self.nodes[p2_idx].copy()
-                
                 for axis in range(3):
                     self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
 
@@ -161,7 +149,7 @@ class FormFindingDomain3D:
     def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None):
         """
         Constrains boundary nodes along a 3D line support vector.
-        Uses direction-aware tolerance and candidate filtering on boundary nodes only.
+        CRITICAL FIX: Already-fixed point-support nodes are NOT moved to the line.
         """
         p1_arr = np.array(p1, dtype=float)
         p2_arr = np.array(p2, dtype=float)
@@ -177,14 +165,17 @@ class FormFindingDomain3D:
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
 
-        # Compute direction-aware perpendicular capture tolerance
         perp_x = -line_dir[1]
         perp_y = line_dir[0]
         directional_spacing = np.sqrt((dx * perp_x) ** 2 + (dy * perp_y) ** 2)
         effective_tol = max(directional_spacing * 1.25, 10.0) if tol is None else tol
 
-        # Filter candidates to boundary nodes only (prevents interior node capture)
-        candidate_indices = self.get_boundary_nodes() if self.material_type not in ("cables", "cable") else range(len(self.nodes))
+        # CRITICAL FIX: Tightened candidate pool to outermost row only
+        candidate_indices = (
+            self.get_boundary_nodes()
+            if self.material_type not in ("cables", "cable")
+            else range(len(self.nodes))
+        )
 
         for idx in candidate_indices:
             node = self.nodes[idx]
@@ -195,8 +186,11 @@ class FormFindingDomain3D:
                 proj_pt = p1_arr + np.clip(proj_len, 0.0, line_len) * line_dir
                 dist = np.linalg.norm(node - proj_pt)
                 if dist <= effective_tol:
+                    already_fixed = idx in self.fixed_nodes
                     self.fixed_nodes.add(idx)
-                    self.nodes[idx] = proj_pt
+                    # CRITICAL FIX: Only snap position if node wasn't already fixed by a point support
+                    if not already_fixed:
+                        self.nodes[idx] = proj_pt
 
     def add_edge_support(self, edge: str = "all"):
         tol = self._auto_tolerance()
@@ -210,12 +204,15 @@ class FormFindingDomain3D:
             self.add_line_support("y", self.Ly, tol)
 
     def get_boundary_nodes(self) -> np.ndarray:
-        tol = self._auto_tolerance()
+        # CRITICAL FIX: Tightened tolerance so only the outermost row of nodes is captured
+        dx = self.Lx / self.nx if self.nx > 0 else 100.0
+        dy = self.Ly / self.ny if self.ny > 0 else 100.0
+        tol = max(dx, dy) * 0.51
         mask = (
-            (np.abs(self.nodes[:, 0]) < tol) |
-            (np.abs(self.nodes[:, 0] - self.Lx) < tol) |
-            (np.abs(self.nodes[:, 1]) < tol) |
-            (np.abs(self.nodes[:, 1] - self.Ly) < tol)
+            (np.abs(self.nodes[:, 0]) < tol)
+            | (np.abs(self.nodes[:, 0] - self.Lx) < tol)
+            | (np.abs(self.nodes[:, 1]) < tol)
+            | (np.abs(self.nodes[:, 1] - self.Ly) < tol)
         )
         return np.where(mask)[0]
 
@@ -224,6 +221,6 @@ class FormFindingDomain3D:
             "num_nodes": len(self.nodes),
             "num_edges": len(self.edges),
             "num_fixed": len(self.fixed_nodes),
-            "grid_spacing_x": self.Lx / self.nx if self.nx > 0 else 0,
-            "grid_spacing_y": self.Ly / self.ny if self.ny > 0 else 0,
+            "grid_spacing_x": self.dx,
+            "grid_spacing_y": self.dy,
         }
