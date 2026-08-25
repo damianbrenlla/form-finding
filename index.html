@@ -364,7 +364,19 @@
             <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
             <option value="grey">Monochrome Studio Grey (50%)</option>
             <option value="deflection">Displacement Map (Deflection mm)</option>
+            <!-- Cable-Specific Options -->
+            <option value="cable_sag">Cable Max Sag Drop-Line Indicator</option>
+            <option value="cable_tension">Cable Tension Force Map (kN Slider)</option>
         </select>
+    </div>
+
+    <!-- Cable Tension Color Map Slider -->
+    <div id="cable_tension_div" class="control-group" style="margin-top: 4px; display: none;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.70rem; font-weight: bold; margin-bottom: 2px;">
+            <span>Tension Range Filter</span>
+            <span id="lbl_tension_range" style="font-family: monospace;">0.01 - 100.0 kN</span>
+        </div>
+        <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
     </div>
 
     <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
@@ -417,12 +429,12 @@
 <script>
     var scene, camera, renderer, controls, mesh;
     var supportGizmos = [], forceArrows = [];
-    var reactionGroup = null;
+    var reactionGroup = null, sagIndicatorGroup = null;
     var axesScene, axesCamera, axesGroup;
     var raycaster = new THREE.Raycaster();
     var mouse = new THREE.Vector2();
     var pendingSnapCoords = null;
-    var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
+    var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
 
     var activeLx = 6000, activeLy = 3000, activeLz = 1000;
@@ -438,12 +450,13 @@
     var MASONRY_UNITS = { "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0, "Dense Concrete Block (20 MPa)": 20.0 };
     var MORTAR_GRADES = { "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0 };
 
-    function makeTextSprite(message) {
+    function makeTextSprite(message, colorHex) {
+        colorHex = colorHex || '#cc0000';
         var canvas = document.createElement('canvas');
         canvas.width = 256; canvas.height = 128;
         var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#cc0000';
-        ctx.font = 'bold 44px "Helvetica Neue", Helvetica, Arial, sans-serif';
+        ctx.fillStyle = colorHex;
+        ctx.font = 'bold 36px "Helvetica Neue", Helvetica, Arial, sans-serif';
         ctx.fillText(message, 10, 64);
         var texture = new THREE.CanvasTexture(canvas);
         var spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
@@ -454,7 +467,10 @@
 
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
+        var matType = document.getElementById('mat_type').value;
+
         document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
+        document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
     }
 
     function onStressSliderChange() {
@@ -462,6 +478,12 @@
         var tensVal = parseFloat(document.getElementById('stress_tens_slider').value) || 0.01;
         document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
         document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
+        reRenderMesh();
+    }
+
+    function onTensionSliderChange() {
+        var val = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
+        document.getElementById('lbl_tension_range').innerText = `0.01 - ${val.toFixed(1)} kN`;
         reRenderMesh();
     }
 
@@ -474,7 +496,6 @@
         var hintEl = document.getElementById('cable_click_hint');
         var lineSupportContainer = document.getElementById('line_supports_container');
 
-        // Disable line supports strictly when Cables is selected
         if (matType === 'cables') {
             lineSupportContainer.style.display = 'none';
             clearAllLineSupports();
@@ -514,6 +535,8 @@
             prestressContainer.style.display = 'none';
             document.getElementById('prestress').value = 0;
         }
+
+        toggleRenderModeUI();
     }
 
     function syncCustomFb() { document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[document.getElementById('masonry_unit_select').value] || 20.0; }
@@ -559,7 +582,9 @@
         scene.add(grid);
 
         reactionGroup = new THREE.Group();
+        sagIndicatorGroup = new THREE.Group();
         scene.add(reactionGroup);
+        scene.add(sagIndicatorGroup);
 
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
@@ -593,7 +618,6 @@
         updateDomainVisuals();
     }
 
-    // Interactive 3D Cable Click-to-Load Raycaster
     function onViewportClick(event) {
         var matType = document.getElementById('mat_type').value;
         if (matType !== 'cables' || !mesh) return;
@@ -612,7 +636,6 @@
         if (intersects.length > 0) {
             var hitPoint = intersects[0].point;
             
-            // Three.js Y-up to Python Z-up conversion: [X, Z, Y] -> [X, Y, Z]
             var snapX = Math.round(hitPoint.x);
             var snapY = Math.round(hitPoint.z);
             var snapZ = Math.round(hitPoint.y);
@@ -805,7 +828,6 @@
 
         if (mesh) scene.remove(mesh);
 
-        // Single 1D Cable Line Preview Spanning Directly Between Support 1 & Support 2 in 3D
         if (matType === 'cables') {
             var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
             var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
@@ -824,7 +846,6 @@
                 var y2 = p1.y + t2 * (p2.y - p1.y);
                 var z2 = p1.z + t2 * (p2.z - p1.z);
 
-                // Three.js Y-Up mapping: [X, Z, Y]
                 positions.push(x1, z1, y1, x2, z2, y2);
             }
 
@@ -835,7 +856,6 @@
             return;
         }
 
-        // Default 2D Surface Grid Preview for Membranes, Vaults, and Gridshells
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
 
@@ -887,11 +907,47 @@
                 reactionGroup.add(arrow);
 
                 const labelText = `${r.R_total_kN.toFixed(1)} kN`;
-                const sprite = makeTextSprite(labelText);
+                const sprite = makeTextSprite(labelText, '#cc0000');
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
         });
+    }
+
+    function renderCableSagIndicator() {
+        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
+        if (!currentVertices.length) return;
+
+        var pointSups = getPointSupportArrayData();
+        var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
+        var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
+
+        var maxSagIndex = 0;
+        var minZ = currentVertices[0][2];
+        for (var i = 1; i < currentVertices.length; i++) {
+            if (currentVertices[i][2] < minZ) {
+                minZ = currentVertices[i][2];
+                maxSagIndex = i;
+            }
+        }
+
+        var lowestNode = currentVertices[maxSagIndex];
+        var t = (lowestNode[0] - p1.x) / (p2.x - p1.x || 1.0);
+        var origZ = p1.z + t * (p2.z - p1.z);
+        var maxSagMM = Math.abs(origZ - lowestNode[2]);
+
+        var lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(lowestNode[0], origZ, lowestNode[1]),
+            new THREE.Vector3(lowestNode[0], lowestNode[2], lowestNode[1])
+        ]);
+        var lineMat = new THREE.LineDashedMaterial({ color: 0x00aa55, dashSize: 50, gapSize: 25, linewidth: 2 });
+        var dropLine = new THREE.Line(lineGeo, lineMat);
+        dropLine.computeLineDistances();
+        sagIndicatorGroup.add(dropLine);
+
+        var sprite = makeTextSprite(`Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
+        sprite.position.set(lowestNode[0], (origZ + lowestNode[2]) / 2.0, lowestNode[1] + 150);
+        sagIndicatorGroup.add(sprite);
     }
 
     function initWasmEngine() {
@@ -912,7 +968,16 @@
             btnStop.style.display = 'none'; actionsGroup.style.display = 'flex';
 
             currentVertices = data.data.nodes; currentFaces = data.data.edges;
+            currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
+
+            if (currentForcesN.length) {
+                var maxForceKN = Math.max(...currentForcesN.map(f => Math.abs(f))) / 1000.0;
+                var tensionSlider = document.getElementById('tension_threshold_slider');
+                tensionSlider.max = Math.max(maxForceKN, 1.0).toFixed(1);
+                tensionSlider.value = tensionSlider.max;
+                document.getElementById('lbl_tension_range').innerText = `0.01 - ${tensionSlider.max} kN`;
+            }
 
             status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
             reRenderMesh();
@@ -962,9 +1027,10 @@
     }
 
     function clearResults() {
-        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = [];
+        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
+        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
         updateDomainVisuals();
@@ -975,13 +1041,44 @@
     function reRenderMesh() {
         if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
-        var lineGeometry = new THREE.BufferGeometry(), positions = [];
-        currentFaces.forEach(function(edge) {
+        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
+
+        var renderMode = document.getElementById('render_mode').value;
+        var matType = document.getElementById('mat_type').value;
+
+        if (renderMode === 'cable_sag' && matType === 'cables') {
+            renderCableSagIndicator();
+        }
+
+        var lineGeometry = new THREE.BufferGeometry();
+        var positions = [], colors = [];
+
+        var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
+
+        currentFaces.forEach(function(edge, idx) {
             var p1 = currentVertices[edge[0]], p2 = currentVertices[edge[1]];
             positions.push(p1[0], p1[2], p1[1]); positions.push(p2[0], p2[2], p2[1]);
+
+            var color = new THREE.Color(0x000000);
+
+            if (renderMode === 'cable_tension' && currentForcesN.length) {
+                var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
+                var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
+                color.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+            }
+
+            colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
         });
+
         lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 }));
+        
+        if (renderMode === 'cable_tension') {
+            lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 }));
+        } else {
+            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 }));
+        }
+
         scene.add(mesh);
     }
 
