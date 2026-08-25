@@ -1,13 +1,13 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v7 — Robust 3D spatial cable interpolation & fixed planar proximity support snapping.
+# v8 — Bilinear 3D pre-interpolation for 2D surface grids & robust 3D support snapping.
 
 import numpy as np
 
 
 class FormFindingDomain3D:
     """
-    Node-Edge Spatial Network for Vaults, Domes, Cable Nets, and Gridshells.
+    Node-Edge Spatial Network for Vaults, Domes, Cable Nets, and Tensile Fabrics.
     """
 
     def __init__(
@@ -37,7 +37,7 @@ class FormFindingDomain3D:
 
     def _build_network_topology(self):
         """
-        Generates 1D spatial cable chain for cables, or 2D flat node-edge grid for shells/membranes.
+        Generates 1D spatial cable chain for cables, or 2D node-edge grid for shells/membranes.
         """
         is_pure_cable = self.material_type in ("cables", "cable")
 
@@ -51,7 +51,7 @@ class FormFindingDomain3D:
                 if i < self.nx:
                     self.edges.append([i, i + 1])
         else:
-            # Construct 2D Flat Surface Grid for membranes, shells, vaults
+            # Construct 2D Surface Grid for membranes, shells, vaults
             x_lin = np.linspace(0, self.Lx, self.nx + 1)
             y_lin = np.linspace(0, self.Ly, self.ny + 1)
             grid_map = {}
@@ -85,6 +85,33 @@ class FormFindingDomain3D:
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
         return max(dx, dy) * 1.5
 
+    def apply_bilinear_surface_interpolation(self, corner_z_map: dict):
+        """
+        Smooths initial 2D surface grid Z-elevations using 3D bilinear corner interpolation.
+        Prevents initial shear distortion ('hatching') during Dynamic Relaxation for membranes/shells.
+        STRICT GUARDRAIL: Only executes for 2D surface manifolds, never 1D cables.
+        """
+        if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
+            return
+
+        z00 = float(corner_z_map.get((0.0, 0.0), 0.0))
+        z10 = float(corner_z_map.get((self.Lx, 0.0), 0.0))
+        z01 = float(corner_z_map.get((0.0, self.Ly), 0.0))
+        z11 = float(corner_z_map.get((self.Lx, self.Ly), 0.0))
+
+        # Perform 2D bilinear spatial interpolation
+        xi = self.nodes[:, 0] / max(self.Lx, 1e-3)
+        eta = self.nodes[:, 1] / max(self.Ly, 1e-3)
+
+        interpolated_z = (
+            (1.0 - xi) * (1.0 - eta) * z00 +
+            xi * (1.0 - eta) * z10 +
+            (1.0 - xi) * eta * z01 +
+            xi * eta * z11
+        )
+
+        self.nodes[:, 2] = interpolated_z
+
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
         """
         Fixes the closest node evaluating XY planar proximity and updates 3D positions.
@@ -92,17 +119,15 @@ class FormFindingDomain3D:
         if tol is None:
             tol = self._auto_tolerance()
 
-        # Planar 2D distance calculation (X, Y)
         pt_2d = np.array([float(x), float(y)])
         dists_2d = np.linalg.norm(self.nodes[:, :2] - pt_2d, axis=1)
         idx = int(np.argmin(dists_2d))
 
-        # Always fix closest endpoint node for 1D cables or within tolerance
         if dists_2d[idx] <= tol or self.material_type in ("cables", "cable"):
             self.fixed_nodes.add(idx)
             self.nodes[idx] = [float(x), float(y), float(z)]
 
-            # Re-interpolate internal cable nodes in 3D between end supports
+            # Re-interpolate internal cable nodes in 3D between end supports (Cables Only)
             if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
                 fixed_list = sorted(list(self.fixed_nodes))
                 p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
