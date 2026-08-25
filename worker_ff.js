@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v17 — Universal support elevation sourcing from point and 3D line supports for bilinear Z-seeding.
+ * v18 — Fixed: point-support authority over line-support corner_z_map overwrites.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -112,21 +112,23 @@ point_sups = payload.get("point_supports", [])
 line_sups  = payload.get("line_supports", [])
 corner_z_map = {}
 
-# 1. Source Elevations from Discrete Point Supports
+# CRITICAL FIX: Point supports processed FIRST — they have authority over corner elevations
 for pt in point_sups:
     px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
     domain.add_point_support(px, py, pz)
     corner_z_map[(px, py)] = pz
 
-# 2. Discrete 3D Line Supports & Endpoints Elevation Sourcing
+# Discrete 3D Line Supports — add geometry but do NOT overwrite corner Z already set by points
 for l_sup in line_sups:
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
-    # Populate corner elevations from line endpoints if point supports are empty
-    corner_z_map[(p1[0], p1[1])] = p1[2]
-    corner_z_map[(p2[0], p2[1])] = p2[2]
+    # Only seed corner map from line ends if point support didn't already define that corner
+    if (p1[0], p1[1]) not in corner_z_map:
+        corner_z_map[(p1[0], p1[1])] = p1[2]
+    if (p2[0], p2[1]) not in corner_z_map:
+        corner_z_map[(p2[0], p2[1])] = p2[2]
 
 # Fallback Preset Support Resolution
 sup_preset = payload.get("support_preset", "")
@@ -144,7 +146,6 @@ if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
 # --- SEED INTERIOR 3D ELEVATIONS VIA BILINEAR INTERPOLATION ---
-# Fixes flat Z=0 initial mesh collapse for membranes/shells prior to running DR
 if hasattr(domain, 'apply_bilinear_surface_interpolation') and mat_type not in ("cables", "cable"):
     domain.apply_bilinear_surface_interpolation(corner_z_map)
 
@@ -162,6 +163,7 @@ if mat_type in ("cables", "cable"):
 elif mat_type in ("membrane", "fabric"):
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
     area_mm2 = t_mm * 1000.0  # Equivalent 1m strip
+    # 1 kN/m == 1 N/mm numerically; payload arrives in kN/m
     prestress_warp_N_mm = float(payload.get("prestress_warp_kn_m", 2.0))
     prestress_weft_N_mm = float(payload.get("prestress_weft_kn_m", 2.0))
     edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0
