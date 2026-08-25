@@ -90,7 +90,7 @@ class FormFindingDomain3D:
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
         """
-        Fixes the closest node evaluating XY planar proximity so Z elevation changes don't fail snapping.
+        Fixes the closest node evaluating XY planar proximity and updates 3D positions.
         """
         if tol is None:
             tol = self._auto_tolerance()
