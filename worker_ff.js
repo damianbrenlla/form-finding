@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v10 — Multi-Algorithm Factory Integration (FDM, Inverted Compression DR, Underwood DR)
+ * v11 — Fixed tuple unpacking, support_preset resolution, and diagnostics payload integrity.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -77,11 +77,22 @@ from core.solvers_ff import FormFindingSolverFactory
 
 payload = json.loads(payload_json)
 
-# 1. Resolve Material Properties
-mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
-mat_type  = payload.get("material_type", "cables").lower()
+# Fallback Material Type Resolution
+mat_type = str(payload.get("material_type") or payload.get("material_grade") or "cables").lower()
+if "cable" in mat_type or "rope" in mat_type or "strand" in mat_type:
+    payload["material_type"] = "cables"
+elif "fabric" in mat_type or "ptfe" in mat_type or "membrane" in mat_type:
+    payload["material_type"] = "membrane"
+elif "concrete" in mat_type or "c20" in mat_type or "c30" in mat_type:
+    payload["material_type"] = "concrete"
+elif "timber" in mat_type or "gl" in mat_type or "c24" in mat_type:
+    payload["material_type"] = "timber"
+elif "masonry" in mat_type or "mortar" in mat_type or "brick" in mat_type:
+    payload["material_type"] = "masonry"
 
-# 2. Construct Spatial Domain
+mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
+mat_type  = mat_props.get("material_type", "cables")
+
 Lx_val = float(payload.get("Lx", 6000))
 Ly_val = float(payload.get("Ly", 3000))
 Lz_val = float(payload.get("Lz", 1000))
@@ -95,7 +106,7 @@ domain = FormFindingDomain3D(
     geometry_preset="surface_grid"
 )
 
-# 3. Add Point Supports
+# Discrete Point Supports
 for pt in payload.get("point_supports", []):
     domain.add_point_support(
         float(pt.get("x", 0)),
@@ -103,17 +114,29 @@ for pt in payload.get("point_supports", []):
         float(pt.get("z", 0))
     )
 
-# 4. Add 3D Line Supports
+# Discrete 3D Line Supports
 for l_sup in payload.get("line_supports", []):
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
 
+# Fallback Preset Support Resolution
+sup_preset = payload.get("support_preset", "")
+if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
+    domain.add_point_support(0.0, 0.0, 0.0)
+    domain.add_point_support(domain.Lx, 0.0, 0.0)
+    domain.add_point_support(0.0, domain.Ly, 0.0)
+    domain.add_point_support(domain.Lx, domain.Ly, 0.0)
+elif sup_preset == "two_opposite_lines":
+    if hasattr(domain, 'add_line_support_3d'):
+        domain.add_line_support_3d((0.0, 0.0, 0.0), (0.0, domain.Ly, 0.0))
+        domain.add_line_support_3d((domain.Lx, 0.0, 0.0), (domain.Lx, domain.Ly, 0.0))
+
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# 5. Determine Cross-Section Area
+# Cross-Section Area Calculations
 if mat_type in ("cables", "cable"):
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
@@ -132,7 +155,6 @@ if mat_type not in ("cables", "cable", "membrane", "fabric", "generic"):
 include_sw = bool(payload.get("include_self_weight", True))
 gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
-# 6. Instantiate Material-Specific Algorithm via Factory
 solver = FormFindingSolverFactory.create(
     material_type   = mat_type,
     domain          = domain,
@@ -143,19 +165,17 @@ solver = FormFindingSolverFactory.create(
     point_loads     = payload.get("loads", [])
 )
 
-# Execute Solver
+# Unpack 4 returned values strictly
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations = 500
 )
 
-# 7. Stress and Deflection Calculations
 displacement_vecs = equilibrium_nodes - np.copy(domain.nodes).astype(float)
 deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
 u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
 element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
 
-# Nodal Stress Averaging
 num_nodes = len(equilibrium_nodes)
 nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
 node_degree = np.zeros(num_nodes, dtype=float)
