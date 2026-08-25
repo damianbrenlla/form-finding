@@ -1,40 +1,260 @@
-# DBSW 3D Dynamic Relaxation & Dynamic Form-Finding Solver
+# DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# v5 — Mass-scaled Underwood DR with robust zero-load handling.
+# Phase 1: Force Density Method (Cables), Compression-Constrained Inverted DR (Vaults/Masonry), Underwood DR (Generic)
 
 import numpy as np
 
 
-class UniversalFormFindingSolver:
-    """Robust Dynamic Relaxation solver for 3D form-finding (vaults, domes, cable nets, fabrics)."""
+class ForceDensitySolver:
+    """Direct Linear Solver using the Force Density Method (FDM) for Cable Nets."""
 
-    MAX_LOAD_SCALE_FACTOR = 80.0
-    MAX_HEIGHT_SCALE_FACTOR = 150.0
-    MIN_DEFLECTION_FOR_RESCALE_MM = 0.05
+    def __init__(self, domain, E_modulus: float, area_mm2: float, prestress_force: float, point_loads: list, **kwargs):
+        self.domain = domain
+        self.E = max(float(E_modulus), 1.0)
+        self.area = max(float(area_mm2), 1e-4)
+        self.prestress = float(prestress_force)
+        self.point_loads = point_loads if point_loads is not None else []
 
-    def __init__(
-        self,
-        domain,
-        E_modulus: float = 210000.0,
-        gamma_kn_m3: float = 78.5,
-        cross_section_area: float = 90000.0,
-        area_mm2: float = None,
-        prestress_force: float = 0.0,
-        point_loads: list = None,
-        material_type: str = "generic",
-    ):
+    def solve_equilibrium(self, iterations: int = 1, invert_form: bool = False):
+        nodes = np.copy(self.domain.nodes).astype(float)
+        edges = np.copy(self.domain.edges).astype(int)
+        fixed_nodes = set(self.domain.fixed_nodes)
+
+        num_nodes = len(nodes)
+        num_edges = len(edges)
+
+        if num_nodes == 0 or num_edges == 0:
+            return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), {}
+
+        free_indices = [i for i in range(num_nodes) if i not in fixed_nodes]
+        fixed_indices = sorted(list(fixed_nodes))
+
+        if not free_indices:
+            return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), {}
+
+        # 1. Calculate default Force Density (q = Force / Length)
+        rest_lengths = np.zeros(num_edges, dtype=float)
+        for i, (u, v) in enumerate(edges):
+            dist = np.linalg.norm(nodes[u] - nodes[v])
+            rest_lengths[i] = dist if dist > 1e-4 else 1.0
+
+        # Uniform or prestress-driven force density
+        base_q = max(self.prestress / np.mean(rest_lengths), 10.0) if self.prestress > 0 else 10.0
+        q = np.full(num_edges, base_q, dtype=float)
+
+        # 2. Build Linear System (C^T * Q * C) * x = P - (C^T * Q * C_f) * x_fixed
+        # Mapping index positions
+        free_map = {node_idx: pos for pos, node_idx in enumerate(free_indices)}
+        fixed_map = {node_idx: pos for pos, node_idx in enumerate(fixed_indices)}
+
+        N_free = len(free_indices)
+        N_fixed = len(fixed_indices)
+
+        D = np.zeros((N_free, N_free), dtype=float)
+        Df = np.zeros((N_free, N_fixed), dtype=float)
+
+        for k, (u, v) in enumerate(edges):
+            q_k = q[k]
+
+            # Matrix contributions
+            if u in free_nodes_set := set(free_indices):
+                iu = free_map[u]
+                D[iu, iu] += q_k
+                if v in free_nodes_set:
+                    iv = free_map[v]
+                    D[iu, iv] -= q_k
+                else:
+                    iv_f = fixed_map[v]
+                    Df[iu, iv_f] -= q_k
+
+            if v in free_nodes_set:
+                iv = free_map[v]
+                D[iv, iv] += q_k
+                if u in free_nodes_set:
+                    iu = free_map[u]
+                    D[iv, iu] -= q_k
+                else:
+                    iu_f = fixed_map[u]
+                    Df[iv, iu_f] -= q_k
+
+        # 3. Apply Point Loads
+        P_ext = np.zeros((N_free, 3), dtype=float)
+        for ld in self.point_loads:
+            px, py, pz = float(ld.get("x", 0)), float(ld.get("y", 0)), float(ld.get("z", 0))
+            fx_N = float(ld.get("Fx", 0)) * 1000.0
+            fy_N = float(ld.get("Fy", 0)) * 1000.0
+            fz_N = float(ld.get("Fz", 0)) * 1000.0
+
+            dists = np.linalg.norm(nodes - np.array([px, py, pz]), axis=1)
+            closest_idx = int(np.argmin(dists))
+            if closest_idx in free_map:
+                f_pos = free_map[closest_idx]
+                P_ext[f_pos] += [fx_N, fy_N, fz_N]
+
+        # Fixed coordinates matrix
+        X_fixed = nodes[fixed_indices]
+
+        # Direct Linear Solve (Ax = B)
+        RHS = P_ext - np.dot(Df, X_fixed)
+        try:
+            X_free = np.linalg.solve(D, RHS)
+            nodes[free_indices] = X_free
+        except np.linalg.LinAlgError:
+            # Fallback to pseudoinverse if singular
+            X_free = np.dot(np.linalg.pinv(D), RHS)
+            nodes[free_indices] = X_free
+
+        # 4. Calculate member forces and reaction forces
+        axial_forces = np.zeros(num_edges, dtype=float)
+        for i, (u, v) in enumerate(edges):
+            curr_len = np.linalg.norm(nodes[u] - nodes[v])
+            axial_forces[i] = q[i] * curr_len  # Force = q * L
+
+        reactions = np.zeros((num_nodes, 3), dtype=float)
+        for i, (u, v) in enumerate(edges):
+            vec = nodes[v] - nodes[u]
+            curr_len = np.linalg.norm(vec)
+            if curr_len > 1e-6:
+                unit_vec = vec / curr_len
+                f_vec = axial_forces[i] * unit_vec
+                if u in fixed_indices:
+                    reactions[u] -= f_vec
+                if v in fixed_indices:
+                    reactions[v] += f_vec
+
+        # Check for slack cables (q <= 0)
+        slack_cables_count = int(np.sum(axial_forces <= 0.0))
+
+        diagnostics = {
+            "method": "Force Density Method (FDM)",
+            "slack_cables": slack_cables_count,
+            "system_solved_linearly": True
+        }
+
+        return nodes, axial_forces, reactions, diagnostics
+
+
+class InvertedGravityDRSolver:
+    """Compression-Constrained Inverted Dynamic Relaxation for Vaults, Domes & Masonry."""
+
+    def __init__(self, domain, E_modulus: float, gamma_kn_m3: float, area_mm2: float, point_loads: list, **kwargs):
         self.domain = domain
         self.E = max(float(E_modulus), 1.0)
         self.gamma_kn_m3 = max(float(gamma_kn_m3), 0.0)
+        self.area = max(float(area_mm2), 1e-4)
+        self.point_loads = point_loads if point_loads is not None else []
 
-        if area_mm2 is not None:
-            self.area = max(float(area_mm2), 1e-4)
-        else:
-            self.area = max(float(cross_section_area), 1e-4)
+    def solve_equilibrium(self, iterations: int = 500, invert_form: bool = True):
+        nodes = np.copy(self.domain.nodes).astype(float)
+        edges = np.copy(self.domain.edges).astype(int)
+        fixed_nodes = set(self.domain.fixed_nodes)
 
+        num_nodes = len(nodes)
+        num_edges = len(edges)
+
+        if num_nodes == 0 or num_edges == 0:
+            return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), {}
+
+        rest_lengths = np.zeros(num_edges, dtype=float)
+        for i, (u, v) in enumerate(edges):
+            dist = np.linalg.norm(nodes[u] - nodes[v])
+            rest_lengths[i] = dist if dist > 1e-4 else 1.0
+
+        F_ext = np.zeros((num_nodes, 3), dtype=float)
+
+        # Apply gravity self-weight
+        gamma_effective = self.gamma_kn_m3 if self.gamma_kn_m3 > 0 else 20.0
+        density_kg_mm3 = (gamma_effective / 9.81) * 1e-9
+        for i, (u, v) in enumerate(edges):
+            L = rest_lengths[i]
+            member_mass_kg = density_kg_mm3 * self.area * L
+            half_weight_N = (member_mass_kg * 9.81) / 2.0
+            F_ext[u, 2] -= half_weight_N
+            F_ext[v, 2] -= half_weight_N
+
+        # Point loads
+        for ld in self.point_loads:
+            px, py, pz = float(ld.get("x", 0)), float(ld.get("y", 0)), float(ld.get("z", 0))
+            fz_N = float(ld.get("Fz", -10.0)) * 1000.0
+            dists = np.linalg.norm(nodes - np.array([px, py, pz]), axis=1)
+            closest_idx = int(np.argmin(dists))
+            F_ext[closest_idx, 2] += fz_N
+
+        velocities = np.zeros((num_nodes, 3), dtype=float)
+        damping = 0.82
+        dt = 0.005
+
+        axial_forces = np.zeros(num_edges, dtype=float)
+        reactions = np.zeros((num_nodes, 3), dtype=float)
+
+        node_stiffness_sum = np.zeros(num_nodes, dtype=float)
+        for i, (u, v) in enumerate(edges):
+            k_edge = (self.E * self.area) / rest_lengths[i]
+            node_stiffness_sum[u] += k_edge
+            node_stiffness_sum[v] += k_edge
+
+        nodal_mass = np.maximum(0.5 * (dt ** 2) * node_stiffness_sum * 2.5, 1e-6)
+
+        for _ in range(max(iterations, 100)):
+            F_int = np.zeros((num_nodes, 3), dtype=float)
+
+            for i, (u, v) in enumerate(edges):
+                vec = nodes[v] - nodes[u]
+                curr_len = np.linalg.norm(vec)
+                if curr_len < 1e-6:
+                    continue
+                unit_vec = vec / curr_len
+
+                L0 = rest_lengths[i]
+                strain = (curr_len - L0) / L0
+                force = self.E * self.area * strain
+
+                # COMPRESSION-CONSTRAINED DR: Zero out tensile forces for pure funicular geometry
+                if force < 0.0:
+                    force = 0.0
+
+                axial_forces[i] = force
+                f_vec = force * unit_vec
+                F_int[u] += f_vec
+                F_int[v] -= f_vec
+
+            for i in range(num_nodes):
+                if i in fixed_nodes:
+                    reactions[i] = -(F_int[i] + F_ext[i])
+                    velocities[i] = 0.0
+                else:
+                    R_residual = F_ext[i] + F_int[i]
+                    accel = R_residual / nodal_mass[i]
+                    velocities[i] = (velocities[i] + accel * dt) * damping
+                    nodes[i] += velocities[i] * dt
+
+        # Flip the hanging catenary upside-down to form pure compressive arch/vault
+        free_nodes = [i for i in range(num_nodes) if i not in fixed_nodes]
+        support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
+
+        for i in free_nodes:
+            nodes[i, 2] = support_z + (support_z - nodes[i, 2])
+        reactions[:, 2] = -reactions[:, 2]
+        axial_forces = -np.abs(axial_forces)  # Inverted forces operate in pure compression (-)
+
+        diagnostics = {
+            "method": "Compression-Constrained Inverted DR",
+            "form_inverted": True
+        }
+
+        return nodes, axial_forces, reactions, diagnostics
+
+
+class UnderwoodDRSolver:
+    """General Mass-Scaled Dynamic Relaxation Solver for Generic Isotropic Materials."""
+
+    def __init__(self, domain, E_modulus: float, gamma_kn_m3: float, area_mm2: float, prestress_force: float, point_loads: list, **kwargs):
+        self.domain = domain
+        self.E = max(float(E_modulus), 1.0)
+        self.gamma_kn_m3 = max(float(gamma_kn_m3), 0.0)
+        self.area = max(float(area_mm2), 1e-4)
         self.prestress = float(prestress_force)
         self.point_loads = point_loads if point_loads is not None else []
-        self.material_type = str(material_type).lower()
 
     def solve_equilibrium(self, iterations: int = 500, invert_form: bool = False):
         nodes = np.copy(self.domain.nodes).astype(float)
@@ -45,14 +265,8 @@ class UniversalFormFindingSolver:
         num_edges = len(edges)
 
         if num_nodes == 0 or num_edges == 0:
-            empty_diagnostics = {
-                "achieved_rise_mm": 0.0,
-                "target_rise_mm": round(float(self.domain.Lz), 3),
-                "height_scale_capped": False,
-            }
-            return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
+            return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), {}
 
-        # Calculate initial rest lengths
         rest_lengths = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
             dist = np.linalg.norm(nodes[u] - nodes[v])
@@ -60,7 +274,6 @@ class UniversalFormFindingSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
-        # 1. Apply gravity self-weight (-Z downward)
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-9
             for i, (u, v) in enumerate(edges):
@@ -70,7 +283,6 @@ class UniversalFormFindingSolver:
                 F_ext[u, 2] -= half_weight_N
                 F_ext[v, 2] -= half_weight_N
 
-        # 2. Map discrete point loads onto closest grid nodes
         for ld in self.point_loads:
             px, py, pz = float(ld.get("x", 0)), float(ld.get("y", 0)), float(ld.get("z", 0))
             fx_N = float(ld.get("Fx", 0)) * 1000.0
@@ -83,7 +295,6 @@ class UniversalFormFindingSolver:
             F_ext[closest_idx, 1] += fy_N
             F_ext[closest_idx, 2] += fz_N
 
-        # Mass-Scaled Dynamic Relaxation (Underwood DR)
         velocities = np.zeros((num_nodes, 3), dtype=float)
         damping = 0.85
         dt = 0.005
@@ -91,17 +302,13 @@ class UniversalFormFindingSolver:
         axial_forces = np.zeros(num_edges, dtype=float)
         reactions = np.zeros((num_nodes, 3), dtype=float)
 
-        mass_safety_factor = 2.0
         node_stiffness_sum = np.zeros(num_nodes, dtype=float)
         for i, (u, v) in enumerate(edges):
             k_edge = (self.E * self.area) / rest_lengths[i]
             node_stiffness_sum[u] += k_edge
             node_stiffness_sum[v] += k_edge
 
-        nodal_mass = np.maximum(
-            0.5 * (dt ** 2) * node_stiffness_sum * mass_safety_factor,
-            1e-6,
-        )
+        nodal_mass = np.maximum(0.5 * (dt ** 2) * node_stiffness_sum * 2.0, 1e-6)
 
         for _ in range(max(iterations, 10)):
             F_int = np.zeros((num_nodes, 3), dtype=float)
@@ -116,9 +323,6 @@ class UniversalFormFindingSolver:
                 L0 = rest_lengths[i]
                 strain = (curr_len - L0) / L0
                 force = (self.E * self.area * strain) + self.prestress
-
-                if np.isnan(force) or np.isinf(force):
-                    force = 0.0
                 axial_forces[i] = force
 
                 f_vec = force * unit_vec
@@ -132,52 +336,30 @@ class UniversalFormFindingSolver:
                 else:
                     R_residual = F_ext[i] + F_int[i]
                     accel = R_residual / nodal_mass[i]
-                    new_velocity = (velocities[i] + accel * dt) * damping
-
-                    if not np.all(np.isfinite(new_velocity)):
-                        new_velocity = np.zeros(3)
-                    velocities[i] = new_velocity
+                    velocities[i] = (velocities[i] + accel * dt) * damping
                     nodes[i] += velocities[i] * dt
 
-                    max_excursion = 20.0 * max(self.domain.Lx, self.domain.Ly, self.domain.Lz, 1000.0)
-                    origin_pos = self.domain.nodes[i]
-                    delta = nodes[i] - origin_pos
-                    dist = np.linalg.norm(delta)
-                    if dist > max_excursion and dist > 0:
-                        nodes[i] = origin_pos + delta * (max_excursion / dist)
-                        velocities[i] = np.zeros(3)
-
-        # Inversion for Compression Structures
-        free_nodes = [i for i in range(num_nodes) if i not in fixed_nodes]
-        support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
-
-        if invert_form:
-            for i in free_nodes:
-                nodes[i, 2] = support_z + (support_z - nodes[i, 2])
-            reactions[:, 2] = -reactions[:, 2]
-
-        achieved_rise_mm = 0.0
-        target_rise_mm = float(self.domain.Lz)
-        height_scale_capped = False
-
-        if free_nodes and self.domain.Lz > 0.0:
-            new_z_range = float(np.max(np.abs(nodes[free_nodes, 2] - support_z)))
-            if new_z_range > self.MIN_DEFLECTION_FOR_RESCALE_MM:
-                raw_scale = target_rise_mm / new_z_range
-                scale = min(raw_scale, self.MAX_HEIGHT_SCALE_FACTOR)
-                height_scale_capped = raw_scale > self.MAX_HEIGHT_SCALE_FACTOR
-                for i in free_nodes:
-                    nodes[i, 2] = support_z + (nodes[i, 2] - support_z) * scale
-                achieved_rise_mm = new_z_range * scale
-
-        nodes = np.nan_to_num(nodes, nan=0.0, posinf=0.0, neginf=0.0)
-        axial_forces = np.nan_to_num(axial_forces, nan=0.0, posinf=0.0, neginf=0.0)
-        reactions = np.nan_to_num(reactions, nan=0.0, posinf=0.0, neginf=0.0)
-
         diagnostics = {
-            "achieved_rise_mm": round(float(achieved_rise_mm), 3),
-            "target_rise_mm": round(target_rise_mm, 3),
-            "height_scale_capped": bool(height_scale_capped),
+            "method": "Underwood Dynamic Relaxation (DR)",
+            "form_inverted": False
         }
 
         return nodes, axial_forces, reactions, diagnostics
+
+
+class FormFindingSolverFactory:
+    """Factory creating appropriate structural form-finding solver algorithms."""
+
+    @staticmethod
+    def create(material_type: str, domain, mat_props: dict, **kwargs):
+        mat_type = str(material_type).lower()
+
+        if mat_type in ("cables", "cable"):
+            return ForceDensitySolver(domain=domain, E_modulus=mat_props.get("E", 160000.0), **kwargs)
+
+        elif mat_type in ("concrete", "masonry", "stone"):
+            return InvertedGravityDRSolver(domain=domain, E_modulus=mat_props.get("E", 33000.0), **kwargs)
+
+        else:
+            # Fallback for generic, timber, membrane (Phase 1)
+            return UnderwoodDRSolver(domain=domain, E_modulus=mat_props.get("E", 210000.0), **kwargs)
