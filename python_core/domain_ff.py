@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v10 — Direction-aware line projection tolerance & strict boundary candidate filtering.
+# v11 — Direction-aware line projection tolerance & strict boundary candidate filtering.
 
 import numpy as np
 
