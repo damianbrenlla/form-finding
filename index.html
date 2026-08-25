@@ -37,7 +37,7 @@
         #sidebar {
             width: 420px; background: #ffffff; padding: 24px;
             border-right: 1px solid #e5e5e5; display: flex;
-            flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
+            flex-direction: column; gap: 14px; overflow-y: auto; z-index: 10;
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
         
@@ -52,7 +52,7 @@
         }
 
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
-        .control-group { display: flex; flex-direction: column; gap: 4px; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
         label { font-size: 0.75rem; color: #444444; font-weight: 500; letter-spacing: 0.2px; }
         input, select {
             background: #ffffff; border: 1px solid #cccccc; color: #000000;
@@ -101,8 +101,17 @@
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
-        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
-        .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
+        
+        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 8px 0 4px 0; }
+        .section-header { 
+            font-size: 0.78rem; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            color: #000000; 
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }
         
         .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
         .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -111,7 +120,10 @@
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
         .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
         .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
-        .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
+        .data-table input { 
+            width: 100%; border: none; padding: 4px; font-size: 0.72rem; 
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; min-width: 0; 
+        }
         .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
 
         #legend {
@@ -128,7 +140,10 @@
             background: linear-gradient(to top, hsl(240, 85%, 45%), hsl(180, 85%, 45%), hsl(120, 85%, 45%), hsl(60, 85%, 45%), hsl(0, 85%, 45%));
             border: 1px solid #999999;
         }
-        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: monospace; font-size: 0.70rem; color: #333333; }
+        .legend-labels { 
+            display: flex; flex-direction: column; justify-content: space-between; height: 130px; 
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.70rem; color: #333333; 
+        }
 
         #intro-overlay, #app-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -182,6 +197,7 @@
             width: 100%;
             height: 28px;
             padding: 4px 6px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -202,7 +218,7 @@
         </p>
 
         <ul>
-            <li>Structural material classifications (Steel Cables, Architectural Membranes)</li>
+            <li>Structural forms (Cables, Membranes)</li>
             <li>Material-driven solver factory incorporating Force Density Method (FDM) and Dynamic Relaxation</li>
             <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
             <li>Biaxial orthotropic prestress line tensions (kN/m) and boundary sleeve cable definitions for membrane elements</li>
@@ -242,7 +258,7 @@
     </div>
 
     <div class="control-group">
-        <label>Structural Material Classification</label>
+        <label>Structural Form</label>
         <select id="mat_type" onchange="onMaterialChange()">
             <option value="cables">Cables</option>
             <option value="membrane" selected>Membranes</option>
@@ -268,9 +284,9 @@
     <div class="control-group">
         <label id="mesh_div_label">FE Mesh Divisions nx, ny</label>
         <div style="display: flex; gap: 6px;">
-            <input type="number" id="nx" value="36" style="width: 50%; font-family: monospace;" onchange="updateDomainVisuals();">
+            <input type="number" id="nx" value="36" style="width: 50%;" onchange="updateDomainVisuals();">
             <div id="ny_input_container" style="width: 50%;">
-                <input type="number" id="ny" value="12" style="width: 100%; font-family: monospace;" onchange="updateDomainVisuals();">
+                <input type="number" id="ny" value="12" style="width: 100%;" onchange="updateDomainVisuals();">
             </div>
         </div>
     </div>
@@ -278,7 +294,7 @@
     <hr>
     <div class="section-header">Boundary Restraints</div>
 
-    <div class="control-group" style="margin-top: 4px;">
+    <div class="control-group">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Point Supports (mm / DOFs)</label>
             <div class="btn-group">
@@ -293,7 +309,7 @@
     </div>
 
     <!-- Line Supports Container -->
-    <div id="line_supports_container" class="control-group" style="margin-top: 6px;">
+    <div id="line_supports_container" class="control-group" style="margin-top: 4px;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
             <div class="btn-group">
@@ -325,16 +341,16 @@
         <div class="span-builder-fields">
             <div class="control-subgroup">
                 <label>Warp Prestress Tx (kN/m)</label>
-                <input type="number" id="prestress_warp_kn_m" value="2.0" step="0.1" style="font-family: monospace;">
+                <input type="number" id="prestress_warp_kn_m" value="2.0" step="0.1">
             </div>
             <div class="control-subgroup">
                 <label>Weft Prestress Ty (kN/m)</label>
-                <input type="number" id="prestress_weft_kn_m" value="2.0" step="0.1" style="font-family: monospace;">
+                <input type="number" id="prestress_weft_kn_m" value="2.0" step="0.1">
             </div>
         </div>
         <div class="control-group" style="margin-top: 2px;">
             <label style="font-size: 0.65rem; color: #555555;">Perimeter Edge Sleeve Cable Tension (kN)</label>
-            <input type="number" id="edge_cable_prestress_kn" value="20.0" step="1.0" style="font-family: monospace; height: 28px; padding: 4px 6px;">
+            <input type="number" id="edge_cable_prestress_kn" value="20.0" step="1.0" style="height: 28px; padding: 4px 6px;">
         </div>
     </div>
 
@@ -347,11 +363,11 @@
         <div class="span-builder-fields">
             <div class="control-subgroup">
                 <label>Position Ratio (0.0 - 1.0)</label>
-                <input type="number" id="cable_load_ratio" value="0.50" min="0.0" max="1.0" step="0.05" style="font-family: monospace;">
+                <input type="number" id="cable_load_ratio" value="0.50" min="0.0" max="1.0" step="0.05">
             </div>
             <div class="control-subgroup">
                 <label>Vertical Load Fz (kN)</label>
-                <input type="number" id="cable_load_fz" value="-12.5" step="0.5" style="font-family: monospace;">
+                <input type="number" id="cable_load_fz" value="-12.5" step="0.5">
             </div>
         </div>
         <button class="btn-secondary" style="width: 100%; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
@@ -382,7 +398,7 @@
     </div>
 
     <hr>
-    <div class="checkbox-group" style="margin-top: 2px;">
+    <div class="checkbox-group">
         <label><input type="checkbox" id="self_weight_toggle" checked> Include Self-Weight (Dead Load)</label>
     </div>
 
@@ -395,24 +411,24 @@
     </div>
 
     <!-- Cable Tension Color Map Slider Container -->
-    <div id="cable_tension_div" class="control-group" style="margin-top: 4px; display: none;">
+    <div id="cable_tension_div" class="control-group" style="display: none;">
         <div style="display: flex; justify-content: space-between; font-size: 0.70rem; font-weight: bold; margin-bottom: 2px;">
             <span>Tension Range Filter</span>
-            <span id="lbl_tension_range" style="font-family: monospace;">0.01 - 100.0 kN</span>
+            <span id="lbl_tension_range">0.01 - 100.0 kN</span>
         </div>
         <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
     </div>
 
     <!-- Tensile Stress Slider Container (Membrane Tensile-Only Control) -->
-    <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
+    <div id="stress_thresholds_div" class="control-group" style="display: none;">
         <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem;">Interactive Tensile Stress Palette Fader</label>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
             <div id="comp_slider_group" style="display: none;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span><span id="lbl_comp_val" style="font-family: monospace; font-weight: bold;">-0.01 MPa</span></div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span><span id="lbl_comp_val" style="font-weight: bold;">-0.01 MPa</span></div>
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+1.00 MPa</span></div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-weight: bold;">+1.00 MPa</span></div>
                 <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
             </div>
         </div>
@@ -422,9 +438,9 @@
     <div id="cut_planes_container">
         <hr>
         <div class="section-header">Interactive 3D Section Cut-Planes</div>
-        <div class="control-group"><label>Cut Plane X Position</label><input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()"></div>
-        <div class="control-group"><label>Cut Plane Y Position</label><input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()"></div>
-        <div class="control-group"><label>Cut Plane Z Position</label><input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()"></div>
+        <div class="control-group" style="margin-top: 8px;"><label>Cut Plane X Position</label><input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()"></div>
+        <div class="control-group" style="margin-top: 6px;"><label>Cut Plane Y Position</label><input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()"></div>
+        <div class="control-group" style="margin-top: 6px;"><label>Cut Plane Z Position</label><input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()"></div>
     </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
@@ -694,7 +710,7 @@
 
         function makeAxisLabel(text) {
             var c = document.createElement('canvas'); c.width = 128; c.height = 128;
-            var ctx = c.getContext('2d'); ctx.fillStyle = '#000000'; ctx.font = 'bold 72px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 64, 68);
+            var ctx = c.getContext('2d'); ctx.fillStyle = '#000000'; ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 64, 68);
             var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
             sprite.scale.set(0.55, 0.55, 1); return sprite;
         }
