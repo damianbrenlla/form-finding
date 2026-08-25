@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v4 — Planar 2D support snapping (fixes non-zero Z elevations) & cable-specific orthogonal topology.
+# v5 — 1D linear cable chain topology & planar 2D support snapping (fixes non-zero Z elevations)
 
 import numpy as np
 
@@ -37,39 +37,43 @@ class FormFindingDomain3D:
 
     def _build_network_topology(self):
         """
-        Generates flat (Z=0) node-edge connectivity.
-        Starting flat is essential for correct funicular form-finding.
+        Generates 1D cable chain for cables, or 2D flat node-edge grid for shells/membranes.
         """
-        x_lin = np.linspace(0, self.Lx, self.nx + 1)
-        y_lin = np.linspace(0, self.Ly, self.ny + 1)
-        grid_map = {}
-        node_idx = 0
-
-        for i, x in enumerate(x_lin):
-            for j, y in enumerate(y_lin):
-                self.nodes.append([x, y, 0.0])
-                grid_map[(i, j)] = node_idx
-                node_idx += 1
-
         is_pure_cable = self.material_type in ("cables", "cable")
 
-        # Grid edges
-        for i in range(self.nx + 1):
-            for j in range(self.ny + 1):
-                curr = grid_map[(i, j)]
-
-                # Longitudinal (X-direction)
+        if is_pure_cable:
+            # Construct 1D Cable Nodal Chain along X-axis between 0 and Lx
+            x_lin = np.linspace(0, self.Lx, self.nx + 1)
+            for i, x in enumerate(x_lin):
+                self.nodes.append([x, 0.0, 0.0])
                 if i < self.nx:
-                    self.edges.append([curr, grid_map[(i + 1, j)]])
+                    self.edges.append([i, i + 1])
+        else:
+            # Construct 2D Flat Surface Grid for membranes, shells, vaults
+            x_lin = np.linspace(0, self.Lx, self.nx + 1)
+            y_lin = np.linspace(0, self.Ly, self.ny + 1)
+            grid_map = {}
+            node_idx = 0
 
-                # Transverse (Y-direction)
-                if j < self.ny:
-                    self.edges.append([curr, grid_map[(i, j + 1)]])
+            for i, x in enumerate(x_lin):
+                for j, y in enumerate(y_lin):
+                    self.nodes.append([x, y, 0.0])
+                    grid_map[(i, j)] = node_idx
+                    node_idx += 1
 
-                # Diagonal bracing — omitted for pure cable nets to prevent lateral pinching
-                if not is_pure_cable and i < self.nx and j < self.ny:
-                    self.edges.append([curr, grid_map[(i + 1, j + 1)]])
-                    self.edges.append([grid_map[(i + 1, j)], grid_map[(i, j + 1)]])
+            for i in range(self.nx + 1):
+                for j in range(self.ny + 1):
+                    curr = grid_map[(i, j)]
+
+                    if i < self.nx:
+                        self.edges.append([curr, grid_map[(i + 1, j)]])
+
+                    if j < self.ny:
+                        self.edges.append([curr, grid_map[(i, j + 1)]])
+
+                    if i < self.nx and j < self.ny:
+                        self.edges.append([curr, grid_map[(i + 1, j + 1)]])
+                        self.edges.append([grid_map[(i + 1, j)], grid_map[(i, j + 1)]])
 
         self.nodes = np.array(self.nodes, dtype=float)
         self.edges = np.array(self.edges, dtype=int)
@@ -137,7 +141,6 @@ class FormFindingDomain3D:
                 dist = np.linalg.norm(node - proj_pt)
                 if dist <= tol:
                     self.fixed_nodes.add(idx)
-                    # Update node Z elevation
                     self.nodes[idx, 2] = float(proj_pt[2])
 
     def add_edge_support(self, edge: str = "all"):
