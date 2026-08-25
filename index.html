@@ -130,18 +130,18 @@
         }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: monospace; font-size: 0.70rem; color: #333333; }
 
-        #intro-overlay, #load-prompt-overlay {
+        #intro-overlay, #load-prompt-overlay, #app-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
             z-index: 1000;
         }
-        #intro-modal, #load-prompt-modal {
+        #intro-modal, #load-prompt-modal, #app-modal {
             background: #ffffff; border: 1px solid #000000;
             max-width: 480px; width: 90%; padding: 28px 28px 22px 28px;
             box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
         }
-        #intro-modal .subtitle, #load-prompt-modal .subtitle { margin-bottom: 16px; }
-        #intro-modal p, #load-prompt-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
+        #intro-modal .subtitle, #load-prompt-modal .subtitle, #app-modal .subtitle { margin-bottom: 16px; }
+        #intro-modal p, #load-prompt-modal p, #app-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
         #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
         #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 4px; }
         #intro-modal .author-line {
@@ -207,6 +207,16 @@
             <button class="btn-primary" style="flex: 1; margin-top: 0;" onclick="confirmCableLoadPrompt()">Confirm Load</button>
             <button class="btn-secondary-danger" style="flex: 1;" onclick="closeCableLoadPrompt()">Cancel</button>
         </div>
+    </div>
+</div>
+
+<!-- Custom Minimalist General Alert Modal -->
+<div id="app-modal-overlay" style="display: none;">
+    <div id="app-modal">
+        <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
+        <div class="subtitle" id="app_modal_subtitle">Notification</div>
+        <p id="app_modal_text">Notification message text goes here.</p>
+        <button class="btn-primary" style="margin-top: 8px; width: 100%;" onclick="closeAppModal()">Acknowledge</button>
     </div>
 </div>
 
@@ -447,6 +457,16 @@
 
     var MASONRY_UNITS = { "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0, "Dense Concrete Block (20 MPa)": 20.0 };
     var MORTAR_GRADES = { "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0 };
+
+    function showAppModal(titleText, bodyText) {
+        document.getElementById('app_modal_subtitle').innerText = titleText || "Notification";
+        document.getElementById('app_modal_text').innerText = bodyText || "";
+        document.getElementById('app-modal-overlay').style.display = 'flex';
+    }
+
+    function closeAppModal() {
+        document.getElementById('app-modal-overlay').style.display = 'none';
+    }
 
     function makeTextSprite(message, colorHex) {
         colorHex = colorHex || '#cc0000';
@@ -733,9 +753,9 @@
         var matType = document.getElementById('mat_type').value;
         var currentCount = document.querySelectorAll('#support_table_body tr').length;
         
-        // Strictly restrict cable materials to a maximum of 2 point supports
+        // Strictly restrict cable materials to a maximum of 2 point supports using minimalist modal
         if (matType === 'cables' && currentCount >= 2) {
-            alert("Cable structures are restricted to a maximum of 2 boundary supports.");
+            showAppModal("Boundary Constraint Limit", "Cable structures are restricted to a maximum of 2 boundary supports.");
             return;
         }
 
