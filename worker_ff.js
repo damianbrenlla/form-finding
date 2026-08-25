@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v13 — Pass material_type to FormFindingDomain3D & export clean axial_forces array.
+ * Pass 1 — Corrected self-weight payload processing & exception propagation.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -207,8 +207,8 @@ sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
-    pos        = [float(v) for v in np.nan_to_num(equilibrium_nodes[idx]).tolist()]
-    rx, ry, rz = [float(v) for v in np.nan_to_num(reactions[idx]).tolist()]
+    pos        = [float(v) for v in equilibrium_nodes[idx].tolist()]
+    rx, ry, rz = [float(v) for v in reactions[idx].tolist()]
     R_total    = float(np.linalg.norm([rx, ry, rz]))
     reaction_data.append({
         "node":       int(idx),
@@ -219,23 +219,18 @@ for idx in fixed_indices:
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
-clean_nodes    = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
-clean_forces   = np.nan_to_num(axial_forces,        nan=0.0, posinf=0.0, neginf=0.0)
-clean_stresses = np.nan_to_num(nodal_stresses_mpa, nan=0.0, posinf=0.0, neginf=0.0)
-clean_defs     = np.nan_to_num(deflections_mm,     nan=0.0, posinf=0.0, neginf=0.0)
-
 json.dumps({
-    "nodes":          [[float(v) for v in row] for row in clean_nodes.tolist()],
+    "nodes":          [[float(v) for v in row] for row in equilibrium_nodes.tolist()],
     "edges":          [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()],
-    "axial_forces":   [float(v) for v in clean_forces.tolist()],
-    "stresses_mpa":   [float(v) for v in clean_stresses.tolist()],
-    "deflections_mm": [float(v) for v in clean_defs.tolist()],
+    "axial_forces":   [float(v) for v in axial_forces.tolist()],
+    "stresses_mpa":   [float(v) for v in nodal_stresses_mpa.tolist()],
+    "deflections_mm": [float(v) for v in deflections_mm.tolist()],
     "sigma_max_tens": round(sigma_max_tens, 3),
     "sigma_max_comp": round(sigma_max_comp, 3),
     "u_max":          round(u_max, 3),
     "reactions":      reaction_data,
     "material":       mat_props.get("material_name", mat_type),
-    "num_nodes":      len(clean_nodes),
+    "num_nodes":      len(equilibrium_nodes),
     "num_edges":      len(domain.edges),
     "diagnostics":    diagnostics,
 })
