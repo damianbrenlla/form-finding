@@ -107,7 +107,7 @@ domain = FormFindingDomain3D(
     material_type=mat_type
 )
 
-# Discrete Point Supports & Universal Corner Z-Map Sourcing
+# Discrete Point Supports & Universal Corner Z-Map Assembly
 point_sups = payload.get("point_supports", [])
 line_sups  = payload.get("line_supports", [])
 corner_z_map = {}
