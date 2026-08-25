@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v7 — Updated for 3D Line Supports & Dynamic Bounding Geometry
+ * v8 — Inversion and solver routing driven directly by material_type.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -34,14 +34,12 @@ async function initEngine() {
                 response = await fetch(url);
             } catch (networkErr) {
                 throw new Error(
-                    `Network error fetching ${file} at ${url}: ${networkErr.message}. ` +
-                    `Serve via local server if testing locally.`
+                    `Network error fetching ${file} at ${url}: ${networkErr.message}.`
                 );
             }
             if (!response.ok) {
                 throw new Error(
-                    `HTTP ${response.status} ${response.statusText} fetching ${file} at ${url}. ` +
-                    `Check that python_core/${file} exists alongside worker_ff.js.`
+                    `HTTP ${response.status} ${response.statusText} fetching ${file} at ${url}.`
                 );
             }
             const code = await response.text();
@@ -90,9 +88,9 @@ payload = json.loads(payload_json)
 
 # --- Material Properties ---
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
-mat_type  = payload.get("material_type", "generic")
+mat_type  = payload.get("material_type", "cables")
 
-# --- Domain ---
+# --- Domain Construction ---
 Lx_val = float(payload.get("Lx", 6000))
 Ly_val = float(payload.get("Ly", 300))
 Lz_val = float(payload.get("Lz", 600))
@@ -102,7 +100,7 @@ domain = FormFindingDomain3D(
     Ly=Ly_val,
     Lz=Lz_val,
     nx=int(payload.get("nx", 36)),
-    ny=int(payload.get("ny", 9)),
+    ny=int(payload.get("ny", 12)),
     geometry_preset="surface_grid"
 )
 
@@ -114,22 +112,20 @@ for pt in payload.get("point_supports", []):
         float(pt.get("z", 0))
     )
 
-# --- Discrete Line Supports ---
+# --- Discrete 3D Line Supports ---
 for l_sup in payload.get("line_supports", []):
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
     
-    # Check if domain supports 3D line vector constraints
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
     else:
-        # Fallback to endpoints if 3D line method isn't declared
         domain.add_point_support(*p1)
         domain.add_point_support(*p2)
 
 if len(domain.fixed_nodes) == 0:
     raise ValueError(
-        "No support nodes resolved. Add at least one discrete point or line support."
+        "No support nodes resolved. Add at least one discrete point or line support in the tables."
     )
 
 # --- Cross-Section Area ---
@@ -144,16 +140,16 @@ else:
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
     area_mm2 = b_mm * h_mm
 
-# --- Prestress ---
+# --- Prestress (Only applied if cable/membrane/generic) ---
 prestress_N = float(payload.get("prestress", 0.0))
-if mat_type not in ("cables", "membrane"):
+if mat_type not in ("cables", "membrane", "generic"):
     prestress_N = 0.0
 
-# --- Self-weight toggle ---
+# --- Self-Weight ---
 include_sw = bool(payload.get("include_self_weight", True))
 gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
-# --- Solver Execution ---
+# --- Solver Route ---
 solver = UniversalFormFindingSolver(
     domain          = domain,
     E_modulus       = mat_props.get("E", 210000.0),
@@ -164,7 +160,8 @@ solver = UniversalFormFindingSolver(
     material_type   = mat_type,
 )
 
-invert_flag = mat_type in ("concrete", "masonry")
+# Compression structures (concrete, timber grid-shells, vaulted masonry) invert upside-down after hanging solve
+invert_flag = mat_type in ("concrete", "timber", "masonry")
 iters       = 500
 
 initial_nodes = np.copy(domain.nodes).astype(float)
@@ -180,7 +177,7 @@ u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
 element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
 
-# Nodal Stress Averaging
+# Nodal Stress Recovery
 num_nodes = len(equilibrium_nodes)
 nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
 node_degree = np.zeros(num_nodes, dtype=float)
@@ -202,9 +199,9 @@ sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
-    pos      = [float(v) for v in np.nan_to_num(equilibrium_nodes[idx]).tolist()]
+    pos        = [float(v) for v in np.nan_to_num(equilibrium_nodes[idx]).tolist()]
     rx, ry, rz = [float(v) for v in np.nan_to_num(reactions[idx]).tolist()]
-    R_total  = float(np.linalg.norm([rx, ry, rz]))
+    R_total    = float(np.linalg.norm([rx, ry, rz]))
     reaction_data.append({
         "node":       int(idx),
         "pos":        pos,
@@ -214,7 +211,7 @@ for idx in fixed_indices:
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
-# Serialization
+# Output Formatting
 clean_nodes    = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
 clean_forces   = np.nan_to_num(axial_forces,        nan=0.0, posinf=0.0, neginf=0.0)
 clean_stresses = np.nan_to_num(nodal_stresses_mpa, nan=0.0, posinf=0.0, neginf=0.0)
