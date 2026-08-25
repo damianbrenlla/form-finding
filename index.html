@@ -524,6 +524,7 @@
         document.getElementById('app-modal-overlay').style.display = 'none';
     }
 
+    /* Fixed Canvas Buffer Resolution to Prevent Text Truncation */
     function makeTextSprite(message, colorHex) {
         colorHex = colorHex || '#cc0000';
         var canvas = document.createElement('canvas');
@@ -541,6 +542,7 @@
         return sprite;
     }
 
+    /* Complete State Purge Function on Material Classification Change */
     function onMaterialChange() {
         clearAllSupports();
         clearAllLineSupports();
@@ -992,6 +994,7 @@
         setupCutPlaneSliders();
     }
 
+    /* 3D Bilinear Pre-interpolated Mesh Preview Generator */
     function drawInitialPreviewMesh() {
         var matType = document.getElementById('mat_type').value;
         var pointSups = getPointSupportArrayData();
@@ -1021,6 +1024,15 @@
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
 
+        // Extract 3D Support Elevations for Bilinear Corner Interpolation
+        var z00 = 0.0, z10 = 0.0, z01 = 0.0, z11 = 0.0;
+        pointSups.forEach(ps => {
+            if (ps.x <= activeLx * 0.25 && ps.y <= activeLy * 0.25) z00 = ps.z;
+            if (ps.x >= activeLx * 0.75 && ps.y <= activeLy * 0.25) z10 = ps.z;
+            if (ps.x <= activeLx * 0.25 && ps.y >= activeLy * 0.75) z01 = ps.z;
+            if (ps.x >= activeLx * 0.75 && ps.y >= activeLy * 0.75) z11 = ps.z;
+        });
+
         var previewNodes = [], previewEdges = [];
         var xLin = Array.from({length: nx + 1}, (_, i) => (i / nx) * activeLx);
         var yLin = Array.from({length: ny + 1}, (_, j) => (j / ny) * activeLy);
@@ -1028,8 +1040,12 @@
         var gridMap = {};
         var idx = 0;
         for (var i = 0; i <= nx; i++) {
+            var xi = i / nx;
             for (var j = 0; j <= ny; j++) {
-                previewNodes.push([xLin[i], 0, yLin[j]]);
+                var eta = j / ny;
+                // Bilinear spatial elevation interpolation across elevated corner anchors
+                var z_interp = (1.0 - xi) * (1.0 - eta) * z00 + xi * (1.0 - eta) * z10 + (1.0 - xi) * eta * z01 + xi * eta * z11;
+                previewNodes.push([xLin[i], z_interp, yLin[j]]);
                 gridMap[`${i},${j}`] = idx++;
             }
         }
@@ -1071,7 +1087,6 @@
                 var totalRx = 0.0, totalRy = 0.0, totalRz = 0.0;
                 reactions.forEach(r => {
                     var rPos = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
-                    // Check if reaction node lies along or near this line support
                     if (rPos.distanceTo(p1) <= activeLx * 1.5 || rPos.distanceTo(p2) <= activeLx * 1.5) {
                         totalRx += r.Rx_kN;
                         totalRy += r.Ry_kN;
