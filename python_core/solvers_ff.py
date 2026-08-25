@@ -1,6 +1,6 @@
 # DBSW 3D Dynamic Relaxation & Dynamic Form-Finding Solver
 # Author: Damian Brenlla / DBSW 2026
-# v4 — Mass-scaled Underwood DR, bounded load scaling, bounded height-rescale.
+# v5 — Mass-scaled Underwood DR with robust zero-load handling.
 
 import numpy as np
 
@@ -34,7 +34,7 @@ class UniversalFormFindingSolver:
 
         self.prestress = float(prestress_force)
         self.point_loads = point_loads if point_loads is not None else []
-        self.material_type = material_type
+        self.material_type = str(material_type).lower()
 
     def solve_equilibrium(self, iterations: int = 500, invert_form: bool = False):
         nodes = np.copy(self.domain.nodes).astype(float)
@@ -82,19 +82,6 @@ class UniversalFormFindingSolver:
             F_ext[closest_idx, 0] += fx_N
             F_ext[closest_idx, 1] += fy_N
             F_ext[closest_idx, 2] += fz_N
-
-        # Stiffness-Normalized Load Scaling
-        total_load = np.linalg.norm(F_ext)
-        if total_load < 1e-3:
-            for i in range(num_nodes):
-                if i not in fixed_nodes:
-                    F_ext[i, 2] -= 100.0
-        else:
-            stiffness_factor = (self.E * self.area) / 1e6
-            if stiffness_factor > 1.0:
-                raw_scale = stiffness_factor / (total_load + 1e-6)
-                scale = min(raw_scale, self.MAX_LOAD_SCALE_FACTOR)
-                F_ext *= scale
 
         # Mass-Scaled Dynamic Relaxation (Underwood DR)
         velocities = np.zeros((num_nodes, 3), dtype=float)
@@ -152,7 +139,7 @@ class UniversalFormFindingSolver:
                     velocities[i] = new_velocity
                     nodes[i] += velocities[i] * dt
 
-                    max_excursion = 20.0 * max(self.domain.Lx, self.domain.Ly, self.domain.Lz, 1.0)
+                    max_excursion = 20.0 * max(self.domain.Lx, self.domain.Ly, self.domain.Lz, 1000.0)
                     origin_pos = self.domain.nodes[i]
                     delta = nodes[i] - origin_pos
                     dist = np.linalg.norm(delta)
@@ -160,7 +147,7 @@ class UniversalFormFindingSolver:
                         nodes[i] = origin_pos + delta * (max_excursion / dist)
                         velocities[i] = np.zeros(3)
 
-        # Inversion & Target Height Scaling
+        # Inversion for Compression Structures
         free_nodes = [i for i in range(num_nodes) if i not in fixed_nodes]
         support_z = np.mean(nodes[list(fixed_nodes), 2]) if fixed_nodes else 0.0
 
