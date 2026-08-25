@@ -3,47 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- 1. SEO Primary Metadata -->
     <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
+    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode and specialized cable/membrane material logic, continuum mechanics, and interactive 3D section cut-planes.">
+    <meta name="keywords" content="Structural Form Finding, Cable Net Form Finding, Tensile Membrane, WebAssembly Finite Element Analysis, Structural Engineering, DBSW Engineering">
+    <meta name="author" content="Damian Brenlla / DBSW">
+    <link rel="canonical" href="https://topology.dbsw.uk/" />
+
+    <!-- 2. Open Graph / Social Audit Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="DBSW Engineering">
+    <meta property="og:title" content="DBSW 3D Form Finding Engine — Client-Side WASM FEA">
+    <meta property="og:description" content="Interactive first-principles 3D continuum mechanics & form finding running entirely in the browser via Pyodide/Wasm. Eurocode compliant design exploration.">
+    <meta property="og:url" content="https://topology.dbsw.uk/">
+    <meta property="og:image" content="https://topology.dbsw.uk/assets/og-preview.jpg">
+
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #ffffff; color: #000000; display: flex; height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; }
+        body {
+            margin: 0; padding: 0;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background: #ffffff; color: #000000;
+            display: flex; height: 100vh; overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
-        #sidebar { width: 420px; background: #ffffff; padding: 24px; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10; }
+        #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
+
+        #sidebar {
+            width: 420px; background: #ffffff; padding: 24px;
+            border-right: 1px solid #e5e5e5; display: flex;
+            flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
+        }
         #viewport { flex: 1; position: relative; background: #ffffff; }
-        .brand-logo-img { height: 18px; width: auto; max-width: 100%; display: block; margin-bottom: 6px; object-fit: contain; object-position: left center; }
+        
+        .brand-logo-img {
+            height: 18px;
+            width: auto;
+            max-width: 100%;
+            display: block;
+            margin-bottom: 6px;
+            object-fit: contain;
+            object-position: left center;
+        }
+
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
         .control-group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 0.75rem; color: #444444; font-weight: 500; letter-spacing: 0.2px; }
-        input, select { background: #ffffff; border: 1px solid #cccccc; color: #000000; padding: 6px 8px; border-radius: 0px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.78rem; outline: none; transition: border-color 0.15s ease; }
+        input, select {
+            background: #ffffff; border: 1px solid #cccccc; color: #000000;
+            padding: 6px 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.78rem; outline: none; transition: border-color 0.15s ease;
+        }
         input:focus, select:focus { border-color: #000000; }
-        input[type="range"] { -webkit-appearance: none; width: 100%; height: 4px; background: #e5e5e5; outline: none; margin: 6px 0; padding: 0; border: none; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease; }
-        .btn-primary { background: #000000; color: #ffffff; border: 1px solid #000000; padding: 12px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer; transition: background 0.15s ease; margin-top: 4px; }
+
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 4px; background: #e5e5e5;
+            outline: none; margin: 6px 0; padding: 0; border: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+            background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { background: #000000; }
+
+        .btn-primary {
+            background: #000000; color: #ffffff; border: 1px solid #000000;
+            padding: 12px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease; margin-top: 4px;
+        }
         .btn-primary:hover { background: #333333; }
         .btn-primary:disabled { background: #999999; border-color: #999999; cursor: not-allowed; }
-        .btn-stop { background: #ffffff; color: #cc0000; border: 1px solid #cc0000; padding: 10px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.80rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer; display: none; margin-top: 4px; }
-        .btn-secondary { background: #ffffff; color: #000000; border: 1px solid #000000; padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer; }
-        .btn-secondary-danger { background: #ffffff; color: #cc0000; border: 1px solid #cc0000; padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer; }
+        .btn-stop {
+            background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
+            padding: 10px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.80rem; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer; display: none; margin-top: 4px;
+        }
+        .btn-secondary {
+            background: #ffffff; color: #000000; border: 1px solid #000000;
+            padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer;
+        }
+        .btn-secondary-danger {
+            background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
+            padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+            text-transform: uppercase; cursor: pointer;
+        }
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
         hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
         .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
+        
         .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
+        .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #000000; cursor: pointer; }
+        
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
         .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
         .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
         .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: monospace; min-width: 0; }
         .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
-        #legend { position: absolute; top: 20px; right: 20px; background: rgba(255, 255, 255, 0.92); border: 1px solid #cccccc; padding: 12px 14px; font-size: 0.72rem; display: none; flex-direction: column; gap: 6px; box-shadow: 0px 2px 8px rgba(0,0,0,0.06); z-index: 100; min-width: 190px; }
+
+        #legend {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(255, 255, 255, 0.92); border: 1px solid #cccccc;
+            padding: 12px 14px; font-size: 0.72rem; display: none;
+            flex-direction: column; gap: 6px;
+            box-shadow: 0px 2px 8px rgba(0,0,0,0.06); z-index: 100; min-width: 190px;
+        }
         #legend-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.70rem; color: #000000; margin-bottom: 2px; }
         .legend-bar-container { display: flex; align-items: center; gap: 10px; }
-        #legend-bar { width: 14px; height: 130px; background: linear-gradient(to top, hsl(240, 85%, 45%), hsl(180, 85%, 45%), hsl(120, 85%, 45%), hsl(60, 85%, 45%), hsl(0, 85%, 45%)); border: 1px solid #999999; }
+        #legend-bar {
+            width: 14px; height: 130px;
+            background: linear-gradient(to top, hsl(240, 85%, 45%), hsl(180, 85%, 45%), hsl(120, 85%, 45%), hsl(60, 85%, 45%), hsl(0, 85%, 45%));
+            border: 1px solid #999999;
+        }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: monospace; font-size: 0.70rem; color: #333333; }
-        #intro-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-        #intro-modal { background: #ffffff; border: 1px solid #000000; max-width: 460px; width: 90%; padding: 28px 28px 22px 28px; box-shadow: 0px 8px 24px rgba(0,0,0,0.25); }
+
+        #intro-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        #intro-modal {
+            background: #ffffff; border: 1px solid #000000;
+            max-width: 480px; width: 90%; padding: 28px 28px 22px 28px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
+        }
+        #intro-modal .subtitle { margin-bottom: 16px; }
+        #intro-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
+        #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
+        #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 4px; }
+        #intro-modal .author-line {
+            font-size: 0.72rem; color: #666666; letter-spacing: 0.3px;
+            border-top: 1px solid #e5e5e5; padding-top: 12px; margin-bottom: 16px;
+        }
+        #intro-modal .author-line a { color: #000000; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -54,8 +160,33 @@
     <div id="intro-modal">
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
         <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
-        <p>This tool generates 3D structural form-found geometries, solved entirely in your browser via WebAssembly.</p>
-        <button class="btn-primary" style="margin-top: 0;" onclick="document.getElementById('intro-overlay').style.display='none';">Enter Application</button>
+
+        <p>
+            This tool generates 3D structural form-found geometries solved entirely
+            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
+            and morphological behavior adapt dynamically based on your chosen structural material.
+        </p>
+
+        <ul>
+            <li>Six structural material classifications (Steel Cables, Fabric Membranes, Concrete Shells, Timber Gridshells, Vaulted Masonry, Custom Isotropic)</li>
+            <li>Material-driven solver factory incorporating Force Density Method (FDM), Compression-Constrained Inverted Dynamic Relaxation, and Underwood DR</li>
+            <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
+            <li>Optional self-weight inclusion and configurable external point load arrays</li>
+            <li>Real-time stress/displacement maps with numerical reaction vectors and interactive 3D section cut-planes</li>
+            <li>Direct .STL export of solved 3D network geometry</li>
+        </ul>
+
+        <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
+            This is a concept-stage design exploration tool, not a substitute for code-compliant structural verification of the final geometry.
+        </p>
+
+        <div class="author-line" style="margin-top: 14px;">
+            Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
+        </div>
+
+        <button class="btn-primary" style="margin-top: 0;" onclick="document.getElementById('intro-overlay').style.display='none';">
+            Enter Application
+        </button>
     </div>
 </div>
 
@@ -392,7 +523,6 @@
         reactionGroup = new THREE.Group();
         scene.add(reactionGroup);
 
-        // --- Restored Bottom-Left Overlay XYZ Axis Triad ---
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
         axesCamera.position.set(0, 0, 5); axesCamera.lookAt(0, 0, 0);
@@ -567,7 +697,6 @@
             }
         });
 
-        // --- Render Graphical Load Arrows ---
         getLoadArrayData().forEach(function(ld) {
             var dir = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
             var mag = dir.length();
@@ -586,7 +715,6 @@
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
 
         reactions.forEach(r => {
-            // Three.js Y-up mapping: Python [X, Y, Z] -> Three [X, Z, Y]
             const origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
             const dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
             const mag = dir.length();
@@ -597,7 +725,6 @@
                 const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, 140, 70);
                 reactionGroup.add(arrow);
 
-                // Numerical Reaction Text Label Sprite in kN
                 const labelText = `${r.R_total_kN.toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText);
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
