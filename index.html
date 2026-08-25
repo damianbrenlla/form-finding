@@ -163,7 +163,8 @@
 
         <p>
             This tool generates 3D structural form-found geometries solved entirely
-            in your browser via WebAssembly — no data leaves your machine.
+            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
+            and morphological behavior adapt dynamically based on your chosen structural material.
         </p>
 
         <ul>
@@ -360,12 +361,7 @@
     <div class="section-header">Visualization Render Mode</div>
     <div class="control-group">
         <select id="render_mode" onchange="toggleRenderModeUI(); reRenderMesh();">
-            <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
-            <option value="grey">Monochrome Studio Grey (50%)</option>
-            <option value="deflection">Displacement Map (Deflection mm)</option>
-            <!-- Cable-Specific Visualization Options -->
-            <option value="cable_sag">Cable Max Sag Drop-Line Indicator</option>
-            <option value="cable_tension">Cable Tension Force Map (kN Slider)</option>
+            <!-- Dynamically populated per material in JS -->
         </select>
     </div>
 
@@ -392,11 +388,14 @@
         </div>
     </div>
 
-    <hr>
-    <div class="section-header">Interactive 3D Section Cut-Planes</div>
-    <div class="control-group"><label>Cut Plane X Position</label><input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()"></div>
-    <div class="control-group"><label>Cut Plane Y Position</label><input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()"></div>
-    <div class="control-group"><label>Cut Plane Z Position</label><input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()"></div>
+    <!-- Cut Planes Container (Hidden strictly for Cables) -->
+    <div id="cut_planes_container">
+        <hr>
+        <div class="section-header">Interactive 3D Section Cut-Planes</div>
+        <div class="control-group"><label>Cut Plane X Position</label><input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()"></div>
+        <div class="control-group"><label>Cut Plane Y Position</label><input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()"></div>
+        <div class="control-group"><label>Cut Plane Z Position</label><input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()"></div>
+    </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
@@ -467,9 +466,26 @@
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
         var matType = document.getElementById('mat_type').value;
+        var legend = document.getElementById('legend');
 
         document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
         document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
+
+        if (mode === 'cable_tension' && currentVertices.length > 0) {
+            legend.style.display = 'flex';
+            document.getElementById('legend-title').innerText = "Tension Force (kN)";
+            var maxVal = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
+            document.getElementById('lbl-100').innerText = `${maxVal.toFixed(1)} kN`;
+            document.getElementById('lbl-075').innerText = `${(maxVal * 0.75).toFixed(1)} kN`;
+            document.getElementById('lbl-050').innerText = `${(maxVal * 0.50).toFixed(1)} kN`;
+            document.getElementById('lbl-025').innerText = `${(maxVal * 0.25).toFixed(1)} kN`;
+            document.getElementById('lbl-000').innerText = `0.01 kN`;
+        } else if (mode === 'ec3_stress' || mode === 'deflection') {
+            legend.style.display = (currentVertices.length > 0) ? 'flex' : 'none';
+            document.getElementById('legend-title').innerText = mode === 'ec3_stress' ? "Stress Field" : "Deflection";
+        } else {
+            legend.style.display = 'none';
+        }
     }
 
     function onStressSliderChange() {
@@ -483,6 +499,7 @@
     function onTensionSliderChange() {
         var val = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
         document.getElementById('lbl_tension_range').innerText = `0.01 - ${val.toFixed(1)} kN`;
+        toggleRenderModeUI();
         reRenderMesh();
     }
 
@@ -494,12 +511,39 @@
         var prestressContainer = document.getElementById('prestress_container');
         var hintEl = document.getElementById('cable_click_hint');
         var lineSupportContainer = document.getElementById('line_supports_container');
+        var cutPlanesContainer = document.getElementById('cut_planes_container');
+        var renderSelect = document.getElementById('render_mode');
+
+        var currentMode = renderSelect.value;
+        renderSelect.innerHTML = '';
 
         if (matType === 'cables') {
             lineSupportContainer.style.display = 'none';
+            cutPlanesContainer.style.display = 'none';
             clearAllLineSupports();
+
+            var opt1 = document.createElement('option'); opt1.value = "grey"; opt1.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt1);
+            var opt2 = document.createElement('option'); opt2.value = "cable_sag"; opt2.innerText = "Maximum Sag Drop-Line Indicator"; renderSelect.appendChild(opt2);
+            var opt3 = document.createElement('option'); opt3.value = "cable_tension"; opt3.innerText = "Tension Color Map (kN)"; renderSelect.appendChild(opt3);
+
+            if (["grey", "cable_sag", "cable_tension"].includes(currentMode)) {
+                renderSelect.value = currentMode;
+            } else {
+                renderSelect.value = "cable_sag";
+            }
         } else {
             lineSupportContainer.style.display = 'flex';
+            cutPlanesContainer.style.display = 'block';
+
+            var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (+Tension / -Compression)"; renderSelect.appendChild(opt1);
+            var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
+            var opt3 = document.createElement('option'); opt3.value = "deflection"; opt3.innerText = "Displacement Map (Deflection mm)"; renderSelect.appendChild(opt3);
+
+            if (["ec3_stress", "grey", "deflection"].includes(currentMode)) {
+                renderSelect.value = currentMode;
+            } else {
+                renderSelect.value = "ec3_stress";
+            }
         }
 
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
@@ -913,43 +957,53 @@
         });
     }
 
+    // Accurate 3D Vector Sag Drop-Line Calculation
     function renderCableSagIndicator() {
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
         if (!currentVertices.length) return;
 
         var pointSups = getPointSupportArrayData();
-        var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
-        var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
+        var p1 = pointSups.length > 0 ? new THREE.Vector3(pointSups[0].x, pointSups[0].z, pointSups[0].y) : new THREE.Vector3(0, 0, 0);
+        var p2 = pointSups.length > 1 ? new THREE.Vector3(pointSups[1].x, pointSups[1].z, pointSups[1].y) : new THREE.Vector3(activeLx, 0, 0);
 
-        var maxSagIndex = 0;
-        var minZ = currentVertices[0][2];
-        for (var i = 1; i < currentVertices.length; i++) {
-            if (currentVertices[i][2] < minZ) {
-                minZ = currentVertices[i][2];
-                maxSagIndex = i;
+        var chordVec = new THREE.Vector3().subVectors(p2, p1);
+        var chordLenSq = chordVec.lengthSq();
+
+        var maxSagMM = -1.0;
+        var maxSagNodePos = null;
+        var chordProjPos = null;
+
+        // Iterate through calculated node coordinates in Three.js space [X, Z, Y]
+        currentVertices.forEach(function(v) {
+            var nodePos = new THREE.Vector3(v[0], v[2], v[1]);
+            var vVec = new THREE.Vector3().subVectors(nodePos, p1);
+            
+            // Project node onto straight chord vector
+            var t = chordLenSq > 1e-6 ? vVec.dot(chordVec) / chordLenSq : 0.0;
+            t = Math.max(0.0, Math.min(1.0, t));
+            
+            var projOnChord = new THREE.Vector3().copy(p1).add(chordVec.clone().multiplyScalar(t));
+            var sagDistance = nodePos.distanceTo(projOnChord);
+
+            if (sagDistance > maxSagMM) {
+                maxSagMM = sagDistance;
+                maxSagNodePos = nodePos;
+                chordProjPos = projOnChord;
             }
+        });
+
+        if (maxSagNodePos && chordProjPos && maxSagMM > 1e-3) {
+            var lineGeo = new THREE.BufferGeometry().setFromPoints([chordProjPos, maxSagNodePos]);
+            var lineMat = new THREE.LineDashedMaterial({ color: 0x00aa55, dashSize: 40, gapSize: 20, linewidth: 2 });
+            var dropLine = new THREE.Line(lineGeo, lineMat);
+            dropLine.computeLineDistances();
+            sagIndicatorGroup.add(dropLine);
+
+            var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
+            var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
+            sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
+            sagIndicatorGroup.add(sprite);
         }
-
-        var lowestNode = currentVertices[maxSagIndex];
-        var dx = p2.x - p1.x || 1.0;
-        var dy = p2.y - p1.y || 1.0;
-        var t = Math.abs(dx) > Math.abs(dy) ? (lowestNode[0] - p1.x) / dx : (lowestNode[1] - p1.y) / dy;
-        var origZ = p1.z + t * (p2.z - p1.z);
-        var maxSagMM = Math.abs(origZ - lowestNode[2]);
-
-        // Three.js Y-Up mapping: [X, Z, Y]
-        var lineGeo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(lowestNode[0], origZ, lowestNode[1]),
-            new THREE.Vector3(lowestNode[0], lowestNode[2], lowestNode[1])
-        ]);
-        var lineMat = new THREE.LineDashedMaterial({ color: 0x00aa55, dashSize: 50, gapSize: 25, linewidth: 2 });
-        var dropLine = new THREE.Line(lineGeo, lineMat);
-        dropLine.computeLineDistances();
-        sagIndicatorGroup.add(dropLine);
-
-        var sprite = makeTextSprite(`Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-        sprite.position.set(lowestNode[0], (origZ + lowestNode[2]) / 2.0, lowestNode[1] + 150);
-        sagIndicatorGroup.add(sprite);
     }
 
     function initWasmEngine() {
@@ -1082,6 +1136,7 @@
         }
 
         scene.add(mesh);
+        toggleRenderModeUI();
     }
 
     function exportSTL() { alert("Exporting form-found geometry as .STL..."); }
