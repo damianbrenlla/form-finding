@@ -377,16 +377,6 @@
     </div>
 
     <hr>
-    <div class="control-group">
-        <label>Volume Fraction & Max Iterations</label>
-        <div style="display: flex; gap: 6px;">
-            <input type="number" step="0.05" id="volfrac" value="0.90" min="0.05" max="1.00" style="width: 50%; font-family: monospace;">
-            <input type="number" id="iterations" value="20" style="width: 50%; font-family: monospace;">
-        </div>
-        <p style="font-size: 0.70rem; color: #888888; line-height: 1.45; margin: 4px 0 0 0;">
-            Volume fraction sets the target proportion of domain volume kept solid. Iterations set how many algorithm passes run.
-        </p>
-    </div>
     <div class="checkbox-group" style="margin-top: 2px;">
         <label>
             <input type="checkbox" id="self_weight_toggle" checked>
@@ -1086,13 +1076,11 @@
             nx: parseInt(document.getElementById('nx').value),
             ny: parseInt(document.getElementById('ny').value),
             nz: parseInt(document.getElementById('nz').value),
-            volfrac: parseFloat(document.getElementById('volfrac').value),
             support_mode: 'points_only',
             point_supports: getPointSupportArrayData(),
             line_supports: getLineSupportArrayData(),
             load_preset: document.getElementById('load_preset').value,
             loads: getLoadArrayData(),
-            iterations: parseInt(document.getElementById('iterations').value),
             include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
