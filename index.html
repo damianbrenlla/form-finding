@@ -858,9 +858,20 @@
         updateDomainVisuals();
     }
 
+    /* Smart Line Support Row Generator with Automatic Opposite Edge Defaulting */
     function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
-        x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
-        x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2; dofs = (dofs === undefined) ? 'xyz' : dofs;
+        var existingSups = getLineSupportArrayData();
+        
+        // Smart default: If Line 1 sits along Y=0, default Line 2 to span parallel across the far boundary Y=Ly
+        if (existingSups.length === 1 && y1 === undefined) {
+            x1 = 0; y1 = activeLy; z1 = 0;
+            x2 = activeLx; y2 = activeLy; z2 = 0;
+        } else {
+            x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
+            x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
+        }
+        dofs = (dofs === undefined) ? 'xyz' : dofs;
+
         var tr = document.createElement('tr');
         tr.innerHTML = '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
