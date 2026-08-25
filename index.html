@@ -6,8 +6,8 @@
     
     <!-- 1. SEO Primary Metadata -->
     <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
-    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode 2/3/5/6 material logic, continuum mechanics, and interactive 3D section cut-planes.">
-    <meta name="keywords" content="Structural Form Finding, 3D SIMP FEA, WebAssembly Finite Element Analysis, Eurocode Structural Engineering, Low Carbon Structural Design, DBSW Engineering">
+    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode and specialized cable/membrane material logic, continuum mechanics, and interactive 3D section cut-planes.">
+    <meta name="keywords" content="Structural Form Finding, Cable Net Form Finding, Tensile Membrane, WebAssembly Finite Element Analysis, Structural Engineering, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://topology.dbsw.uk/" />
 
@@ -37,7 +37,7 @@
         "name": "Damian Brenlla",
         "url": "https://dbsw.uk"
       },
-      "description": "Client-side WebAssembly solver for 3D structural form finding, continuum mechanics, and Eurocode stress recovery."
+      "description": "Client-side WebAssembly solver for 3D structural form finding, continuum mechanics, and stress recovery."
     }
     </script>
 
@@ -212,9 +212,8 @@
         </p>
 
         <ul>
-            <li>Six material classes driving dynamic form-finding algorithms</li>
+            <li>Material classifications (High-Tensile Cables, Fabric Membranes, Concrete Shells, Timber Grid-Shells, Vaulted Masonry)</li>
             <li>Discrete point and 3D vector line support restraints</li>
-            <li>Void keep-out and forced-solid passive regions</li>
             <li>Optional self-weight inclusion</li>
             <li>Stress & displacement maps with interactive 3D section cut-planes</li>
             <li>Direct .STL export of generated forms</li>
@@ -245,17 +244,17 @@
     <div class="control-group">
         <label>Structural Material Classification</label>
         <select id="mat_type" onchange="updateMaterialUI()">
-            <option value="concrete" selected>Reinforced Concrete — BS EN 1992-1-1 (EC2)</option>
-            <option value="steel">Structural Steel — BS EN 1993-1-1 (EC3)</option>
-            <option value="timber">Timber / Glulam — BS EN 1995-1-1 (EC5)</option>
-            <option value="masonry">Structural Masonry — BS EN 1996-1-1 (EC6)</option>
-            <option value="stone">Natural Stone Masonry — BS EN 1996-1-1 (EC6)</option>
+            <option value="cables" selected>High-Tensile Steel Cables / Tension Nets</option>
+            <option value="membrane">Architectural Fabric Membrane (ETFE / PTFE / PVC)</option>
+            <option value="concrete">Reinforced Concrete Shell / Vault — BS EN 1992-1-1</option>
+            <option value="timber">Timber Grid-Shell — BS EN 1995-1-1</option>
+            <option value="masonry">Vaulted Masonry / Compression Structures — BS EN 1996-1-1</option>
             <option value="generic">Custom / Generic Isotropic Material</option>
         </select>
     </div>
 
     <div id="mat_standard_div" class="control-group">
-        <label>Standard Material Grade</label>
+        <label>Material Specification / Grade</label>
         <select id="mat_grade"></select>
     </div>
 
@@ -378,24 +377,6 @@
     </div>
 
     <hr>
-    <div class="section-header">Void / Passive Material Regions</div>
-    <div id="void_regions_container" class="control-group">
-        <div class="load-header-row">
-            <label style="margin: 0;">Keep-Out / Forced-Solid Boxes (mm)</label>
-            <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addVoidRegionRow()">+ Add Region</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllVoidRegions()">Clear All</button>
-            </div>
-        </div>
-        
-        <div id="void_region_list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;"></div>
-
-        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 6px 0 0 0;">
-            "Void" forces elements inside the box to stay empty — useful for service penetrations or openings. "Forced Solid" pins material in place — useful for bearing zones.
-        </p>
-    </div>
-
-    <hr>
     <div class="control-group">
         <label>Volume Fraction & Max Iterations</label>
         <div style="display: flex; gap: 6px;">
@@ -497,7 +478,6 @@
     var domainBox;
     var forceArrows = [];
     var supportGizmos = [];
-    var voidRegionGizmos = [];
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     
     var currentSigmaMaxTens = 1.0;  
@@ -515,7 +495,8 @@
 
     var axesScene, axesCamera, axesGroup;
 
-    var STEEL_GRADES = ["S235", "S275", "S355", "S460"];
+    var CABLE_GRADES = ["Spiral Strand (1570 MPa)", "Locked Coil (1770 MPa)", "Stainless Wire Rope (1470 MPa)", "Aramid / Kevlar Tendon"];
+    var MEMBRANE_GRADES = ["PTFE-Coated Fiberglass (Type II)", "PVC-Coated Polyester (Type III)", "ETFE Foil (0.25mm Monolithic)", "Silicone Glass Mesh"];
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
 
@@ -526,19 +507,6 @@
     var MORTAR_GRADES = {
         "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0, "M2 (Lime / Weak)": 2.0
     };
-    var STONE_UNITS = {
-        "Granite (150 MPa)": { fb: 150.0, E: 50000.0 }, "Limestone (80 MPa)": { fb: 80.0, E: 35000.0 },
-        "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
-    };
-
-    function setVoidGizmosVisible(visible) {
-        voidRegionGizmos.forEach(function(g) { g.visible = visible; });
-    }
-
-    function setBoundaryGizmosVisible(visible) {
-        supportGizmos.forEach(function(g) { g.visible = visible; });
-        forceArrows.forEach(function(a) { a.visible = visible; });
-    }
 
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
@@ -564,24 +532,24 @@
         stdDiv.style.display = 'none'; masDiv.style.display = 'none';
         stoneEDiv.style.display = 'none'; genDiv.style.display = 'none';
 
-        if (matType === 'steel' || matType === 'concrete' || matType === 'timber') {
+        if (matType === 'cables' || matType === 'membrane' || matType === 'concrete' || matType === 'timber') {
             stdDiv.style.display = 'flex';
             var gradeSelect = document.getElementById('mat_grade');
             gradeSelect.innerHTML = '';
-            var list = (matType === 'concrete') ? CONCRETE_GRADES : ((matType === 'steel') ? STEEL_GRADES : TIMBER_GRADES);
+            var list = (matType === 'cables') ? CABLE_GRADES : 
+                       ((matType === 'membrane') ? MEMBRANE_GRADES : 
+                       ((matType === 'concrete') ? CONCRETE_GRADES : TIMBER_GRADES));
             list.forEach(function(g) {
                 var opt = document.createElement('option');
                 opt.value = g; opt.innerText = g;
                 gradeSelect.appendChild(opt);
             });
-            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : ((matType === 'steel') ? 'S355' : 'C24');
-        } else if (matType === 'masonry' || matType === 'stone') {
+        } else if (matType === 'masonry') {
             masDiv.style.display = 'flex';
             var uSelect = document.getElementById('masonry_unit_select');
             var mSelect = document.getElementById('mortar_select');
             uSelect.innerHTML = ''; mSelect.innerHTML = '';
-            var units = (matType === 'masonry') ? MASONRY_UNITS : STONE_UNITS;
-            for (var key in units) {
+            for (var key in MASONRY_UNITS) {
                 var opt = document.createElement('option'); opt.value = key; opt.innerText = key;
                 uSelect.appendChild(opt);
             }
@@ -590,24 +558,14 @@
                 mSelect.appendChild(mopt);
             }
             syncCustomFb(); syncCustomFm();
-            if (matType === 'stone') stoneEDiv.style.display = 'flex';
         } else if (matType === 'generic') {
             genDiv.style.display = 'flex';
         }
     }
 
     function syncCustomFb() {
-        var matType = document.getElementById('mat_type').value;
         var key = document.getElementById('masonry_unit_select').value;
-        if (matType === 'masonry') {
-            document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[key] || 20.0;
-        } else if (matType === 'stone') {
-            var data = STONE_UNITS[key];
-            if (data) {
-                document.getElementById('masonry_unit_fb').value = data.fb;
-                document.getElementById('stone_E').value = data.E;
-            }
-        }
+        document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[key] || 20.0;
     }
 
     function syncCustomFm() {
@@ -840,82 +798,6 @@
         updateDomainVisuals();
     }
 
-    function addVoidRegionRow(xMin, xMax, yMin, yMax, zMin, zMax, regionType) {
-        xMin = (xMin === undefined) ? Math.round(activeLx * 0.4) : xMin;
-        xMax = (xMax === undefined) ? Math.round(activeLx * 0.6) : xMax;
-        yMin = (yMin === undefined) ? 0 : yMin;
-        yMax = (yMax === undefined) ? activeLy : yMax;
-        zMin = (zMin === undefined) ? 0 : zMin;
-        zMax = (zMax === undefined) ? Math.round(activeLz * 0.3) : zMax;
-        regionType = (regionType === undefined) ? 'void' : regionType;
-
-        var container = document.getElementById('void_region_list');
-        var card = document.createElement('div');
-        card.className = 'void-region-card';
-        card.style.cssText = 'background: #f9f9f9; border: 1px solid #e5e5e5; padding: 8px; display: flex; flex-direction: column; gap: 6px; position: relative;';
-
-        card.innerHTML = 
-            '<div style="display: flex; justify-content: space-between; align-items: center;">' +
-                '<select class="vr-type" onchange="updateDomainVisuals()" style="font-size: 0.72rem; font-weight: bold; padding: 2px 4px; width: 130px;">' +
-                    '<option value="void"' + (regionType === 'void' ? ' selected' : '') + '>Void (Keep-Out)</option>' +
-                    '<option value="solid"' + (regionType === 'solid' ? ' selected' : '') + '>Forced Solid</option>' +
-                '</select>' +
-                '<button class="btn-del" onclick="deleteVoidCard(this)" style="font-size: 0.85rem; padding: 0 4px;">×</button>' +
-            '</div>' +
-            '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">' +
-                '<div><label style="font-size: 0.62rem; color: #666; display:block;">X [Min, Max]</label>' +
-                    '<div style="display: flex; gap: 2px;">' +
-                        '<input type="number" class="vr-xmin" value="' + xMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                        '<input type="number" class="vr-xmax" value="' + xMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                    '</div>' +
-                '</div>' +
-                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Y [Min, Max]</label>' +
-                    '<div style="display: flex; gap: 2px;">' +
-                        '<input type="number" class="vr-ymin" value="' + yMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                        '<input type="number" class="vr-ymax" value="' + yMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                    '</div>' +
-                '</div>' +
-                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Z [Min, Max]</label>' +
-                    '<div style="display: flex; gap: 2px;">' +
-                        '<input type="number" class="vr-zmin" value="' + zMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                        '<input type="number" class="vr-zmax" value="' + zMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-family: monospace; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-        container.appendChild(card);
-        updateDomainVisuals();
-    }
-
-    function deleteVoidCard(btn) {
-        var card = btn.closest('.void-region-card');
-        if (card) card.parentNode.removeChild(card);
-        updateDomainVisuals();
-    }
-
-    function clearAllVoidRegions() {
-        var container = document.getElementById('void_region_list');
-        container.innerHTML = '';
-        updateDomainVisuals();
-    }
-
-    function getVoidRegionArrayData() {
-        var cards = document.querySelectorAll('#void_region_list .void-region-card');
-        var regions = [];
-        cards.forEach(function(c) {
-            regions.push({
-                x_min: parseFloat(c.querySelector('.vr-xmin').value) || 0,
-                x_max: parseFloat(c.querySelector('.vr-xmax').value) || 0,
-                y_min: parseFloat(c.querySelector('.vr-ymin').value) || 0,
-                y_max: parseFloat(c.querySelector('.vr-ymax').value) || 0,
-                z_min: parseFloat(c.querySelector('.vr-zmin').value) || 0,
-                z_max: parseFloat(c.querySelector('.vr-zmax').value) || 0,
-                region_type: c.querySelector('.vr-type').value || 'void'
-            });
-        });
-        return regions;
-    }
-
     function applyLoadPreset() {
         var preset = document.getElementById('load_preset').value;
         var tbody = document.getElementById('load_table_body');
@@ -1092,37 +974,6 @@
             }
         });
 
-        voidRegionGizmos.forEach(function(g) { scene.remove(g); });
-        voidRegionGizmos = [];
-        var voidFillMat = new THREE.MeshStandardMaterial({
-            color: 0xff9900, roughness: 0.6, transparent: true, opacity: 0.28,
-            side: THREE.DoubleSide, depthWrite: false
-        });
-        var solidFillMat = new THREE.MeshStandardMaterial({
-            color: 0x2255ee, roughness: 0.6, transparent: true, opacity: 0.28,
-            side: THREE.DoubleSide, depthWrite: false
-        });
-        getVoidRegionArrayData().forEach(function(vr) {
-            var dx = Math.max(vr.x_max - vr.x_min, 1.0);
-            var dy = Math.max(vr.y_max - vr.y_min, 1.0);
-            var dz_box = Math.max(vr.z_max - vr.z_min, 1.0);
-            var regGeo = new THREE.BoxGeometry(dx, dz_box, dy);
-            var fillMat = (vr.region_type === 'solid') ? solidFillMat : voidFillMat;
-            var regMesh = new THREE.Mesh(regGeo, fillMat);
-            regMesh.position.set(vr.x_min + dx / 2.0, vr.z_min + dz_box / 2.0, vr.y_min + dy / 2.0);
-            scene.add(regMesh);
-            voidRegionGizmos.push(regMesh);
-
-            var regEdges = new THREE.EdgesGeometry(regGeo);
-            var edgeColor = (vr.region_type === 'solid') ? 0x2255ee : 0xcc6600;
-            var regWire = new THREE.LineSegments(regEdges, new THREE.LineBasicMaterial({ color: edgeColor }));
-            regWire.position.copy(regMesh.position);
-            scene.add(regWire);
-            voidRegionGizmos.push(regWire);
-        });
-
-        setVoidGizmosVisible(true);
-        setBoundaryGizmosVisible(true);
         setupCutPlaneSliders();
     }
 
@@ -1241,7 +1092,6 @@
             line_supports: getLineSupportArrayData(),
             load_preset: document.getElementById('load_preset').value,
             loads: getLoadArrayData(),
-            void_regions: getVoidRegionArrayData(),
             iterations: parseInt(document.getElementById('iterations').value),
             include_self_weight: document.getElementById('self_weight_toggle').checked
         };
@@ -1328,9 +1178,6 @@
         var isDeflectionMode = (mode === 'deflection');
 
         if (!currentVertices.length || !currentFaces.length) return;
-
-        setVoidGizmosVisible(false);
-        setBoundaryGizmosVisible(true);
 
         if (mode === 'ec3_stress' || mode === 'deflection') {
             updateLegendLabels(isDeflectionMode);
