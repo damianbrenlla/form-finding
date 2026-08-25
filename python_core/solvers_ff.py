@@ -1,7 +1,7 @@
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 3 — Kinematic stability validation, prestress-assembled residual normalization,
-#          edge-cable prestress application, and correct domain spacing ingestion.
+# Pass 4 — Origin-aware boundary detection for edge-cable prestress (domain no
+#          longer assumed to start at 0,0), matching the domain_ff.py bounding-box fix.
 
 import numpy as np
 
@@ -333,7 +333,8 @@ class UnderwoodDRSolver:
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        # CRITICAL FIX: Ingest actual domain grid spacing instead of hardcoded 100 mm
+        # Real (average) domain grid spacing — irregular now that forced grid
+        # lines can sit near supports, so this is a mean, not a constant.
         dy_spacing = float(getattr(self.domain, "dy", self.domain.Ly / max(self.domain.ny, 1)))
         dx_spacing = float(getattr(self.domain, "dx", self.domain.Lx / max(self.domain.nx, 1)))
 
@@ -348,15 +349,22 @@ class UnderwoodDRSolver:
                 self.prestress_weft_N_mm * dx_spacing
             )
 
-        # CRITICAL FIX: Apply perimeter edge-cable prestress to topological boundary edges
+        # CRITICAL FIX: boundary detection for edge-cable prestress is now
+        # origin-aware — it uses the domain's actual xmin/xmax/ymin/ymax rather
+        # than assuming the domain starts at (0, 0). With negative-coordinate
+        # supports this previously meant the "boundary" test never matched
+        # anything on that side, so the edge cable prestress silently vanished.
         if self.edge_cable_prestress_N > 0.0:
-            Lx, Ly = self.domain.Lx, self.domain.Ly
+            xmin = getattr(self.domain, "xmin", 0.0)
+            xmax = getattr(self.domain, "xmax", self.domain.Lx)
+            ymin = getattr(self.domain, "ymin", 0.0)
+            ymax = getattr(self.domain, "ymax", self.domain.Ly)
             tol = 1e-3
             for i, (u, v) in enumerate(edges):
                 xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
                 xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
-                u_bound = (xu < tol or xu > Lx - tol or yu < tol or yu > Ly - tol)
-                v_bound = (xv < tol or xv > Lx - tol or yv < tol or yv > Ly - tol)
+                u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
+                v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
                 if u_bound and v_bound:
                     prestress_array[i] += self.edge_cable_prestress_N
 
