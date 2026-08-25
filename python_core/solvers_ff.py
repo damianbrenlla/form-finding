@@ -368,7 +368,6 @@ class UnderwoodDRSolver:
             dx = np.abs(edge_vecs[:, 0])
             dy = np.abs(edge_vecs[:, 1])
             is_warp = dx >= dy
-            # Convert N/mm line tension to element force N based on transverse mesh spacing
             dy_spacing = float(getattr(self.domain, "dy", 100.0))
             dx_spacing = float(getattr(self.domain, "dx", 100.0))
             prestress_array = np.where(is_warp, self.prestress_warp_N_mm * dy_spacing, self.prestress_weft_N_mm * dx_spacing)
