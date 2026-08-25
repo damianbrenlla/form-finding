@@ -4,11 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
+    <!-- 1. SEO Primary Metadata -->
     <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
     <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features Eurocode and specialized cable/membrane material logic, continuum mechanics, and interactive 3D section cut-planes.">
     <meta name="keywords" content="Structural Form Finding, Cable Net Form Finding, Tensile Membrane, WebAssembly Finite Element Analysis, Structural Engineering, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://topology.dbsw.uk/" />
+
+    <!-- 2. Open Graph / Social Audit Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="DBSW Engineering">
+    <meta property="og:title" content="DBSW 3D Form Finding Engine — Client-Side WASM FEA">
+    <meta property="og:description" content="Interactive first-principles 3D continuum mechanics & form finding running entirely in the browser via Pyodide/Wasm. Eurocode compliant design exploration.">
+    <meta property="og:url" content="https://topology.dbsw.uk/">
+    <meta property="og:image" content="https://topology.dbsw.uk/assets/og-preview.jpg">
 
     <style>
         * { box-sizing: border-box; }
@@ -33,8 +42,13 @@
         #viewport { flex: 1; position: relative; background: #ffffff; }
         
         .brand-logo-img {
-            height: 18px; width: auto; max-width: 100%;
-            display: block; margin-bottom: 6px; object-fit: contain; object-position: left center;
+            height: 18px;
+            width: auto;
+            max-width: 100%;
+            display: block;
+            margin-bottom: 6px;
+            object-fit: contain;
+            object-position: left center;
         }
 
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
@@ -141,6 +155,7 @@
 </head>
 <body>
 
+<!-- Startup Intro Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
@@ -148,16 +163,23 @@
 
         <p>
             This tool generates 3D structural form-found geometries solved entirely
-            in your browser via WebAssembly — no data leaves your machine.
+            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
+            and morphological behavior adapt dynamically based on your chosen structural material.
         </p>
 
         <ul>
             <li>Six structural material classifications (Steel Cables, Fabric Membranes, Concrete Shells, Timber Gridshells, Vaulted Masonry, Custom Isotropic)</li>
-            <li>Material-driven solver factory (Force Density Method, Compression-Constrained Inverted Dynamic Relaxation, Underwood DR)</li>
+            <li>Material-driven solver factory incorporating Force Density Method (FDM), Compression-Constrained Inverted Dynamic Relaxation, and Underwood DR</li>
             <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
             <li>Interactive 3D viewport raycaster for graphical point load assignment along cable networks</li>
-            <li>Specialized cable visualization modes: Maximum Sag drop-line indicator and adjustable Cable Tension Color Map</li>
+            <li>Optional self-weight inclusion and configurable external point load arrays</li>
+            <li>Real-time stress/displacement maps with numerical reaction vectors and interactive 3D section cut-planes</li>
+            <li>Direct .STL export of solved 3D network geometry</li>
         </ul>
+
+        <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
+            This is a concept-stage design exploration tool, not a substitute for code-compliant structural verification of the final geometry.
+        </p>
 
         <div class="author-line" style="margin-top: 14px;">
             Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
@@ -169,6 +191,7 @@
     </div>
 </div>
 
+<!-- Custom Minimalist Click-to-Load Modal -->
 <div id="load-prompt-overlay" style="display: none;">
     <div id="load-prompt-modal">
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
@@ -210,6 +233,7 @@
         <select id="mat_grade"></select>
     </div>
 
+    <!-- Dynamic Section Geometry Inputs per Material -->
     <div id="sec_cable_div" class="control-group">
         <label>Cable Diameter d (mm)</label>
         <input type="number" id="sec_cable_d" value="24.0">
@@ -278,6 +302,7 @@
         </table>
     </div>
 
+    <!-- Line Supports Container (Hidden strictly when material_type == cables) -->
     <div id="line_supports_container" class="control-group" style="margin-top: 6px;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
@@ -339,19 +364,7 @@
             <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
             <option value="grey">Monochrome Studio Grey (50%)</option>
             <option value="deflection">Displacement Map (Deflection mm)</option>
-            <!-- Cable-Specific Options -->
-            <option value="cable_sag">Cable Max Sag Drop-Line Indicator</option>
-            <option value="cable_tension">Cable Tension Force Map (kN Slider)</option>
         </select>
-    </div>
-
-    <!-- Cable Tension Color Map Slider -->
-    <div id="cable_tension_div" class="control-group" style="margin-top: 4px; display: none;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.70rem; font-weight: bold; margin-bottom: 2px;">
-            <span>Tension Range Filter</span>
-            <span id="lbl_tension_range" style="font-family: monospace;">0.01 - 100.0 kN</span>
-        </div>
-        <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
     </div>
 
     <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
@@ -404,12 +417,12 @@
 <script>
     var scene, camera, renderer, controls, mesh;
     var supportGizmos = [], forceArrows = [];
-    var reactionGroup = null, sagIndicatorGroup = null;
+    var reactionGroup = null;
     var axesScene, axesCamera, axesGroup;
     var raycaster = new THREE.Raycaster();
     var mouse = new THREE.Vector2();
     var pendingSnapCoords = null;
-    var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
+    var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
 
     var activeLx = 6000, activeLy = 3000, activeLz = 1000;
@@ -425,13 +438,12 @@
     var MASONRY_UNITS = { "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0, "Dense Concrete Block (20 MPa)": 20.0 };
     var MORTAR_GRADES = { "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0 };
 
-    function makeTextSprite(message, colorHex) {
-        colorHex = colorHex || '#cc0000';
+    function makeTextSprite(message) {
         var canvas = document.createElement('canvas');
         canvas.width = 256; canvas.height = 128;
         var ctx = canvas.getContext('2d');
-        ctx.fillStyle = colorHex;
-        ctx.font = 'bold 36px "Helvetica Neue", Helvetica, Arial, sans-serif';
+        ctx.fillStyle = '#cc0000';
+        ctx.font = 'bold 44px "Helvetica Neue", Helvetica, Arial, sans-serif';
         ctx.fillText(message, 10, 64);
         var texture = new THREE.CanvasTexture(canvas);
         var spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
@@ -442,10 +454,7 @@
 
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
-        var matType = document.getElementById('mat_type').value;
-
         document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
-        document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
     }
 
     function onStressSliderChange() {
@@ -453,12 +462,6 @@
         var tensVal = parseFloat(document.getElementById('stress_tens_slider').value) || 0.01;
         document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
         document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
-        reRenderMesh();
-    }
-
-    function onTensionSliderChange() {
-        var val = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-        document.getElementById('lbl_tension_range').innerText = `0.01 - ${val.toFixed(1)} kN`;
         reRenderMesh();
     }
 
@@ -471,6 +474,7 @@
         var hintEl = document.getElementById('cable_click_hint');
         var lineSupportContainer = document.getElementById('line_supports_container');
 
+        // Disable line supports strictly when Cables is selected
         if (matType === 'cables') {
             lineSupportContainer.style.display = 'none';
             clearAllLineSupports();
@@ -510,8 +514,6 @@
             prestressContainer.style.display = 'none';
             document.getElementById('prestress').value = 0;
         }
-
-        toggleRenderModeUI();
     }
 
     function syncCustomFb() { document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[document.getElementById('masonry_unit_select').value] || 20.0; }
@@ -557,9 +559,7 @@
         scene.add(grid);
 
         reactionGroup = new THREE.Group();
-        sagIndicatorGroup = new THREE.Group();
         scene.add(reactionGroup);
-        scene.add(sagIndicatorGroup);
 
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
@@ -593,6 +593,7 @@
         updateDomainVisuals();
     }
 
+    // Interactive 3D Cable Click-to-Load Raycaster
     function onViewportClick(event) {
         var matType = document.getElementById('mat_type').value;
         if (matType !== 'cables' || !mesh) return;
@@ -611,6 +612,7 @@
         if (intersects.length > 0) {
             var hitPoint = intersects[0].point;
             
+            // Three.js Y-up to Python Z-up conversion: [X, Z, Y] -> [X, Y, Z]
             var snapX = Math.round(hitPoint.x);
             var snapY = Math.round(hitPoint.z);
             var snapZ = Math.round(hitPoint.y);
@@ -803,6 +805,7 @@
 
         if (mesh) scene.remove(mesh);
 
+        // Single 1D Cable Line Preview Spanning Directly Between Support 1 & Support 2 in 3D
         if (matType === 'cables') {
             var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
             var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
@@ -821,6 +824,7 @@
                 var y2 = p1.y + t2 * (p2.y - p1.y);
                 var z2 = p1.z + t2 * (p2.z - p1.z);
 
+                // Three.js Y-Up mapping: [X, Z, Y]
                 positions.push(x1, z1, y1, x2, z2, y2);
             }
 
@@ -831,6 +835,7 @@
             return;
         }
 
+        // Default 2D Surface Grid Preview for Membranes, Vaults, and Gridshells
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
 
@@ -882,50 +887,11 @@
                 reactionGroup.add(arrow);
 
                 const labelText = `${r.R_total_kN.toFixed(1)} kN`;
-                const sprite = makeTextSprite(labelText, '#cc0000');
+                const sprite = makeTextSprite(labelText);
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
         });
-    }
-
-    function renderCableSagIndicator() {
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
-        if (!currentVertices.length) return;
-
-        var pointSups = getPointSupportArrayData();
-        var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
-        var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
-
-        // Find node with lowest Z coordinate (maximum downward deflection)
-        var maxSagIndex = 0;
-        var minZ = currentVertices[0][2];
-        for (var i = 1; i < currentVertices.length; i++) {
-            if (currentVertices[i][2] < minZ) {
-                minZ = currentVertices[i][2];
-                maxSagIndex = i;
-            }
-        }
-
-        var lowestNode = currentVertices[maxSagIndex];
-        var t = (lowestNode[0] - p1.x) / (p2.x - p1.x || 1.0);
-        var origZ = p1.z + t * (p2.z - p1.z);
-        var maxSagMM = Math.abs(origZ - lowestNode[2]);
-
-        // Draw green dashed drop-line from initial chord height to lowest point
-        var lineGeo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(lowestNode[0], origZ, lowestNode[1]),
-            new THREE.Vector3(lowestNode[0], lowestNode[2], lowestNode[1])
-        ]);
-        var lineMat = new THREE.LineDashedMaterial({ color: 0x00aa55, dashSize: 50, gapSize: 25, linewidth: 2 });
-        var dropLine = new THREE.Line(lineGeo, lineMat);
-        dropLine.computeLineDistances();
-        sagIndicatorGroup.add(dropLine);
-
-        // Add 3D text label displaying maximum sag in mm
-        var sprite = makeTextSprite(`Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-        sprite.position.set(lowestNode[0], (origZ + lowestNode[2]) / 2.0, lowestNode[1] + 150);
-        sagIndicatorGroup.add(sprite);
     }
 
     function initWasmEngine() {
@@ -946,17 +912,7 @@
             btnStop.style.display = 'none'; actionsGroup.style.display = 'flex';
 
             currentVertices = data.data.nodes; currentFaces = data.data.edges;
-            currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
-
-            // Configure max tension slider limit based on max force found
-            if (currentForcesN.length) {
-                var maxForceKN = Math.max(...currentForcesN.map(f => Math.abs(f))) / 1000.0;
-                var tensionSlider = document.getElementById('tension_threshold_slider');
-                tensionSlider.max = Math.max(maxForceKN, 1.0).toFixed(1);
-                tensionSlider.value = tensionSlider.max;
-                document.getElementById('lbl_tension_range').innerText = `0.01 - ${tensionSlider.max} kN`;
-            }
 
             status.innerText = "Form finding complete [" + (data.data.material || "") + "]. Rendering...";
             reRenderMesh();
@@ -1006,10 +962,9 @@
     }
 
     function clearResults() {
-        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
+        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = [];
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
         updateDomainVisuals();
@@ -1020,47 +975,13 @@
     function reRenderMesh() {
         if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
-
-        var renderMode = document.getElementById('render_mode').value;
-        var matType = document.getElementById('mat_type').value;
-
-        // Render Max Sag Drop-Line if Cable Max Sag mode selected
-        if (renderMode === 'cable_sag' && matType === 'cables') {
-            renderCableSagIndicator();
-        }
-
-        var lineGeometry = new THREE.BufferGeometry();
-        var positions = [], colors = [];
-
-        var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-        var maxForceN = currentForcesN.length ? Math.max(...currentForcesN.map(f => Math.abs(f))) : 1.0;
-
-        currentFaces.forEach(function(edge, idx) {
+        var lineGeometry = new THREE.BufferGeometry(), positions = [];
+        currentFaces.forEach(function(edge) {
             var p1 = currentVertices[edge[0]], p2 = currentVertices[edge[1]];
             positions.push(p1[0], p1[2], p1[1]); positions.push(p2[0], p2[2], p2[1]);
-
-            var color = new THREE.Color(0x000000);
-
-            if (renderMode === 'cable_tension' && currentForcesN.length) {
-                var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
-                var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
-                // Color spectrum: Blue (low tension) -> Red (max tension)
-                color.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
-            }
-
-            colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
         });
-
         lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        
-        if (renderMode === 'cable_tension') {
-            lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 }));
-        } else {
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 }));
-        }
-
+        mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 }));
         scene.add(mesh);
     }
 
