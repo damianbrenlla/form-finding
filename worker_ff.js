@@ -1,7 +1,10 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v18 — Fixed: point-support authority over line-support corner_z_map overwrites.
+ * v19 — Origin-aware domain: true bounding box computed from ALL support
+ *       coordinates (including negative ones), every support coordinate forced
+ *       onto an exact grid line so it can never fail to attach, and IDW seeding
+ *       across every support instead of a 4-corner-only bilinear bucket.
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -97,57 +100,99 @@ Lx_val = float(payload.get("Lx", 6000))
 Ly_val = float(payload.get("Ly", 3000))
 Lz_val = float(payload.get("Lz", 1000))
 
+point_sups = payload.get("point_supports", [])
+line_sups  = payload.get("line_supports", [])
+sup_preset = payload.get("support_preset", "")
+
+# --- CRITICAL FIX: compute the TRUE bounding box from every declared support,
+# including negative coordinates, instead of hard-assuming the domain starts
+# at (0, 0) and spans [0, Lx] x [0, Ly]. The nominal Lx/Ly still seed the box
+# so a payload with no explicit supports keeps its old default behaviour. ---
+xs = [0.0, Lx_val]
+ys = [0.0, Ly_val]
+for pt in point_sups:
+    xs.append(float(pt.get("x", 0)))
+    ys.append(float(pt.get("y", 0)))
+for l_sup in line_sups:
+    xs.append(float(l_sup.get("x1", 0)))
+    xs.append(float(l_sup.get("x2", 0)))
+    ys.append(float(l_sup.get("y1", 0)))
+    ys.append(float(l_sup.get("y2", 0)))
+
+xmin_val, xmax_val = min(xs), max(xs)
+ymin_val, ymax_val = min(ys), max(ys)
+
+# --- CRITICAL FIX: force a real grid line at every support's exact X/Y so a
+# support coordinate can never fail to land on a mesh node, no matter where it
+# sits relative to the nominal Lx/Ly resolution. ---
+forced_x = [float(pt.get("x", 0)) for pt in point_sups]
+forced_y = [float(pt.get("y", 0)) for pt in point_sups]
+for l_sup in line_sups:
+    forced_x.append(float(l_sup.get("x1", 0)))
+    forced_x.append(float(l_sup.get("x2", 0)))
+    forced_y.append(float(l_sup.get("y1", 0)))
+    forced_y.append(float(l_sup.get("y2", 0)))
+
 domain = FormFindingDomain3D(
-    Lx=Lx_val,
-    Ly=Ly_val,
+    xmin=xmin_val,
+    xmax=xmax_val,
+    ymin=ymin_val,
+    ymax=ymax_val,
     Lz=Lz_val,
     nx=int(payload.get("nx", 36)),
     ny=int(payload.get("ny", 12)),
+    forced_x=forced_x,
+    forced_y=forced_y,
     geometry_preset="surface_grid",
     material_type=mat_type
 )
 
-# Discrete Point Supports & Universal Corner Z-Map Assembly
-point_sups = payload.get("point_supports", [])
-line_sups  = payload.get("line_supports", [])
-corner_z_map = {}
+# Discrete Point Supports & Universal Seed Z-Map Assembly
+seed_z_map = {}
 
-# CRITICAL FIX: Point supports processed FIRST — they have authority over corner elevations
+# Point supports processed FIRST — they have authority over corner/edge elevations.
+# With forced grid lines in place, this now always finds an exact-match node;
+# if it somehow doesn't, add_point_support raises instead of silently dropping
+# the support (which is what was causing the fabric to drop at that corner).
 for pt in point_sups:
     px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
     domain.add_point_support(px, py, pz)
-    corner_z_map[(px, py)] = pz
+    seed_z_map[(px, py)] = pz
 
-# Discrete 3D Line Supports — add geometry but do NOT overwrite corner Z already set by points
+# Discrete 3D Line Supports — add geometry but do NOT overwrite a seed Z already
+# set by a point support at the same coordinate.
 for l_sup in line_sups:
     p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
     p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
     if hasattr(domain, 'add_line_support_3d'):
         domain.add_line_support_3d(p1, p2)
-    # Only seed corner map from line ends if point support didn't already define that corner
-    if (p1[0], p1[1]) not in corner_z_map:
-        corner_z_map[(p1[0], p1[1])] = p1[2]
-    if (p2[0], p2[1]) not in corner_z_map:
-        corner_z_map[(p2[0], p2[1])] = p2[2]
+    if (p1[0], p1[1]) not in seed_z_map:
+        seed_z_map[(p1[0], p1[1])] = p1[2]
+    if (p2[0], p2[1]) not in seed_z_map:
+        seed_z_map[(p2[0], p2[1])] = p2[2]
 
-# Fallback Preset Support Resolution
-sup_preset = payload.get("support_preset", "")
+# Fallback Preset Support Resolution — now anchored to the domain's actual
+# bounding box (xmin/xmax/ymin/ymax) rather than an assumed (0, Lx) span, so
+# it still lands correctly even when explicit supports pushed the box negative.
 if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
-    domain.add_point_support(0.0, 0.0, 0.0)
-    domain.add_point_support(domain.Lx, 0.0, 0.0)
-    domain.add_point_support(0.0, domain.Ly, 0.0)
-    domain.add_point_support(domain.Lx, domain.Ly, 0.0)
+    domain.add_point_support(domain.xmin, domain.ymin, 0.0)
+    domain.add_point_support(domain.xmax, domain.ymin, 0.0)
+    domain.add_point_support(domain.xmin, domain.ymax, 0.0)
+    domain.add_point_support(domain.xmax, domain.ymax, 0.0)
 elif sup_preset == "two_opposite_lines":
     if hasattr(domain, 'add_line_support_3d'):
-        domain.add_line_support_3d((0.0, 0.0, 0.0), (0.0, domain.Ly, 0.0))
-        domain.add_line_support_3d((domain.Lx, 0.0, 0.0), (domain.Lx, domain.Ly, 0.0))
+        domain.add_line_support_3d((domain.xmin, domain.ymin, 0.0), (domain.xmin, domain.ymax, 0.0))
+        domain.add_line_support_3d((domain.xmax, domain.ymin, 0.0), (domain.xmax, domain.ymax, 0.0))
 
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# --- SEED INTERIOR 3D ELEVATIONS VIA BILINEAR INTERPOLATION ---
-if hasattr(domain, 'apply_bilinear_surface_interpolation') and mat_type not in ("cables", "cable"):
-    domain.apply_bilinear_surface_interpolation(corner_z_map)
+# --- SEED INTERIOR 3D ELEVATIONS VIA INVERSE-DISTANCE WEIGHTING ---
+# Replaces the old 4-corner-only bilinear bucket, which silently defaulted any
+# support outside its four 25%-corner zones to Z=0 — that mismatch between a
+# genuinely-fixed support and its Z=0 neighbours is what produced the spike.
+if hasattr(domain, 'apply_idw_surface_interpolation') and mat_type not in ("cables", "cable"):
+    domain.apply_idw_surface_interpolation(seed_z_map)
 
 # --- Material Cross-Section Area & Prestress Parsing ---
 prestress_warp_N_mm = 0.0
