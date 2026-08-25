@@ -1,6 +1,6 @@
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 2: Vectorised Kinetic Energy Damping DR + Relative Convergence Tolerances + Orthotropic Membrane Mechanics
+# Pass 2 — Robust prestress residual normalization for DR solvers.
 
 import numpy as np
 
@@ -213,9 +213,8 @@ class InvertedGravityDRSolver:
             closest_idx = int(np.argmin(dists))
             F_ext[closest_idx, 2] += fz_N
 
-        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1))
-        if total_ext_force_mag < 1e-6:
-            total_ext_force_mag = 1.0
+        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
+        force_denom = max(total_ext_force_mag, 1.0)
 
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
@@ -252,7 +251,7 @@ class InvertedGravityDRSolver:
             R_residual[~free_mask] = 0.0
 
             max_res = np.max(np.linalg.norm(R_residual, axis=1))
-            final_rel_res = max_res / total_ext_force_mag
+            final_rel_res = max_res / force_denom
             if final_rel_res < rel_tol and it > 50:
                 converged = True
                 break
@@ -369,9 +368,10 @@ class UnderwoodDRSolver:
             closest_idx = int(np.argmin(dists))
             F_ext[closest_idx] += [fx_N, fy_N, fz_N]
 
-        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1))
-        if total_ext_force_mag < 1e-6:
-            total_ext_force_mag = 1.0
+        # Prestress-inclusive Force Normalisation
+        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
+        max_prestress_mag = np.max(prestress_array) if len(prestress_array) > 0 else 1.0
+        force_denom = max(total_ext_force_mag, max_prestress_mag, 1.0)
 
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
@@ -410,7 +410,7 @@ class UnderwoodDRSolver:
             R_residual[~free_mask] = 0.0
 
             max_res = np.max(np.linalg.norm(R_residual, axis=1))
-            final_rel_res = max_res / total_ext_force_mag
+            final_rel_res = max_res / force_denom
             if final_rel_res < rel_tol and it > 50:
                 converged = True
                 break
