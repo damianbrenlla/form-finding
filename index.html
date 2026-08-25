@@ -163,8 +163,7 @@
 
         <p>
             This tool generates 3D structural form-found geometries solved entirely
-            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
-            and morphological behavior adapt dynamically based on your chosen structural material.
+            in your browser via WebAssembly — no data leaves your machine.
         </p>
 
         <ul>
@@ -364,13 +363,13 @@
             <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
             <option value="grey">Monochrome Studio Grey (50%)</option>
             <option value="deflection">Displacement Map (Deflection mm)</option>
-            <!-- Cable-Specific Options -->
+            <!-- Cable-Specific Visualization Options -->
             <option value="cable_sag">Cable Max Sag Drop-Line Indicator</option>
             <option value="cable_tension">Cable Tension Force Map (kN Slider)</option>
         </select>
     </div>
 
-    <!-- Cable Tension Color Map Slider -->
+    <!-- Cable Tension Color Map Slider Container -->
     <div id="cable_tension_div" class="control-group" style="margin-top: 4px; display: none;">
         <div style="display: flex; justify-content: space-between; font-size: 0.70rem; font-weight: bold; margin-bottom: 2px;">
             <span>Tension Range Filter</span>
@@ -932,10 +931,13 @@
         }
 
         var lowestNode = currentVertices[maxSagIndex];
-        var t = (lowestNode[0] - p1.x) / (p2.x - p1.x || 1.0);
+        var dx = p2.x - p1.x || 1.0;
+        var dy = p2.y - p1.y || 1.0;
+        var t = Math.abs(dx) > Math.abs(dy) ? (lowestNode[0] - p1.x) / dx : (lowestNode[1] - p1.y) / dy;
         var origZ = p1.z + t * (p2.z - p1.z);
         var maxSagMM = Math.abs(origZ - lowestNode[2]);
 
+        // Three.js Y-Up mapping: [X, Z, Y]
         var lineGeo = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(lowestNode[0], origZ, lowestNode[1]),
             new THREE.Vector3(lowestNode[0], lowestNode[2], lowestNode[1])
