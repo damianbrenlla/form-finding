@@ -373,16 +373,6 @@
         <button class="btn-secondary" style="width: 100%; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
     </div>
 
-    <div class="control-group">
-        <label>Load Presets</label>
-        <select id="load_preset" onchange="applyLoadPreset()">
-            <option value="custom" selected>Custom Point Load Array</option>
-            <option value="top_udl">Top Surface Uniform Patch Load</option>
-            <option value="tip_center">Single Center Point Load</option>
-            <option value="third_points">Third-Point Flexure Loads</option>
-        </select>
-    </div>
-
     <div id="point_loads_container" class="control-group">
         <div class="load-header-row">
             <label style="margin: 0;">Point Load Array (mm / kN)</label>
@@ -428,7 +418,7 @@
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-weight: bold;">+1.00 MPa</span></div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+1.00 MPa</span></div>
                 <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
             </div>
         </div>
@@ -636,7 +626,7 @@
             meshLabel.innerText = "FE Mesh Divisions nx, ny";
             nyContainer.style.display = 'block';
 
-            var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (+Tension / -Compression)"; renderSelect.appendChild(opt1);
+            var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (Tension)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
             var opt3 = document.createElement('option'); opt3.value = "deflection"; opt3.innerText = "Displacement Map (Deflection mm)"; renderSelect.appendChild(opt3);
 
@@ -839,17 +829,7 @@
     function deleteRow(btn) { btn.parentNode.parentNode.remove(); updateDomainVisuals(); }
     function clearAllSupports() { document.getElementById('support_table_body').innerHTML = ''; updateDomainVisuals(); }
     function clearAllLineSupports() { document.getElementById('line_support_table_body').innerHTML = ''; updateDomainVisuals(); }
-    function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; document.getElementById('load_preset').value = 'custom'; updateDomainVisuals(); }
-
-    function applyLoadPreset() {
-        var preset = document.getElementById('load_preset').value, tbody = document.getElementById('load_table_body');
-        tbody.innerHTML = '';
-        if (preset === 'top_udl') {
-            for (var ix = 1; ix <= 4; ix++) { for (var iy = 1; iy <= 2; iy++) { addLoadRow((ix / 5) * activeLx, (iy / 3) * activeLy, 0, 0, 0, -12.5); } }
-        } else if (preset === 'tip_center') { addLoadRow(activeLx / 2.0, activeLy / 2.0, 0, 0, 0, -100); }
-        else if (preset === 'third_points') { addLoadRow(activeLx / 3.0, activeLy / 2.0, 0, 0, 0, -50); addLoadRow((2 * activeLx) / 3.0, activeLy / 2.0, 0, 0, 0, -50); }
-        updateDomainVisuals();
-    }
+    function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
 
     function getLoadArrayData() {
         var loads = [];
