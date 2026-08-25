@@ -1,6 +1,6 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v8 — Bilinear 3D pre-interpolation for 2D surface grids & robust 3D support snapping.
+# v9 — Bilinear 3D pre-interpolation for 2D surface grids & robust 3D support snapping.
 
 import numpy as np
 
@@ -94,10 +94,21 @@ class FormFindingDomain3D:
         if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
             return
 
-        z00 = float(corner_z_map.get((0.0, 0.0), 0.0))
-        z10 = float(corner_z_map.get((self.Lx, 0.0), 0.0))
-        z01 = float(corner_z_map.get((0.0, self.Ly), 0.0))
-        z11 = float(corner_z_map.get((self.Lx, self.Ly), 0.0))
+        # Resolve 3D Z-heights at domain corner bounds
+        z00 = 0.0
+        z10 = 0.0
+        z01 = 0.0
+        z11 = 0.0
+
+        for (pt_x, pt_y), pt_z in corner_z_map.items():
+            if pt_x <= self.Lx * 0.25 and pt_y <= self.Ly * 0.25:
+                z00 = float(pt_z)
+            elif pt_x >= self.Lx * 0.75 and pt_y <= self.Ly * 0.25:
+                z10 = float(pt_z)
+            elif pt_x <= self.Lx * 0.25 and pt_y >= self.Ly * 0.75:
+                z01 = float(pt_z)
+            elif pt_x >= self.Lx * 0.75 and pt_y >= self.Ly * 0.75:
+                z11 = float(pt_z)
 
         # Perform 2D bilinear spatial interpolation
         xi = self.nodes[:, 0] / max(self.Lx, 1e-3)
@@ -167,6 +178,7 @@ class FormFindingDomain3D:
             node_vec = node - p1_arr
             proj_len = np.dot(node_vec, line_dir)
 
+            # Restrict snap window to actual 3D segment length bounds to avoid swallowing interior nodes
             if -tol <= proj_len <= line_len + tol:
                 proj_pt = p1_arr + np.clip(proj_len, 0.0, line_len) * line_dir
                 dist = np.linalg.norm(node - proj_pt)
