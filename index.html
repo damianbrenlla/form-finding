@@ -150,7 +150,7 @@
         }
         #intro-modal .author-line a { color: #000000; }
 
-        /* Clean 2-Row Stacked Grid Layout for Sidebar Bounds */
+        /* Clean Stacked Cards Layout */
         .span-builder-card {
             background: #f9f9f9;
             padding: 10px;
@@ -1197,6 +1197,7 @@
 
     function format2DP(val) { return Number(val).toFixed(2); }
 
+    /* Pass 2 Mesh Renderer - Supporting Line Segment Stress/Deflection HSL Mapping & Section Clipping */
     function reRenderMesh() {
         if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
@@ -1213,36 +1214,116 @@
         var positions = [], colors = [];
 
         var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
+        var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || 1.0);
+        var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 1.0;
 
         currentFaces.forEach(function(edge, idx) {
             var p1 = currentVertices[edge[0]], p2 = currentVertices[edge[1]];
             positions.push(p1[0], p1[2], p1[1]); positions.push(p2[0], p2[2], p2[1]);
 
-            var color = new THREE.Color(0x000000);
+            var c1 = new THREE.Color(0x000000);
+            var c2 = new THREE.Color(0x000000);
 
             if (renderMode === 'cable_tension' && currentForcesN.length) {
                 var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
                 var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
-                color.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+                c1.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+                c2.copy(c1);
+
+            } else if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
+                var s1 = currentStressesMPa[edge[0]] || 0.0;
+                var s2 = currentStressesMPa[edge[1]] || 0.0;
+
+                var mapStressColor = function(s) {
+                    if (s > activeMaxTens || s < activeMaxComp) return new THREE.Color(0x808080);
+                    var h = (s >= 0) ? (1.0 - Math.min(s / activeMaxTens, 1.0)) * 0.33 : (0.33 + Math.min(Math.abs(s / activeMaxComp), 1.0) * 0.33);
+                    var c = new THREE.Color(); c.setHSL(h, 0.85, 0.45); return c;
+                };
+                c1 = mapStressColor(s1);
+                c2 = mapStressColor(s2);
+
+            } else if (renderMode === 'deflection' && currentDeflectionsMM.length) {
+                var d1 = currentDeflectionsMM[edge[0]] || 0.0;
+                var d2 = currentDeflectionsMM[edge[1]] || 0.0;
+                var maxD = Math.max(...currentDeflectionsMM, 1e-3);
+
+                var mapDeflColor = function(d) {
+                    var norm = Math.min(Math.max(d / maxD, 0.0), 1.0);
+                    var c = new THREE.Color(); c.setHSL((1.0 - norm) * 0.66, 0.85, 0.45); return c;
+                };
+                c1 = mapDeflColor(d1);
+                c2 = mapDeflColor(d2);
             }
 
-            colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+            colors.push(c1.r, c1.g, c1.b, c2.r, c2.g, c2.b);
         });
 
         lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         
-        if (renderMode === 'cable_tension') {
+        var matOptions = { linewidth: 1.5, clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true };
+
+        if (['cable_tension', 'ec3_stress', 'deflection'].includes(renderMode)) {
             lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 }));
+            matOptions.vertexColors = true;
+            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial(matOptions));
         } else {
-            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1.5 }));
+            matOptions.color = 0x000000;
+            mesh = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial(matOptions));
         }
 
         scene.add(mesh);
         toggleRenderModeUI();
     }
 
-    function exportSTL() { alert("Exporting form-found geometry as .STL..."); }
+    /* Pass 2 Tubular / Surface Geometry STL Exporter */
+    function exportSTL() {
+        if (!currentVertices.length || !currentFaces.length) {
+            showAppModal("Export Error", "No solved form-found geometry available for STL export.");
+            return;
+        }
+
+        var stl = "solid DBSW_FormFound_Mesh\n";
+        var r = 15.0; // Tube radius for line elements (mm)
+
+        currentFaces.forEach(function(edge) {
+            var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
+            var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][1], currentVertices[edge[1]][2]);
+
+            var dir = new THREE.Vector3().subVectors(p2, p1);
+            var len = dir.length();
+            if (len < 1e-3) return;
+
+            // Generate 4-sided tubular prism box per edge for clean 3D printing STL export
+            var axis = dir.clone().normalize();
+            var perp1 = new THREE.Vector3(0, 1, 0);
+            if (Math.abs(axis.y) > 0.9) perp1.set(1, 0, 0);
+            var uVec = new THREE.Vector3().crossVectors(axis, perp1).normalize().multiplyScalar(r);
+            var vVec = new THREE.Vector3().crossVectors(axis, uVec).normalize().multiplyScalar(r);
+
+            var v1 = p1.clone().add(uVec), v2 = p1.clone().add(vVec), v3 = p1.clone().sub(uVec), v4 = p1.clone().sub(vVec);
+            var v5 = p2.clone().add(uVec), v6 = p2.clone().add(vVec), v7 = p2.clone().sub(uVec), v8 = p2.clone().sub(vVec);
+
+            var quadToTri = function(a, b, c, d) {
+                var norm = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
+                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
+                stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${b.x} ${b.y} ${b.z}\n      vertex ${c.x} ${c.y} ${c.z}\n    endloop\n  endfacet\n`;
+                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
+                stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${c.x} ${c.y} ${c.z}\n      vertex ${d.x} ${d.y} ${d.z}\n    endloop\n  endfacet\n`;
+            };
+
+            quadToTri(v1, v2, v6, v5);
+            quadToTri(v2, v3, v7, v6);
+            quadToTri(v3, v4, v8, v7);
+            quadToTri(v4, v1, v5, v8);
+        });
+
+        stl += "endsolid DBSW_FormFound_Mesh\n";
+        var blob = new Blob([stl], { type: 'text/plain' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'DBSW_FormFound_Mesh.stl';
+        link.click();
+    }
 
     initThree();
     initWasmEngine();
