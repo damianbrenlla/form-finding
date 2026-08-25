@@ -1,7 +1,7 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v6 — Added nodal stress mapping for solid continuous surface rendering.
+ * v7 — Updated for 3D Line Supports & Dynamic Bounding Geometry
  */
 
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -35,9 +35,7 @@ async function initEngine() {
             } catch (networkErr) {
                 throw new Error(
                     `Network error fetching ${file} at ${url}: ${networkErr.message}. ` +
-                    `If you are opening this page as a file:// URL, serve it with a local ` +
-                    `web server instead (e.g. "python3 -m http.server") — workers cannot ` +
-                    `fetch local files over file://.`
+                    `Serve via local server if testing locally.`
                 );
             }
             if (!response.ok) {
@@ -95,37 +93,20 @@ mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
 mat_type  = payload.get("material_type", "generic")
 
 # --- Domain ---
+Lx_val = float(payload.get("Lx", 6000))
+Ly_val = float(payload.get("Ly", 300))
+Lz_val = float(payload.get("Lz", 600))
+
 domain = FormFindingDomain3D(
-    Lx=float(payload.get("Lx", 6000)),
-    Ly=float(payload.get("Ly", 6000)),
-    Lz=float(payload.get("Lz", 2000)),
-    nx=int(payload.get("nx", 16)),
-    ny=int(payload.get("ny", 16)),
-    geometry_preset=payload.get("preset", "surface_grid"),
+    Lx=Lx_val,
+    Ly=Ly_val,
+    Lz=Lz_val,
+    nx=int(payload.get("nx", 36)),
+    ny=int(payload.get("ny", 9)),
+    geometry_preset="surface_grid"
 )
 
-# --- Boundary Restraints ---
-sup_mode   = payload.get("support_mode", "preset")
-sup_preset = payload.get("support_preset", "four_corners")
-
-if sup_mode == "points_only" and payload.get("point_supports"):
-    for pt in payload["point_supports"]:
-        domain.add_point_support(
-            float(pt.get("x", 0)),
-            float(pt.get("y", 0)),
-            float(pt.get("z", 0))
-        )
-else:
-    if sup_preset == "four_corners":
-        domain.add_point_support(0.0,       0.0,       0.0)
-        domain.add_point_support(domain.Lx,  0.0,       0.0)
-        domain.add_point_support(0.0,       domain.Ly,  0.0)
-        domain.add_point_support(domain.Lx,  domain.Ly,  0.0)
-    elif sup_preset == "two_opposite_lines":
-        domain.add_line_support("x", 0.0)
-        domain.add_line_support("x", domain.Lx)
-
-# Also apply any additional discrete point supports from the table
+# --- Discrete Point Supports ---
 for pt in payload.get("point_supports", []):
     domain.add_point_support(
         float(pt.get("x", 0)),
@@ -133,20 +114,31 @@ for pt in payload.get("point_supports", []):
         float(pt.get("z", 0))
     )
 
+# --- Discrete Line Supports ---
+for l_sup in payload.get("line_supports", []):
+    p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
+    p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
+    
+    # Check if domain supports 3D line vector constraints
+    if hasattr(domain, 'add_line_support_3d'):
+        domain.add_line_support_3d(p1, p2)
+    else:
+        # Fallback to endpoints if 3D line method isn't declared
+        domain.add_point_support(*p1)
+        domain.add_point_support(*p2)
+
 if len(domain.fixed_nodes) == 0:
     raise ValueError(
-        "No support nodes resolved. If using 'Only User-Selected Discrete "
-        "Points' mode, add at least one row to the Discrete Point Supports "
-        "table, or switch back to a Support Preset."
+        "No support nodes resolved. Add at least one discrete point or line support."
     )
 
 # --- Cross-Section Area ---
-if mat_type == "cable":
+if mat_type == "cables":
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
-elif mat_type == "fabric":
+elif mat_type == "membrane":
     t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
-    area_mm2 = t_mm * 1000.0          # per metre width strip
+    area_mm2 = t_mm * 1000.0
 else:
     b_mm     = max(float(payload.get("sec_b", 300.0)), 1.0)
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
@@ -154,17 +146,17 @@ else:
 
 # --- Prestress ---
 prestress_N = float(payload.get("prestress", 0.0))
-if mat_type not in ("cable", "fabric"):
+if mat_type not in ("cables", "membrane"):
     prestress_N = 0.0
 
 # --- Self-weight toggle ---
 include_sw = bool(payload.get("include_self_weight", True))
-gamma      = mat_props["gamma_kn_m3"] if include_sw else 0.0
+gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
-# --- Solver ---
+# --- Solver Execution ---
 solver = UniversalFormFindingSolver(
     domain          = domain,
-    E_modulus       = mat_props["E"],
+    E_modulus       = mat_props.get("E", 210000.0),
     gamma_kn_m3     = gamma,
     area_mm2        = area_mm2,
     prestress_force = prestress_N,
@@ -172,9 +164,8 @@ solver = UniversalFormFindingSolver(
     material_type   = mat_type,
 )
 
-preset       = payload.get("preset", "surface_grid")
-invert_flag  = preset in ("vault", "dome")
-iters        = int(payload.get("iterations", 500))
+invert_flag = mat_type in ("concrete", "masonry")
+iters       = 500
 
 initial_nodes = np.copy(domain.nodes).astype(float)
 
@@ -189,7 +180,7 @@ u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
 element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
 
-# Average element axial stresses onto grid nodes for smooth surface rendering
+# Nodal Stress Averaging
 num_nodes = len(equilibrium_nodes)
 nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
 node_degree = np.zeros(num_nodes, dtype=float)
@@ -207,7 +198,7 @@ nodal_stresses_mpa /= node_degree
 sigma_max_tens = float(np.max(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 
-# --- Reactions ---
+# Reactions
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
@@ -223,32 +214,25 @@ for idx in fixed_indices:
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
-# --- Clean output ---
-clean_nodes  = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
-clean_forces = np.nan_to_num(axial_forces,      nan=0.0, posinf=0.0, neginf=0.0)
+# Serialization
+clean_nodes    = np.nan_to_num(equilibrium_nodes, nan=0.0, posinf=0.0, neginf=0.0)
+clean_forces   = np.nan_to_num(axial_forces,        nan=0.0, posinf=0.0, neginf=0.0)
 clean_stresses = np.nan_to_num(nodal_stresses_mpa, nan=0.0, posinf=0.0, neginf=0.0)
-clean_defs   = np.nan_to_num(deflections_mm,    nan=0.0, posinf=0.0, neginf=0.0)
-
-nodes_list  = [[float(v) for v in row] for row in clean_nodes.tolist()]
-edges_list  = [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()]
-forces_list = [float(v) for v in clean_forces.tolist()]
-stresses_list = [float(v) for v in clean_stresses.tolist()]
-defs_list   = [float(v) for v in clean_defs.tolist()]
+clean_defs     = np.nan_to_num(deflections_mm,     nan=0.0, posinf=0.0, neginf=0.0)
 
 json.dumps({
-    "nodes":          nodes_list,
-    "edges":          edges_list,
-    "axial_forces":   forces_list,
-    "stresses_mpa":   stresses_list,
-    "deflections_mm": defs_list,
+    "nodes":          [[float(v) for v in row] for row in clean_nodes.tolist()],
+    "edges":          [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()],
+    "axial_forces":   [float(v) for v in clean_forces.tolist()],
+    "stresses_mpa":   [float(v) for v in clean_stresses.tolist()],
+    "deflections_mm": [float(v) for v in clean_defs.tolist()],
     "sigma_max_tens": round(sigma_max_tens, 3),
     "sigma_max_comp": round(sigma_max_comp, 3),
     "u_max":          round(u_max, 3),
     "reactions":      reaction_data,
-    "material":       mat_props["material_name"],
-    "preset":         preset,
-    "num_nodes":      len(nodes_list),
-    "num_edges":      len(edges_list),
+    "material":       mat_props.get("material_name", mat_type),
+    "num_nodes":      len(clean_nodes),
+    "num_edges":      len(domain.edges),
     "diagnostics":    diagnostics,
 })
 `);
