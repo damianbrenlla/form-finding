@@ -296,7 +296,7 @@
             <tbody id="line_support_table_body"></tbody>
         </table>
         <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
-            Boundary restraints are defined strictly via user-selected discrete points and 3D line vectors. Line supports generate nodal restraint chains along the 3D vector.
+            Boundary restraints are defined strictly via user-selected discrete points and 3D line vectors.
         </p>
     </div>
 
@@ -418,24 +418,20 @@
 <script>
     var scene, camera, renderer, controls, mesh;
     var domainBox;
-    var forceArrows = [];
     var supportGizmos = [];
     var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     
-    var currentSigmaMaxTens = 1.0;  
-    var currentSigmaMaxComp = -1.0; 
-    var currentUMax = 1.0;
     var worker = null;
     var engineReady = false;
 
-    var activeLx = 6000, activeLy = 300, activeLz = 600;
+    var activeLx = 6000, activeLy = 3000, activeLz = 1000;
 
     var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), activeLx);
     var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), activeLy);
     var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), activeLz);
 
-    var CABLE_GRADES = ["Spiral Strand (1570 MPa)", "Locked Coil (1770 MPa)", "Stainless Wire Rope (1470 MPa)", "Aramid / Kevlar Tendon"];
-    var MEMBRANE_GRADES = ["PTFE-Coated Fiberglass (Type II)", "PVC-Coated Polyester (Type III)", "ETFE Foil (0.25mm Monolithic)", "Silicone Glass Mesh"];
+    var CABLE_GRADES = ["Spiral Strand (1x19)", "Flexible Rope (7x19)", "Locked Coil Cable", "High-Tensile Wire (1860)", "Stainless Strand (AISI 316)", "Aramid / Synthetic Fiber"];
+    var MEMBRANE_GRADES = ["PTFE Type II (Standard)", "PTFE Type I (Light)", "PTFE Type III (Medium)", "PTFE Type IV (Heavy)", "PTFE Type V (Extreme)"];
     var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
     var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
 
@@ -500,7 +496,6 @@
             genDiv.style.display = 'flex';
         }
 
-        // Prestress force is only displayed for tension structures or generic isotropic materials
         if (matType === 'cables' || matType === 'membrane' || matType === 'generic') {
             prestressContainer.style.display = 'flex';
             if (parseFloat(document.getElementById('prestress').value) === 0) {
@@ -569,8 +564,8 @@
 
         addSupportRow(0, 0, 0, 'xyz');
         addSupportRow(6000, 0, 0, 'xyz');
-        addSupportRow(0, 300, 0, 'xyz');
-        addSupportRow(6000, 300, 0, 'xyz');
+        addSupportRow(0, 3000, 0, 'xyz');
+        addSupportRow(6000, 3000, 0, 'xyz');
         
         applyLoadPreset();
         setupCutPlaneSliders();
@@ -627,7 +622,7 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 150 : y; z = (z === undefined) ? 0 : z;
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 0 : z;
         Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -12.5 : Fz;
         var tbody = document.getElementById('load_table_body');
         var tr = document.createElement('tr');
@@ -745,11 +740,11 @@
         });
         getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
 
-        if (pts.length === 0) return { Lx: 6000, Ly: 300, Lz: 600 };
+        if (pts.length === 0) return { Lx: 6000, Ly: 3000, Lz: 1000 };
 
         var maxX = Math.max(...pts.map(p => p[0]), 1000);
-        var maxY = Math.max(...pts.map(p => p[1]), 300);
-        var maxZ = Math.max(...pts.map(p => p[2]), 600);
+        var maxY = Math.max(...pts.map(p => p[1]), 1000);
+        var maxZ = Math.max(...pts.map(p => p[2]), 1000);
 
         return { Lx: maxX, Ly: maxY, Lz: maxZ };
     }
