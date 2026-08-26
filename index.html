@@ -458,7 +458,7 @@
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-weight: bold;">+1.00 MPa</span></div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-family: monospace; font-weight: bold;">+1.00 MPa</span></div>
                 <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
             </div>
         </div>
@@ -552,7 +552,7 @@
     }
 
     function makeTextSprite(message, colorHex) {
-        colorHex = colorHex || '#cc0000';
+        colorHex = colorHex || '#00aa55';
         var canvas = document.createElement('canvas');
         canvas.width = 1024; canvas.height = 128;
         var ctx = canvas.getContext('2d');
@@ -1132,7 +1132,8 @@
                 if (mag > 1e-3) {
                     dir.normalize();
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
-                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0xcc0000, 140, 70);
+                    // Updated Reaction Arrow Color to Green (0x00aa55)
+                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, 140, 70);
                     
                     // Attach Reaction Vector Data for Hover Inspector
                     arrow.userData.reactionData = { type: "Line Support Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
@@ -1140,8 +1141,9 @@
                     reactionGroup.add(arrow);
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
-                    var sprite = makeTextSprite(labelText, '#cc0000');
-                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
+                    // Updated Sprite Text Color to Green (#00aa55) and reduced tip offset (+30) for closer placement
+                    var sprite = makeTextSprite(labelText, '#00aa55');
+                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 30));
                     reactionGroup.add(sprite);
                 }
             });
@@ -1156,7 +1158,8 @@
             if (mag > 1e-3) {
                 dir.normalize();
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
-                const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, 140, 70);
+                // Updated Reaction Arrow Color to Green (0x00aa55)
+                const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, 140, 70);
                 
                 // Attach Reaction Vector Data for Hover Inspector
                 arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
@@ -1164,8 +1167,9 @@
                 reactionGroup.add(arrow);
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
-                const sprite = makeTextSprite(labelText, '#cc0000');
-                sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
+                // Updated Sprite Text Color to Green (#00aa55) and reduced tip offset (+30) for closer placement
+                const sprite = makeTextSprite(labelText, '#00aa55');
+                sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 30));
                 reactionGroup.add(sprite);
             }
         });
