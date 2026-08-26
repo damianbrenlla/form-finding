@@ -987,11 +987,11 @@
         forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
 
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
-        var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
+        var ptPinGeo = new THREE.ConeGeometry(55, 110, 4);
 
         getPointSupportArrayData().forEach(function(ps) {
             var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
-            ptMesh.position.set(ps.x, ps.z - 75, ps.y);
+            ptMesh.position.set(ps.x, ps.z - 55, ps.y);
             scene.add(ptMesh); supportGizmos.push(ptMesh);
         });
 
@@ -1133,8 +1133,10 @@
                 if (mag > 1e-3) {
                     dir.normalize();
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
+                    var headLen = Math.min(Math.max(arrowLen * 0.22, 50), 140);
+                    var headWid = headLen * 0.5;
                     // Updated Reaction Arrow Color to Green (0x00aa55)
-                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, 140, 70);
+                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, headLen, headWid);
                     arrow.line.material.depthTest = false;
                     arrow.cone.material.depthTest = false;
                     arrow.renderOrder = 999;
@@ -1162,8 +1164,10 @@
             if (mag > 1e-3) {
                 dir.normalize();
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
+                const headLen = Math.min(Math.max(arrowLen * 0.22, 50), 140);
+                const headWid = headLen * 0.5;
                 // Updated Reaction Arrow Color to Green (0x00aa55)
-                const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, 140, 70);
+                const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, headLen, headWid);
                 arrow.line.material.depthTest = false;
                 arrow.cone.material.depthTest = false;
                 arrow.renderOrder = 999;
