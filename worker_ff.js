@@ -1,7 +1,8 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v19 — Origin-aware domain + forced grid lines + ny=1 for cables
+ * v20 — Origin-aware domain + forced grid lines
+ *       + pure 1-D polyline for cables (prevents disconnected ends / floating reactions)
  *       + robust edge-projection load handling (via solvers_ff.py)
  */
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
@@ -89,8 +90,7 @@ point_sups = payload.get("point_supports", [])
 line_sups  = payload.get("line_supports", [])
 sup_preset = payload.get("support_preset", "")
 
-# --- CRITICAL FIX: compute the TRUE bounding box from every declared support,
-# including negative coordinates. ---
+# --- CRITICAL FIX: compute the TRUE bounding box from every declared support ---
 xs = [0.0, Lx_val]
 ys = [0.0, Ly_val]
 for pt in point_sups:
@@ -104,7 +104,6 @@ for l_sup in line_sups:
 xmin_val, xmax_val = min(xs), max(xs)
 ymin_val, ymax_val = min(ys), max(ys)
 
-# --- CRITICAL FIX: force a real grid line at every support's exact X/Y. ---
 forced_x = [float(pt.get("x", 0)) for pt in point_sups]
 forced_y = [float(pt.get("y", 0)) for pt in point_sups]
 for l_sup in line_sups:
@@ -113,7 +112,6 @@ for l_sup in line_sups:
     forced_y.append(float(l_sup.get("y1", 0)))
     forced_y.append(float(l_sup.get("y2", 0)))
 
-# For pure cables force a 1-D-friendly discretisation
 _ny = int(payload.get("ny", 12))
 if mat_type in ("cables", "cable"):
     _ny = 1
@@ -132,38 +130,78 @@ domain = FormFindingDomain3D(
     material_type=mat_type
 )
 
-# Discrete Point Supports & Universal Seed Z-Map Assembly
+# ------------------------------------------------------------------
+# CABLE SPECIAL CASE – force a pure 1-D polyline between the two
+# supports.  This completely overrides the surface_grid so that
+# ForceDensity always solves a single chain that reaches the supports.
+# ------------------------------------------------------------------
+if mat_type in ("cables", "cable") and len(point_sups) >= 2:
+    pA = point_sups[0]
+    pB = point_sups[1]
+    # order by dominant plan direction so ratio 0 → start is consistent
+    if abs(float(pB.get("x",0)) - float(pA.get("x",0))) >= abs(float(pB.get("y",0)) - float(pA.get("y",0))):
+        if float(pA.get("x",0)) > float(pB.get("x",0)):
+            pA, pB = pB, pA
+    else:
+        if float(pA.get("y",0)) > float(pB.get("y",0)):
+            pA, pB = pB, pA
+
+    x1, y1, z1 = float(pA.get("x",0)), float(pA.get("y",0)), float(pA.get("z",0))
+    x2, y2, z2 = float(pB.get("x",0)), float(pB.get("y",0)), float(pB.get("z",0))
+    nx = max(int(payload.get("nx", 36)), 2)
+
+    nodes = np.zeros((nx + 1, 3), dtype=float)
+    for i in range(nx + 1):
+        t = i / nx
+        nodes[i, 0] = x1 + t * (x2 - x1)
+        nodes[i, 1] = y1 + t * (y2 - y1)
+        nodes[i, 2] = z1 + t * (z2 - z1)
+
+    edges = np.array([[i, i + 1] for i in range(nx)], dtype=int)
+
+    # overwrite domain geometry
+    domain.nodes = nodes
+    domain.edges = edges
+    domain.fixed_nodes = {0, nx}          # the two ends
+    domain.nx = nx
+    domain.ny = 1
+    # keep xmin/xmax etc. for any downstream code that reads them
+    domain.xmin, domain.xmax = min(x1, x2), max(x1, x2)
+    domain.ymin, domain.ymax = min(y1, y2), max(y1, y2)
+
+# Discrete Point Supports (only needed for non-cable cases now)
 seed_z_map = {}
-for pt in point_sups:
-    px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
-    domain.add_point_support(px, py, pz)
-    seed_z_map[(px, py)] = pz
+if mat_type not in ("cables", "cable"):
+    for pt in point_sups:
+        px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
+        domain.add_point_support(px, py, pz)
+        seed_z_map[(px, py)] = pz
 
-for l_sup in line_sups:
-    p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
-    p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
-    if hasattr(domain, 'add_line_support_3d'):
-        domain.add_line_support_3d(p1, p2)
-    if (p1[0], p1[1]) not in seed_z_map:
-        seed_z_map[(p1[0], p1[1])] = p1[2]
-    if (p2[0], p2[1]) not in seed_z_map:
-        seed_z_map[(p2[0], p2[1])] = p2[2]
+    for l_sup in line_sups:
+        p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
+        p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
+        if hasattr(domain, 'add_line_support_3d'):
+            domain.add_line_support_3d(p1, p2)
+        if (p1[0], p1[1]) not in seed_z_map:
+            seed_z_map[(p1[0], p1[1])] = p1[2]
+        if (p2[0], p2[1]) not in seed_z_map:
+            seed_z_map[(p2[0], p2[1])] = p2[2]
 
-# Fallback Preset Support Resolution
-if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
-    domain.add_point_support(domain.xmin, domain.ymin, 0.0)
-    domain.add_point_support(domain.xmax, domain.ymin, 0.0)
-    domain.add_point_support(domain.xmin, domain.ymax, 0.0)
-    domain.add_point_support(domain.xmax, domain.ymax, 0.0)
-elif sup_preset == "two_opposite_lines":
-    if hasattr(domain, 'add_line_support_3d'):
-        domain.add_line_support_3d((domain.xmin, domain.ymin, 0.0), (domain.xmin, domain.ymax, 0.0))
-        domain.add_line_support_3d((domain.xmax, domain.ymin, 0.0), (domain.xmax, domain.ymax, 0.0))
+    # Fallback presets
+    if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
+        domain.add_point_support(domain.xmin, domain.ymin, 0.0)
+        domain.add_point_support(domain.xmax, domain.ymin, 0.0)
+        domain.add_point_support(domain.xmin, domain.ymax, 0.0)
+        domain.add_point_support(domain.xmax, domain.ymax, 0.0)
+    elif sup_preset == "two_opposite_lines":
+        if hasattr(domain, 'add_line_support_3d'):
+            domain.add_line_support_3d((domain.xmin, domain.ymin, 0.0), (domain.xmin, domain.ymax, 0.0))
+            domain.add_line_support_3d((domain.xmax, domain.ymin, 0.0), (domain.xmax, domain.ymax, 0.0))
 
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
 
-# Seed interior elevations (skip for cables)
+# Seed interior elevations (skip for cables – already done by the polyline)
 if hasattr(domain, 'apply_idw_surface_interpolation') and mat_type not in ("cables", "cable"):
     domain.apply_idw_surface_interpolation(seed_z_map)
 
