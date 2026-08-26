@@ -1267,6 +1267,7 @@
             status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
             reRenderMesh();
             displayReactions(data.data.reactions || []);
+            repositionLoadArrowsToSolution();
         } else if (data.status === 'error') {
             btnExec.disabled = false; btnExec.innerText = "Execute Form Finding";
             btnStop.style.display = 'none'; status.innerText = "Solver Error: " + data.message;
@@ -1328,6 +1329,51 @@
     }
 
     function format2DP(val) { return Number(val).toFixed(2); }
+
+    /* CRITICAL FIX: after a solve completes, the black cable tube / membrane surface and
+       the green reaction arrows are both redrawn from currentVertices (the SOLVED, sagged
+       geometry) — but the red point-load arrows were only ever drawn once, inside
+       updateDomainVisuals(), from the raw table x/y/z (a pre-solve straight-chord estimate
+       for cables added via the Span Load Generator). That function is never re-invoked after
+       a solve, so the load arrow is left stranded at its flat pre-solve position while the
+       cable sags away underneath it — exactly the "arrow floats beside/above the cable"
+       symptom. This snaps each load arrow to the nearest node in the SOLVED mesh (matched
+       on X/Y, since for a 2-support cable only Z moves) so it renders on the actual deformed
+       geometry, the same way the sag indicator and reactions already do. */
+    function repositionLoadArrowsToSolution() {
+        if (!currentVertices.length) return;
+
+        forceArrows.forEach(function(obj) { scene.remove(obj); });
+        forceArrows = [];
+
+        getLoadArrayData().forEach(function(ld) {
+            var dir = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
+            var mag = dir.length();
+            if (mag <= 1e-3) return;
+            dir.normalize();
+
+            var bestIdx = -1, bestDist = Infinity;
+            currentVertices.forEach(function(v, idx) {
+                var dist = Math.hypot(v[0] - ld.x, v[1] - ld.y);
+                if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
+            });
+            if (bestIdx === -1) return;
+
+            var solved = currentVertices[bestIdx];
+            var origin = new THREE.Vector3(solved[0], solved[2], solved[1]);
+
+            var maxArrowLen = Math.min(activeLx, activeLy, activeLz) * 0.20;
+            var arrowLen = Math.min(Math.max(mag * 15, 150), maxArrowLen);
+
+            var arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, arrowLen * 0.25, arrowLen * 0.12);
+            scene.add(arrow); forceArrows.push(arrow);
+
+            var fzText = `${ld.Fz.toFixed(1)} kN`;
+            var labelSprite = makeTextSprite(fzText, '#000000');
+            labelSprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 60));
+            scene.add(labelSprite); forceArrows.push(labelSprite);
+        });
+    }
 
     /* Pass 2 Volumetric Geometry Renderer: 3D Surface Solid Mesh (Membranes) & Physical Cable Tubes (Cables) */
     function reRenderMesh() {
