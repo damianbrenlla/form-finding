@@ -551,8 +551,9 @@
         document.getElementById('app-modal-overlay').style.display = 'none';
     }
 
-    function makeTextSprite(message, colorHex) {
+    function makeTextSprite(message, colorHex, scaleMultiplier) {
         colorHex = colorHex || '#00aa55';
+        scaleMultiplier = scaleMultiplier || 1.0;
         var canvas = document.createElement('canvas');
         canvas.width = 1024; canvas.height = 128;
         var ctx = canvas.getContext('2d');
@@ -564,7 +565,7 @@
         var texture = new THREE.CanvasTexture(canvas);
         var spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
         var sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(1200, 150, 1);
+        sprite.scale.set(1200 * scaleMultiplier, 150 * scaleMultiplier, 1);
         return sprite;
     }
 
@@ -1134,6 +1135,9 @@
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
                     // Updated Reaction Arrow Color to Green (0x00aa55)
                     var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, 140, 70);
+                    arrow.line.material.depthTest = false;
+                    arrow.cone.material.depthTest = false;
+                    arrow.renderOrder = 999;
                     
                     // Attach Reaction Vector Data for Hover Inspector
                     arrow.userData.reactionData = { type: "Line Support Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
@@ -1141,9 +1145,9 @@
                     reactionGroup.add(arrow);
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
-                    // Updated Sprite Text Color to Green (#00aa55) and reduced tip offset (+30) for closer placement
-                    var sprite = makeTextSprite(labelText, '#00aa55');
-                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 30));
+                    // Updated Sprite Text Color to Green (#00aa55), 50% larger, positioned closer to the support
+                    var sprite = makeTextSprite(labelText, '#00aa55', 1.5);
+                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen * 0.35));
                     reactionGroup.add(sprite);
                 }
             });
@@ -1160,6 +1164,9 @@
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
                 // Updated Reaction Arrow Color to Green (0x00aa55)
                 const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, 140, 70);
+                arrow.line.material.depthTest = false;
+                arrow.cone.material.depthTest = false;
+                arrow.renderOrder = 999;
                 
                 // Attach Reaction Vector Data for Hover Inspector
                 arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
@@ -1167,9 +1174,9 @@
                 reactionGroup.add(arrow);
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
-                // Updated Sprite Text Color to Green (#00aa55) and reduced tip offset (+30) for closer placement
-                const sprite = makeTextSprite(labelText, '#00aa55');
-                sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 30));
+                // Updated Sprite Text Color to Green (#00aa55), 50% larger, positioned closer to the support
+                const sprite = makeTextSprite(labelText, '#00aa55', 1.5);
+                sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen * 0.35));
                 reactionGroup.add(sprite);
             }
         });
