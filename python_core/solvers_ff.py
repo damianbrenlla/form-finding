@@ -1,8 +1,7 @@
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 4 — Origin-aware boundary detection for edge-cable prestress (domain no
-#          longer assumed to start at 0,0), matching the domain_ff.py bounding-box fix.
-# + Robust edge-projection load attachment for cables (prevents loads snapping to x=0)
+# Pass 5 — Origin-aware boundary detection + robust edge-projection loads
+#          for both cables (ForceDensity) and membranes (UnderwoodDR)
 import numpy as np
 
 class ForceDensitySolver:
@@ -37,7 +36,6 @@ class ForceDensitySolver:
         if not free_indices:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
 
-        # Rest lengths from initial geometry
         rest_lengths = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
             dist = np.linalg.norm(nodes[u] - nodes[v])
@@ -51,7 +49,6 @@ class ForceDensitySolver:
         N_free = len(free_indices)
         N_fixed = len(fixed_indices)
 
-        # Force-density matrix
         D = np.zeros((N_free, N_free), dtype=float)
         Df = np.zeros((N_free, N_fixed), dtype=float)
         free_nodes_set = set(free_indices)
@@ -77,7 +74,6 @@ class ForceDensitySolver:
                     iu_f = fixed_map[u]
                     Df[iv, iu_f] -= q_k
 
-        # External forces
         P_ext = np.zeros((N_free, 3), dtype=float)
 
         # Self-weight
@@ -92,12 +88,7 @@ class ForceDensitySolver:
                 if v in free_map:
                     P_ext[free_map[v], 2] -= half_weight_N
 
-        # ---------------------------------------------------------------
-        # ROBUST POINT-LOAD APPLICATION (fixes loads snapping to x=0)
-        # Project each load onto the nearest edge and distribute the force
-        # to the two end nodes of that edge (only free nodes receive force).
-        # This works for both pure 1-D cables and thin-strip grids.
-        # ---------------------------------------------------------------
+        # Robust edge-projection load attachment
         for ld in self.point_loads:
             px = float(ld.get("x", 0.0))
             py = float(ld.get("y", 0.0))
@@ -130,8 +121,6 @@ class ForceDensitySolver:
                     best_u, best_v = u, v
                     best_t = t
 
-            # Distribute force to the two nodes of the nearest edge
-            # (only free nodes actually receive it)
             if best_u >= 0:
                 w_u = 1.0 - best_t
                 w_v = best_t
@@ -140,7 +129,6 @@ class ForceDensitySolver:
                 if best_v in free_map:
                     P_ext[free_map[best_v]] += w_v * force_vec
 
-        # Solve linear system
         X_fixed = nodes[fixed_indices]
         RHS = P_ext - np.dot(Df, X_fixed)
 
@@ -154,13 +142,11 @@ class ForceDensitySolver:
         except np.linalg.LinAlgError:
             raise ValueError("Unstable boundary conditions: Force density matrix linear solve failed.")
 
-        # Axial forces from final geometry
         axial_forces = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
             curr_len = np.linalg.norm(nodes[u] - nodes[v])
             axial_forces[i] = q[i] * curr_len
 
-        # Reactions
         reactions = np.zeros((num_nodes, 3), dtype=float)
         for i, (u, v) in enumerate(edges):
             vec = nodes[v] - nodes[u]
@@ -357,7 +343,6 @@ class UnderwoodDRSolver:
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        # Real (average) domain grid spacing
         dy_spacing = float(getattr(self.domain, "dy", self.domain.Ly / max(self.domain.ny, 1)))
         dx_spacing = float(getattr(self.domain, "dx", self.domain.Lx / max(self.domain.nx, 1)))
 
@@ -394,6 +379,8 @@ class UnderwoodDRSolver:
         np.add.at(F_prestress_nodal, edges[:, 1], -f_prestress_vecs)
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
+
+        # Self-weight
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -402,14 +389,49 @@ class UnderwoodDRSolver:
                 F_ext[u, 2] -= half_weight_N
                 F_ext[v, 2] -= half_weight_N
 
+        # ---------------------------------------------------------------
+        # ROBUST EDGE-PROJECTION LOAD ATTACHMENT (same logic as cables)
+        # ---------------------------------------------------------------
         for ld in self.point_loads:
-            px, py, pz = float(ld.get("x", 0)), float(ld.get("y", 0)), float(ld.get("z", 0))
-            fx_N = float(ld.get("Fx", 0)) * 1000.0
-            fy_N = float(ld.get("Fy", 0)) * 1000.0
-            fz_N = float(ld.get("Fz", 0)) * 1000.0
-            dists = np.linalg.norm(nodes - np.array([px, py, pz]), axis=1)
-            closest_idx = int(np.argmin(dists))
-            F_ext[closest_idx] += [fx_N, fy_N, fz_N]
+            px = float(ld.get("x", 0.0))
+            py = float(ld.get("y", 0.0))
+            pz = float(ld.get("z", 0.0))
+            fx_N = float(ld.get("Fx", 0.0)) * 1000.0
+            fy_N = float(ld.get("Fy", 0.0)) * 1000.0
+            fz_N = float(ld.get("Fz", 0.0)) * 1000.0
+            load_pt = np.array([px, py, pz], dtype=float)
+            force_vec = np.array([fx_N, fy_N, fz_N], dtype=float)
+
+            if np.linalg.norm(force_vec) < 1e-9:
+                continue
+
+            best_dist = np.inf
+            best_u = best_v = -1
+            best_t = 0.5
+
+            for ei, (u, v) in enumerate(edges):
+                a = nodes[u]
+                b = nodes[v]
+                ab = b - a
+                ab_len2 = np.dot(ab, ab)
+                if ab_len2 < 1e-12:
+                    continue
+                t = np.clip(np.dot(load_pt - a, ab) / ab_len2, 0.0, 1.0)
+                proj = a + t * ab
+                dist = np.linalg.norm(load_pt - proj)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_u, best_v = u, v
+                    best_t = t
+
+            if best_u >= 0:
+                w_u = 1.0 - best_t
+                w_v = best_t
+                # On a membrane we apply the force even if the node is fixed
+                # (it simply increases the reaction).  For free nodes it
+                # correctly distributes the load.
+                F_ext[best_u] += w_u * force_vec
+                F_ext[best_v] += w_v * force_vec
 
         total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
         total_prestress_nodal_mag = np.max(np.linalg.norm(F_prestress_nodal, axis=1)) if len(F_prestress_nodal) > 0 else 1.0
