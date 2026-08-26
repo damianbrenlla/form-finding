@@ -1,9 +1,10 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v14 — Cable point supports now bind by ARRAY POSITION (index 0 / index N-1)
-#       instead of nearest-node distance search. Fixes reaction-arrow offset
-#       bug where fixed_nodes could point at an interior node (drifting with
-#       nx) even though the drawn cable geometry itself was already correct.
+# v13 — Arbitrary bounding box (negative coordinates now inside the domain), forced
+#       grid lines at every support coordinate so a support always lands on a real
+#       node (add_point_support now fails LOUDLY instead of silently doing nothing),
+#       and inverse-distance-weighted seeding across ALL supports in place of the
+#       old 4-corner-only bilinear bucket classifier.
 
 import numpy as np
 
@@ -157,39 +158,6 @@ class FormFindingDomain3D:
         self.nodes[free_mask, 2] = z_interp
 
     def add_point_support(self, x: float, y: float, z: float, tol: float = None):
-        # CRITICAL FIX (cables only): bind by ARRAY POSITION, not nearest-node
-        # distance search. A cable is just an ordered polyline — its only two
-        # valid anchor points are index 0 and index N-1. The old nearest-node
-        # argmin ran against the initial (pre-respacing) node positions, which
-        # for a cable are seeded along a diagonal from (xmin,ymin) to (xmax,ymax)
-        # — not the true straight line — because worker_ff.js passes a bounding
-        # box (e.g. a default Ly of 3000mm) that doesn't reflect where the real
-        # supports sit. That distortion meant argmin could resolve to an
-        # interior node index, and which index it picked depended on nx (more
-        # nodes = different distance field = different "nearest" winner). The
-        # respacing step below always overwrites nodes[0] and nodes[-1] with
-        # the true support coordinates, so the drawn cable was always correct
-        # — but fixed_nodes kept pointing at the wrong index, so any reaction
-        # arrow drawn from fixed_nodes landed part-way along the cable instead
-        # of at the true end. Binding by position removes this class of bug
-        # entirely: no distance field, no dependence on the distorted seed.
-        if self.material_type in ("cables", "cable"):
-            d_start = np.linalg.norm(self.nodes[0, :2] - np.array([float(x), float(y)]))
-            d_end = np.linalg.norm(self.nodes[-1, :2] - np.array([float(x), float(y)]))
-            idx = 0 if d_start <= d_end else len(self.nodes) - 1
-
-            self.fixed_nodes.add(idx)
-            self.nodes[idx] = [float(x), float(y), float(z)]
-
-            if len(self.fixed_nodes) >= 2:
-                fixed_list = sorted(list(self.fixed_nodes))
-                p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
-                pos1 = self.nodes[p1_idx].copy()
-                pos2 = self.nodes[p2_idx].copy()
-                for axis in range(3):
-                    self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
-            return idx
-
         if tol is None:
             tol = self._auto_tolerance()
 
@@ -197,9 +165,17 @@ class FormFindingDomain3D:
         dists_2d = np.linalg.norm(self.nodes[:, :2] - pt_2d, axis=1)
         idx = int(np.argmin(dists_2d))
 
-        if dists_2d[idx] <= tol:
+        if dists_2d[idx] <= tol or self.material_type in ("cables", "cable"):
             self.fixed_nodes.add(idx)
             self.nodes[idx] = [float(x), float(y), float(z)]
+
+            if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
+                fixed_list = sorted(list(self.fixed_nodes))
+                p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
+                pos1 = self.nodes[p1_idx].copy()
+                pos2 = self.nodes[p2_idx].copy()
+                for axis in range(3):
+                    self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
             return idx
 
         # CRITICAL FIX: fail loudly instead of silently doing nothing. With forced
