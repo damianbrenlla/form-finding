@@ -1164,6 +1164,7 @@
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
                     var sprite = makeTextSprite(labelText, '#00aa55');
+                    sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
                     sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
                     reactionGroup.add(sprite);
                 }
@@ -1187,6 +1188,7 @@
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText, '#00aa55');
+                sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
@@ -1234,6 +1236,7 @@
 
             var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
             var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
+            sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
             sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
             sagIndicatorGroup.add(sprite);
         }
