@@ -506,6 +506,14 @@
     var reactionGroup = null, sagIndicatorGroup = null;
     var axesScene, axesCamera, axesGroup;
     var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
+    // CRITICAL FIX: actual solved grid resolution reported by the backend.
+    // domain_ff.py's forced-grid-line logic (np.union1d on support coordinates)
+    // can silently grow nx/ny beyond whatever the UI fields say, whenever a
+    // support coordinate doesn't land on the regular grid. reRenderMesh() MUST
+    // use these — not the raw #nx/#ny input values — to reconstruct triangle
+    // indices, or the mesh will fail to reach the outlying supports even
+    // though their nodes were solved correctly and exist in currentVertices.
+    var currentNxActual = null, currentNyActual = null;
     var worker = null, engineReady = false;
 
     var raycaster = new THREE.Raycaster();
@@ -1263,6 +1271,15 @@
             currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
 
+            // CRITICAL FIX: capture the ACTUAL solved grid resolution reported
+            // by the worker. Forced grid lines at support coordinates can grow
+            // nx/ny beyond the UI's requested values, and reRenderMesh() must
+            // rebuild triangle indices against the real stride, not the stale
+            // UI input values, or outlying supports get silently dropped from
+            // every triangle even though their nodes exist and solved fine.
+            currentNxActual = (typeof data.data.nx_actual === 'number') ? data.data.nx_actual : null;
+            currentNyActual = (typeof data.data.ny_actual === 'number') ? data.data.ny_actual : null;
+
             if (currentForcesN.length) {
                 var maxForceKN = Math.max(...currentForcesN.map(f => Math.abs(f))) / 1000.0;
                 var tensionSlider = document.getElementById('tension_threshold_slider');
@@ -1329,6 +1346,7 @@
 
     function clearResults() {
         currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
+        currentNxActual = null; currentNyActual = null;
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
@@ -1387,8 +1405,21 @@
             return;
         }
 
-        var nx = parseInt(document.getElementById('nx').value) || 36;
-        var ny = parseInt(document.getElementById('ny').value) || 12;
+        // CRITICAL FIX: reconstruct triangle indices using the ACTUAL solved
+        // grid resolution (reported by the backend as nx_actual / ny_actual),
+        // not the raw UI input values. domain_ff.py's forced-grid-line logic
+        // (np.union1d on every support X/Y coordinate) can silently grow the
+        // real grid past whatever nx/ny the user typed in, whenever a support
+        // doesn't land exactly on the regular spacing. If this function used
+        // the stale UI values instead, the (nx+1)x(ny+1) stride assumed below
+        // would be wrong, and indices would silently reference the wrong
+        // nodes — leaving nodes near irregular/outlying supports completely
+        // unreferenced by any triangle (they exist in currentVertices, which
+        // is why the support pins still draw correctly, but no face reaches
+        // them). Fall back to the UI values only if the backend didn't report
+        // actual values (e.g. an older worker_ff.js).
+        var nx = (currentNxActual !== null) ? currentNxActual : (parseInt(document.getElementById('nx').value) || 36);
+        var ny = (currentNyActual !== null) ? currentNyActual : (parseInt(document.getElementById('ny').value) || 12);
 
         var surfaceGeo = new THREE.BufferGeometry();
         var positions = [], colors = [], indices = [];
