@@ -518,8 +518,7 @@ class FormFindingDomain3D:
         obj.dx = float(np.mean(np.diff(obj._x_lin))) if len(obj._x_lin) > 1 else 0.0
         obj.dy = float(np.mean(np.diff(obj._y_lin))) if len(obj._y_lin) > 1 else 0.0
 
-        # CRITICAL FIX: Seed candidate interior vertices with IDW surface elevation
-        # interpolation using support heights to prevent planar membrane collapse.
+        # Seed candidate interior vertices with IDW surface elevation interpolation
         seed_z_map = {(float(p[0]), float(p[1])): float(p[2]) for p in perim3}
         for p in interior3:
             seed_z_map[(float(p[0]), float(p[1]))] = float(p[2])
