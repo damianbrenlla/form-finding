@@ -511,13 +511,6 @@
     var reactionGroup = null, sagIndicatorGroup = null;
     var axesScene, axesCamera, axesGroup;
     var currentVertices = [], currentFaces = [], currentEdges = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
-    // CRITICAL FIX: actual solved grid resolution reported by the backend.
-    // domain_ff.py's forced-grid-line logic (np.union1d on support coordinates)
-    // can silently grow nx/ny beyond whatever the UI fields say, whenever a
-    // support coordinate doesn't land on the regular grid. reRenderMesh() MUST
-    // use these — not the raw #nx/#ny input values — to reconstruct triangle
-    // indices, or the mesh will fail to reach the outlying supports even
-    // though their nodes were solved correctly and exist in currentVertices.
     var currentNxActual = null, currentNyActual = null;
     var worker = null, engineReady = false;
 
@@ -854,7 +847,6 @@
             return;
         }
 
-        // Always order supports so that p1 is the “start” (lower X, or lower parameter)
         var pA = pointSups[0];
         var pB = pointSups[1];
         var orderByX = Math.abs(pB.x - pA.x) > Math.abs(pB.y - pA.y);
@@ -961,7 +953,6 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        // Sensible defaults for cables: place at mid-span of current supports
         var matType = document.getElementById('mat_type').value;
         if (x === undefined && matType === 'cables') {
             var pointSups = getPointSupportArrayData();
@@ -1193,7 +1184,6 @@
             return;
         }
 
-        // Legacy rectangular preview if the user has not supplied a polygon.
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
         var previewNodes = [], previewEdges = [];
@@ -1263,7 +1253,7 @@
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
                     var sprite = makeTextSprite(labelText, '#00aa55');
-                    sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+                    sprite.scale.multiplyScalar(1.5);
                     sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
                     reactionGroup.add(sprite);
                 }
@@ -1287,7 +1277,7 @@
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText, '#00aa55');
-                sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+                sprite.scale.multiplyScalar(1.5);
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
@@ -1335,7 +1325,7 @@
 
             var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
             var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-            sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+            sprite.scale.multiplyScalar(1.5);
             sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
             sagIndicatorGroup.add(sprite);
         }
@@ -1362,12 +1352,6 @@
             currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
 
-            // CRITICAL FIX: capture the ACTUAL solved grid resolution reported
-            // by the worker. Forced grid lines at support coordinates can grow
-            // nx/ny beyond the UI's requested values, and reRenderMesh() must
-            // rebuild triangle indices against the real stride, not the stale
-            // UI input values, or outlying supports get silently dropped from
-            // every triangle even though their nodes exist and solved fine.
             currentNxActual = (typeof data.data.nx_actual === 'number') ? data.data.nx_actual : null;
             currentNyActual = (typeof data.data.ny_actual === 'number') ? data.data.ny_actual : null;
 
@@ -1497,8 +1481,30 @@
             return;
         }
 
-        // Render the exact triangle connectivity returned by the backend.
-        // Polygon membranes have no rectangular (nx+1) x (ny+1) indexing.
+        var positions = [];
+        var colors = [];
+        var indices = [];
+        var surfaceGeo = new THREE.BufferGeometry();
+
+        currentVertices.forEach(function(v) {
+            positions.push(v[0], v[2], v[1]);
+        });
+
+        currentVertices.forEach(function(v, idx) {
+            var c = new THREE.Color(0xdddddd);
+            if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
+                var stress = currentStressesMPa[idx] || 0.0;
+                var norm = Math.min(Math.max(stress, 0.0) / activeMaxTens, 1.0);
+                c.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+            } else if (renderMode === 'deflection' && currentDeflectionsMM.length) {
+                var defl = currentDeflectionsMM[idx] || 0.0;
+                var maxD = Math.max(...currentDeflectionsMM, 1e-3);
+                var normD = Math.min(defl / maxD, 1.0);
+                c.setHSL((1.0 - normD) * 0.66, 1.0, 0.45);
+            }
+            colors.push(c.r, c.g, c.b);
+        });
+
         currentFaces.forEach(function(tri) {
             if (!tri || tri.length !== 3) return;
             indices.push(tri[0], tri[1], tri[2]);
