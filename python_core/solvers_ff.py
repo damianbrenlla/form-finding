@@ -1,7 +1,7 @@
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 5 — Origin-aware boundary detection + robust edge-projection loads
-#          for both cables (ForceDensity) and membranes (UnderwoodDR)
+# Pass 6 — Explicit tag-based perimeter cable detection & robust kinetic DR
+
 import numpy as np
 
 class ForceDensitySolver:
@@ -76,7 +76,6 @@ class ForceDensitySolver:
 
         P_ext = np.zeros((N_free, 3), dtype=float)
 
-        # Self-weight
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -88,7 +87,6 @@ class ForceDensitySolver:
                 if v in free_map:
                     P_ext[free_map[v], 2] -= half_weight_N
 
-        # Robust edge-projection load attachment
         for ld in self.point_loads:
             px = float(ld.get("x", 0.0))
             py = float(ld.get("y", 0.0))
@@ -321,6 +319,7 @@ class UnderwoodDRSolver:
         nodes = np.copy(self.domain.nodes).astype(float)
         edges = np.copy(self.domain.edges).astype(int)
         fixed_nodes = set(self.domain.fixed_nodes)
+        perimeter_nodes = set(getattr(self.domain, "perimeter_nodes", set()))
         num_nodes = len(nodes)
         num_edges = len(edges)
 
@@ -343,8 +342,8 @@ class UnderwoodDRSolver:
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        dy_spacing = float(getattr(self.domain, "dy", self.domain.Ly / max(self.domain.ny, 1)))
-        dx_spacing = float(getattr(self.domain, "dx", self.domain.Lx / max(self.domain.nx, 1)))
+        dy_spacing = float(getattr(self.domain, "dy", 100.0))
+        dx_spacing = float(getattr(self.domain, "dx", 100.0))
 
         prestress_array = np.full(num_edges, self.prestress, dtype=float)
         if self.prestress_warp_N_mm > 0.0 or self.prestress_weft_N_mm > 0.0:
@@ -357,20 +356,26 @@ class UnderwoodDRSolver:
                 self.prestress_weft_N_mm * dx_spacing
             )
 
-        # Origin-aware boundary detection for edge-cable prestress
+        # Explicit tag-based boundary detection for edge-cable prestress
         if self.edge_cable_prestress_N > 0.0:
-            xmin = getattr(self.domain, "xmin", 0.0)
-            xmax = getattr(self.domain, "xmax", self.domain.Lx)
-            ymin = getattr(self.domain, "ymin", 0.0)
-            ymax = getattr(self.domain, "ymax", self.domain.Ly)
-            tol = 1e-3
-            for i, (u, v) in enumerate(edges):
-                xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
-                xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
-                u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
-                v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
-                if u_bound and v_bound:
-                    prestress_array[i] += self.edge_cable_prestress_N
+            if perimeter_nodes:
+                for i, (u, v) in enumerate(edges):
+                    if u in perimeter_nodes and v in perimeter_nodes:
+                        prestress_array[i] += self.edge_cable_prestress_N
+            else:
+                # Fallback spatial check for legacy structured grids
+                xmin = getattr(self.domain, "xmin", 0.0)
+                xmax = getattr(self.domain, "xmax", self.domain.Lx)
+                ymin = getattr(self.domain, "ymin", 0.0)
+                ymax = getattr(self.domain, "ymax", self.domain.Ly)
+                tol = 1e-3
+                for i, (u, v) in enumerate(edges):
+                    xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
+                    xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
+                    u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
+                    v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
+                    if u_bound and v_bound:
+                        prestress_array[i] += self.edge_cable_prestress_N
 
         unit_vecs_0 = edge_vecs / rest_lengths[:, None]
         f_prestress_vecs = prestress_array[:, None] * unit_vecs_0
@@ -380,7 +385,6 @@ class UnderwoodDRSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
-        # Self-weight
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -389,9 +393,6 @@ class UnderwoodDRSolver:
                 F_ext[u, 2] -= half_weight_N
                 F_ext[v, 2] -= half_weight_N
 
-        # ---------------------------------------------------------------
-        # ROBUST EDGE-PROJECTION LOAD ATTACHMENT (same logic as cables)
-        # ---------------------------------------------------------------
         for ld in self.point_loads:
             px = float(ld.get("x", 0.0))
             py = float(ld.get("y", 0.0))
@@ -427,9 +428,6 @@ class UnderwoodDRSolver:
             if best_u >= 0:
                 w_u = 1.0 - best_t
                 w_v = best_t
-                # On a membrane we apply the force even if the node is fixed
-                # (it simply increases the reaction).  For free nodes it
-                # correctly distributes the load.
                 F_ext[best_u] += w_u * force_vec
                 F_ext[best_v] += w_v * force_vec
 
