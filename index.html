@@ -450,15 +450,18 @@
                 <input type="number" id="cable_load_fz" value="-12.5" step="0.5">
             </div>
         </div>
-        <button class="btn-secondary" style="width: 100%; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
+        <div style="display: flex; gap: 6px; width: 100%;">
+            <button class="btn-secondary" style="flex: 1; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
+            <button class="btn-secondary-danger" id="btn_clear_loads_cable" style="flex: 1; height: 28px;" onclick="clearAllLoads()">CLEAR ALL LOADS</button>
+        </div>
     </div>
 
     <div id="point_loads_container" class="control-group">
         <div class="load-header-row">
             <label style="margin: 0;">Point Load Array (mm / kN)</label>
-            <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All Loads</button>
+            <div class="btn-group" id="point_loads_btn_group">
+                <button class="btn-secondary" id="btn_add_load" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
+                <button class="btn-secondary-danger" id="btn_clear_loads_membrane" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All Loads</button>
             </div>
         </div>
         <table class="data-table">
@@ -796,6 +799,23 @@
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
         document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
 
+        // Cables: hide manual Add Load; clear lives beside Add Span Load.
+        // Table remains visible but read-only (loads only via span generator).
+        // Membranes: restore manual Add Load + Clear in the point-load header.
+        var btnAddLoad = document.getElementById('btn_add_load');
+        var btnClearMem = document.getElementById('btn_clear_loads_membrane');
+        var pointLoadsBtnGroup = document.getElementById('point_loads_btn_group');
+        if (matType === 'cables') {
+            if (btnAddLoad) btnAddLoad.style.display = 'none';
+            if (btnClearMem) btnClearMem.style.display = 'none';
+            if (pointLoadsBtnGroup) pointLoadsBtnGroup.style.display = 'none';
+        } else {
+            if (btnAddLoad) btnAddLoad.style.display = '';
+            if (btnClearMem) btnClearMem.style.display = '';
+            if (pointLoadsBtnGroup) pointLoadsBtnGroup.style.display = '';
+        }
+        setPointLoadTableEditable(matType !== 'cables');
+
         stdDiv.style.display = 'flex';
         var gradeSelect = document.getElementById('mat_grade');
         gradeSelect.innerHTML = '';
@@ -804,6 +824,26 @@
 
         onGradeChange();
         toggleRenderModeUI();
+    }
+
+    function setPointLoadTableEditable(editable) {
+        var rows = document.querySelectorAll('#load_table_body tr');
+        rows.forEach(function(tr) {
+            var inputs = tr.querySelectorAll('input');
+            inputs.forEach(function(inp) {
+                if (editable) {
+                    inp.removeAttribute('readonly');
+                    inp.style.background = '';
+                    inp.style.cursor = '';
+                } else {
+                    inp.setAttribute('readonly', 'readonly');
+                    inp.style.background = '#f5f5f5';
+                    inp.style.cursor = 'default';
+                }
+            });
+            var delBtn = tr.querySelector('.btn-del');
+            if (delBtn) delBtn.style.display = editable ? '' : 'none';
+        });
     }
 
     function setupCutPlaneSliders() {
@@ -1047,14 +1087,19 @@
         Fy = (Fy === undefined) ? 0 : Fy;
         Fz = (Fz === undefined) ? -12.5 : Fz;
 
+        // Cables: table is display-only — loads come only from the span generator.
+        var isCable = (matType === 'cables');
+        var roAttr = isCable ? ' readonly style="background:#f5f5f5;cursor:default;"' : ' oninput="updateDomainVisuals()"';
+        var delCell = isCable ? '<td></td>' : '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="ld-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="ld-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="ld-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="ld-fx" value="' + Fx + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="ld-fy" value="' + Fy + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="ld-fz" value="' + Fz + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tr.innerHTML = '<td><input type="number" class="ld-x" value="' + x + '"' + roAttr + '></td>' +
+                       '<td><input type="number" class="ld-y" value="' + y + '"' + roAttr + '></td>' +
+                       '<td><input type="number" class="ld-z" value="' + z + '"' + roAttr + '></td>' +
+                       '<td><input type="number" class="ld-fx" value="' + Fx + '"' + roAttr + '></td>' +
+                       '<td><input type="number" class="ld-fy" value="' + Fy + '"' + roAttr + '></td>' +
+                       '<td><input type="number" class="ld-fz" value="' + Fz + '"' + roAttr + '></td>' +
+                       delCell;
         document.getElementById('load_table_body').appendChild(tr);
         updateDomainVisuals();
     }
