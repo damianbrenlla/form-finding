@@ -22,7 +22,8 @@ class FormFindingDomain3D:
         forced_x=None,
         forced_y=None,
         geometry_preset: str = "surface_grid",
-        material_type: str = "cables"
+        material_type: str = "cables",
+        build_topology: bool = True
     ):
         self.xmin = float(xmin)
         self.xmax = float(xmax) if xmax > xmin else float(xmin) + 1.0
@@ -43,15 +44,30 @@ class FormFindingDomain3D:
         self.edges = []
         self.fixed_nodes = set()
         self.node_loads = {}
+        # Triangle connectivity (filled for irregular/polygon meshes; None for
+        # the legacy structured rectangular grid, where the frontend rebuilds
+        # triangles from the nx/ny stride).
+        self.triangles = None
 
         self._x_lin = None
         self._y_lin = None
-        self._build_network_topology(forced_x or [], forced_y or [])
 
-        # Average spacing (grid may now be non-uniform due to forced lines near
-        # supports) — used for tolerance checks and prestress-per-metre widths.
-        self.dx = float(np.mean(np.diff(self._x_lin))) if len(self._x_lin) > 1 else 0.0
-        self.dy = float(np.mean(np.diff(self._y_lin))) if len(self._y_lin) > 1 else 0.0
+        if build_topology:
+            self._build_network_topology(forced_x or [], forced_y or [])
+
+            # Average spacing (grid may now be non-uniform due to forced lines near
+            # supports) — used for tolerance checks and prestress-per-metre widths.
+            self.dx = float(np.mean(np.diff(self._x_lin))) if len(self._x_lin) > 1 else 0.0
+            self.dy = float(np.mean(np.diff(self._y_lin))) if len(self._y_lin) > 1 else 0.0
+        else:
+            # Pre-built mesh path: nodes/edges/fixed_nodes/triangles are injected
+            # directly by the caller (e.g. an irregular polygon Delaunay mesh built
+            # in the worker). Provide sane dx/dy fallbacks so solvers that read
+            # domain.dx/dy for prestress-per-metre widths don't divide by zero.
+            self.dx = self.Lx / max(self.nx, 1)
+            self.dy = self.Ly / max(self.ny, 1)
+            self.nodes = np.zeros((0, 3), dtype=float)
+            self.edges = np.zeros((0, 2), dtype=int)
 
     def _build_network_topology(self, forced_x, forced_y):
         is_pure_cable = self.material_type in ("cables", "cable")
