@@ -552,9 +552,6 @@ class UnderwoodDRSolver:
             nodes[free_mask] += velocities[free_mask] * dt
 
         reactions = np.zeros((num_nodes, 3), dtype=float)
-
-        # CRITICAL FIX: Reaction force at supports anchors the structure down/inward.
-        # Active reaction vector = -(Internal Tension Forces + External Applied Loads)
         reactions[~free_mask] = -(F_int[~free_mask] + F_ext[~free_mask])
 
         diagnostics = {
