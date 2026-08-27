@@ -1,10 +1,13 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v13 — Arbitrary bounding box (negative coordinates now inside the domain), forced
-#       grid lines at every support coordinate so a support always lands on a real
-#       node (add_point_support now fails LOUDLY instead of silently doing nothing),
-#       and inverse-distance-weighted seeding across ALL supports in place of the
-#       old 4-corner-only bilinear bucket classifier.
+# v14 — Polygonal membrane domains with explicit perimeter/interior support roles.
+#
+# Membranes may now be meshed over an arbitrary ordered 2D polygon.  Perimeter
+# support points define the boundary in table order; interior support points are
+# retained as fixed internal mesh vertices.  A regular candidate fill is clipped
+# to the polygon and triangulated with scipy.spatial.Delaunay.  Boundary edges
+# are retained explicitly so the structural network follows the declared
+# perimeter rather than the bounding rectangle.
 
 import numpy as np
 
@@ -28,9 +31,6 @@ class FormFindingDomain3D:
         self.xmax = float(xmax) if xmax > xmin else float(xmin) + 1.0
         self.ymin = float(ymin)
         self.ymax = float(ymax) if ymax > ymin else float(ymin) + 1.0
-
-        # Kept for backwards compatibility with any code (incl. solvers) that reads
-        # domain.Lx / domain.Ly as the SPAN of the domain — never assume origin is 0.
         self.Lx = self.xmax - self.xmin
         self.Ly = self.ymax - self.ymin
         self.Lz = float(Lz)
@@ -41,42 +41,462 @@ class FormFindingDomain3D:
 
         self.nodes = []
         self.edges = []
+        self.triangles = np.empty((0, 3), dtype=int)
+        self.boundary_edges = np.empty((0, 2), dtype=int)
+        self.boundary_node_indices = set()
         self.fixed_nodes = set()
         self.node_loads = {}
 
         self._x_lin = None
         self._y_lin = None
+        self.perimeter_xy = None
+        self.interior_xy = None
+
         self._build_network_topology(forced_x or [], forced_y or [])
 
-        # Average spacing (grid may now be non-uniform due to forced lines near
-        # supports) — used for tolerance checks and prestress-per-metre widths.
-        self.dx = float(np.mean(np.diff(self._x_lin))) if len(self._x_lin) > 1 else 0.0
-        self.dy = float(np.mean(np.diff(self._y_lin))) if len(self._y_lin) > 1 else 0.0
+        self.dx = float(np.mean(np.diff(self._x_lin))) if self._x_lin is not None and len(self._x_lin) > 1 else 0.0
+        self.dy = float(np.mean(np.diff(self._y_lin))) if self._y_lin is not None and len(self._y_lin) > 1 else 0.0
+
+    # ------------------------------------------------------------------
+    # Polygon geometry helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _point_on_segment(p, a, b, tol=1e-8):
+        p = np.asarray(p, dtype=float)
+        a = np.asarray(a, dtype=float)
+        b = np.asarray(b, dtype=float)
+        ab = b - a
+        denom = float(np.dot(ab, ab))
+        if denom < tol * tol:
+            return np.linalg.norm(p - a) <= tol
+        t = float(np.dot(p - a, ab) / denom)
+        if t < -tol or t > 1.0 + tol:
+            return False
+        proj = a + np.clip(t, 0.0, 1.0) * ab
+        return np.linalg.norm(p - proj) <= tol
+
+    @classmethod
+    def _point_in_polygon(cls, point, polygon, tol=1e-7):
+        """Ray-casting point-in-polygon with boundary points treated as inside."""
+        p = np.asarray(point, dtype=float)
+        inside = False
+        n = len(polygon)
+        for i in range(n):
+            a = polygon[i]
+            b = polygon[(i + 1) % n]
+            if cls._point_on_segment(p, a, b, tol):
+                return True
+            xi, yi = a
+            xj, yj = b
+            crosses = ((yi > p[1]) != (yj > p[1]))
+            if crosses:
+                x_at_y = (xj - xi) * (p[1] - yi) / (yj - yi + 1e-30) + xi
+                if p[0] < x_at_y:
+                    inside = not inside
+        return inside
+
+    @staticmethod
+    def _orientation(a, b, c):
+        return float((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+
+    @classmethod
+    def _proper_segment_intersection(cls, a, b, c, d, tol=1e-8):
+        """
+        True only for a genuine crossing. Touching an endpoint is allowed,
+        because triangle vertices can lie on the perimeter.
+        """
+        o1 = cls._orientation(a, b, c)
+        o2 = cls._orientation(a, b, d)
+        o3 = cls._orientation(c, d, a)
+        o4 = cls._orientation(c, d, b)
+
+        if abs(o1) <= tol and cls._point_on_segment(c, a, b, tol):
+            return False
+        if abs(o2) <= tol and cls._point_on_segment(d, a, b, tol):
+            return False
+        if abs(o3) <= tol and cls._point_on_segment(a, c, d, tol):
+            return False
+        if abs(o4) <= tol and cls._point_on_segment(b, c, d, tol):
+            return False
+
+        return ((o1 > tol and o2 < -tol) or (o1 < -tol and o2 > tol)) and \
+               ((o3 > tol and o4 < -tol) or (o3 < -tol and o4 > tol))
+
+    @classmethod
+    def _triangle_is_inside_polygon(cls, tri_xy, polygon):
+        # All vertices and edge midpoints must be inside/on the boundary.
+        centroid = np.mean(tri_xy, axis=0)
+        if not cls._point_in_polygon(centroid, polygon):
+            return False
+        for p in tri_xy:
+            if not cls._point_in_polygon(p, polygon):
+                return False
+        for i in range(3):
+            midpoint = 0.5 * (tri_xy[i] + tri_xy[(i + 1) % 3])
+            if not cls._point_in_polygon(midpoint, polygon):
+                return False
+
+        # Reject triangle edges which genuinely cross the polygon boundary.
+        # This makes concave notches behave correctly without requiring a full
+        # constrained-Delaunay implementation.
+        for i in range(3):
+            a = tri_xy[i]
+            b = tri_xy[(i + 1) % 3]
+            for j in range(len(polygon)):
+                c = polygon[j]
+                d = polygon[(j + 1) % len(polygon)]
+                if cls._proper_segment_intersection(a, b, c, d):
+                    return False
+        return True
+
+    @classmethod
+    def _order_boundary_segments(cls, line_segments, tol=1e-6):
+        """Order connected boundary line segments into one closed polygon loop."""
+        if len(line_segments) < 3:
+            raise ValueError("Polygon membrane requires at least 3 External line supports.")
+
+        segs = []
+        for i, seg in enumerate(line_segments):
+            p1 = np.asarray(seg[0], dtype=float)
+            p2 = np.asarray(seg[1], dtype=float)
+            if np.linalg.norm(p2[:2] - p1[:2]) < tol:
+                raise ValueError(f"External line support {i + 1} has zero plan length.")
+            segs.append((p1, p2))
+
+        def same_xy(a, b):
+            return np.linalg.norm(a[:2] - b[:2]) <= tol
+
+        # Every boundary vertex of a simple closed polygon must connect to exactly
+        # two external line segments. This also prevents an open chain or branching
+        # boundary from being interpreted as a membrane perimeter.
+        vertices = []
+        incidences = []
+        for si, (a, b) in enumerate(segs):
+            ids = []
+            for p in (a, b):
+                found = None
+                for vi, v in enumerate(vertices):
+                    if same_xy(v, p):
+                        found = vi
+                        break
+                if found is None:
+                    vertices.append(p.copy())
+                    incidences.append([])
+                    found = len(vertices) - 1
+                ids.append(found)
+            incidences[ids[0]].append(si)
+            incidences[ids[1]].append(si)
+
+        for vi, inc in enumerate(incidences):
+            if len(inc) != 2:
+                raise ValueError(
+                    "External line supports must form one closed polygon: "
+                    f"boundary vertex ({vertices[vi][0]:.1f}, {vertices[vi][1]:.1f}) "
+                    f"is connected to {len(inc)} line supports instead of 2."
+                )
+
+        # Traverse the segment graph. Segment row order is irrelevant; geometric
+        # connectivity determines the polygon order.
+        ordered = [vertices[0].copy()]
+        current_vertex = 0
+        previous_segment = None
+        used = set()
+
+        while True:
+            candidates = [si for si in incidences[current_vertex] if si != previous_segment and si not in used]
+            if not candidates:
+                break
+            si = candidates[0]
+            used.add(si)
+            a, b = segs[si]
+            next_point = b if same_xy(vertices[current_vertex], a) else a
+
+            next_vertex = None
+            for vi, v in enumerate(vertices):
+                if same_xy(v, next_point):
+                    next_vertex = vi
+                    break
+            if next_vertex is None:
+                raise ValueError("Failed to connect External line support endpoints into a polygon.")
+
+            if next_vertex == 0:
+                break
+            ordered.append(next_point.copy())
+            previous_segment = si
+            current_vertex = next_vertex
+
+        if len(used) != len(segs) or len(ordered) < 3:
+            raise ValueError(
+                "External line supports do not form one closed polygon. "
+                "Ensure every external line endpoint connects to exactly one other external line endpoint."
+            )
+
+        return np.asarray(ordered, dtype=float)
+
+    @classmethod
+    def build_polygon_domain_from_line_segments(
+        cls,
+        boundary_segments,
+        interior_points=None,
+        interior_line_segments=None,
+        nx=36,
+        ny=12,
+        Lz=1000.0,
+        material_type="membrane",
+    ):
+        """Build a polygon membrane where External line supports are boundary edges."""
+        perimeter = cls._order_boundary_segments(boundary_segments)
+        return cls.build_polygon_domain(
+            perimeter_points=perimeter.tolist(),
+            interior_points=interior_points or [],
+            interior_line_segments=interior_line_segments or [],
+            nx=nx, ny=ny, Lz=Lz, material_type=material_type,
+        )
+
+    @classmethod
+    def build_polygon_domain(
+        cls,
+        perimeter_points,
+        interior_points=None,
+        interior_line_segments=None,
+        nx=36,
+        ny=12,
+        Lz=1000.0,
+        material_type="membrane",
+    ):
+        """
+        Build a membrane domain from:
+          - perimeter_points: ordered [(x, y, z), ...]. Order is structural:
+            consecutive rows define consecutive perimeter segments.
+          - interior_points: [(x, y, z), ...]. These are explicit fixed internal
+            vertices and do NOT alter the polygon boundary.
+        """
+        interior_points = interior_points or []
+        interior_line_segments = interior_line_segments or []
+
+        if len(perimeter_points) < 3:
+            raise ValueError("Polygon membrane requires at least 3 Perimeter support points.")
+
+        perim3 = np.asarray(perimeter_points, dtype=float)
+        if perim3.ndim != 2 or perim3.shape[1] != 3:
+            raise ValueError("Perimeter support points must be [x, y, z] coordinates.")
+
+        # Remove a duplicated closing point if the user supplied the first point
+        # again as the last row; the polygon is closed automatically.
+        if len(perim3) >= 4 and np.linalg.norm(perim3[0, :2] - perim3[-1, :2]) < 1e-9:
+            perim3 = perim3[:-1]
+
+        if len(perim3) < 3:
+            raise ValueError("Polygon membrane requires at least 3 distinct Perimeter points.")
+
+        # Reject duplicate perimeter vertices.
+        for i in range(len(perim3)):
+            for j in range(i):
+                if np.linalg.norm(perim3[i, :2] - perim3[j, :2]) < 1e-8:
+                    raise ValueError(f"Duplicate Perimeter point at rows {j + 1} and {i + 1}.")
+
+        polygon = perim3[:, :2].copy()
+
+        # Basic self-intersection check.
+        for i in range(len(polygon)):
+            a, b = polygon[i], polygon[(i + 1) % len(polygon)]
+            for j in range(i + 1, len(polygon)):
+                # Adjacent segments share endpoints by definition.
+                if j in (i, (i + 1) % len(polygon), (i - 1) % len(polygon)):
+                    continue
+                c, d = polygon[j], polygon[(j + 1) % len(polygon)]
+                if cls._proper_segment_intersection(a, b, c, d):
+                    raise ValueError("Perimeter polygon is self-intersecting. Check the Perimeter row order.")
+
+        if abs(cls._polygon_signed_area(polygon)) < 1e-8:
+            raise ValueError("Perimeter polygon has zero area.")
+
+        interior3 = np.asarray(interior_points, dtype=float) if interior_points else np.empty((0, 3), dtype=float)
+        if interior3.size and (interior3.ndim != 2 or interior3.shape[1] != 3):
+            raise ValueError("Interior support points must be [x, y, z] coordinates.")
+
+        for i, p in enumerate(interior3):
+            if not cls._point_in_polygon(p[:2], polygon):
+                raise ValueError(
+                    f"Interior support {i + 1} at ({p[0]:.1f}, {p[1]:.1f}) lies outside the Perimeter polygon."
+                )
+            # An interior-role point on the boundary is ambiguous and should be
+            # explicitly represented as a perimeter row instead.
+            for k in range(len(polygon)):
+                if cls._point_on_segment(p[:2], polygon[k], polygon[(k + 1) % len(polygon)], 1e-7):
+                    raise ValueError(
+                        f"Interior support {i + 1} lies on the Perimeter. "
+                        "Change its Role to Perimeter."
+                    )
+
+        # Internal line restraints are represented by exact mesh vertices sampled
+        # along each declared line. They are fixed nodes, but never become part of
+        # the polygon boundary.
+        internal_line_pts = []
+        for li, seg in enumerate(interior_line_segments):
+            if len(seg) != 2:
+                raise ValueError(f"Interior line support {li + 1} is invalid.")
+            p1 = np.asarray(seg[0], dtype=float)
+            p2 = np.asarray(seg[1], dtype=float)
+            if np.linalg.norm(p2[:2] - p1[:2]) < 1e-8:
+                raise ValueError(f"Interior line support {li + 1} has zero plan length.")
+            for p in (p1, p2):
+                if not cls._point_in_polygon(p[:2], polygon):
+                    raise ValueError(
+                        f"Interior line support {li + 1} endpoint at ({p[0]:.1f}, {p[1]:.1f}) lies outside the Perimeter polygon."
+                    )
+            line_len = np.linalg.norm(p2[:2] - p1[:2])
+            target_spacing = min(
+                (obj_dx := (np.max(polygon[:, 0]) - np.min(polygon[:, 0])) / max(int(nx), 2)),
+                (obj_dy := (np.max(polygon[:, 1]) - np.min(polygon[:, 1])) / max(int(ny), 2))
+            )
+            nseg = max(1, int(np.ceil(line_len / max(target_spacing, 1e-6))))
+            nseg = min(nseg, 150)
+            for k in range(nseg + 1):
+                t = k / nseg
+                internal_line_pts.append(p1 + t * (p2 - p1))
+
+        obj = cls.__new__(cls)
+        obj.xmin = float(np.min(polygon[:, 0]))
+        obj.xmax = float(np.max(polygon[:, 0]))
+        obj.ymin = float(np.min(polygon[:, 1]))
+        obj.ymax = float(np.max(polygon[:, 1]))
+        obj.Lx = obj.xmax - obj.xmin
+        obj.Ly = obj.ymax - obj.ymin
+        obj.Lz = float(Lz)
+        obj.nx = int(max(nx, 2))
+        obj.ny = int(max(ny, 2))
+        obj.geometry_preset = "polygon"
+        obj.material_type = str(material_type).lower()
+        obj.nodes = []
+        obj.edges = []
+        obj.triangles = np.empty((0, 3), dtype=int)
+        obj.boundary_edges = np.empty((0, 2), dtype=int)
+        obj.boundary_node_indices = set()
+        obj.fixed_nodes = set()
+        obj.node_loads = {}
+        obj.perimeter_xy = polygon.copy()
+        obj.interior_xy = interior3[:, :2].copy() if len(interior3) else np.empty((0, 2))
+        obj._x_lin = np.linspace(obj.xmin, obj.xmax, obj.nx + 1)
+        obj._y_lin = np.linspace(obj.ymin, obj.ymax, obj.ny + 1)
+
+        # Candidate fill: regular grid clipped to polygon, plus exact perimeter
+        # and interior support vertices.
+        candidates = []
+        for x in obj._x_lin:
+            for y in obj._y_lin:
+                if cls._point_in_polygon((x, y), polygon):
+                    candidates.append([x, y, 0.0])
+
+        def add_unique_xy(p3):
+            p2 = np.asarray(p3[:2], dtype=float)
+            for existing in candidates:
+                if np.linalg.norm(np.asarray(existing[:2]) - p2) < 1e-8:
+                    return
+            candidates.append([float(p3[0]), float(p3[1]), float(p3[2])])
+
+        for p in perim3:
+            add_unique_xy(p)
+        for p in interior3:
+            add_unique_xy(p)
+        for p in internal_line_pts:
+            add_unique_xy(p)
+
+        xy = np.asarray(candidates, dtype=float)[:, :2]
+        if len(xy) < 3:
+            raise ValueError("Polygon mesh generation produced fewer than 3 mesh vertices.")
+
+        # scipy is loaded by worker_ff.js before this module is used.
+        from scipy.spatial import Delaunay
+        try:
+            delaunay = Delaunay(xy)
+        except Exception as exc:
+            raise ValueError(f"Polygon triangulation failed: {exc}")
+
+        valid_triangles = []
+        for simplex in delaunay.simplices:
+            tri_xy = xy[simplex]
+            if cls._triangle_is_inside_polygon(tri_xy, polygon):
+                valid_triangles.append([int(simplex[0]), int(simplex[1]), int(simplex[2])])
+
+        if not valid_triangles:
+            raise ValueError("Polygon triangulation produced no valid interior triangles.")
+
+        # Explicitly map support elevations to their exact mesh nodes.
+        nodes = np.zeros((len(candidates), 3), dtype=float)
+        nodes[:, :2] = xy
+        for p in perim3:
+            idx = int(np.argmin(np.linalg.norm(xy - p[:2], axis=1)))
+            nodes[idx] = p
+        for p in interior3:
+            idx = int(np.argmin(np.linalg.norm(xy - p[:2], axis=1)))
+            nodes[idx] = p
+
+        triangles = np.asarray(valid_triangles, dtype=int)
+
+        # Structural edges = unique triangle edges + explicit perimeter segments.
+        edge_set = set()
+        for tri in triangles:
+            a, b, c = map(int, tri)
+            edge_set.add(tuple(sorted((a, b))))
+            edge_set.add(tuple(sorted((b, c))))
+            edge_set.add(tuple(sorted((c, a))))
+
+        boundary_edges = []
+        for i in range(len(perim3)):
+            p = perim3[i, :2]
+            q = perim3[(i + 1) % len(perim3), :2]
+            ip = int(np.argmin(np.linalg.norm(xy - p, axis=1)))
+            iq = int(np.argmin(np.linalg.norm(xy - q, axis=1)))
+            edge = tuple(sorted((ip, iq)))
+            edge_set.add(edge)
+            boundary_edges.append(edge)
+
+        obj.nodes = nodes
+        obj.triangles = triangles
+        obj.edges = np.asarray(sorted(edge_set), dtype=int)
+        obj.boundary_edges = np.asarray(boundary_edges, dtype=int)
+        obj.boundary_node_indices = set(int(v) for edge in boundary_edges for v in edge)
+
+        # All perimeter and interior support nodes are structural restraints.
+        for p in perim3:
+            idx = int(np.argmin(np.linalg.norm(obj.nodes[:, :2] - p[:2], axis=1)))
+            obj.fixed_nodes.add(idx)
+        for p in interior3:
+            idx = int(np.argmin(np.linalg.norm(obj.nodes[:, :2] - p[:2], axis=1)))
+            obj.fixed_nodes.add(idx)
+        for p in internal_line_pts:
+            idx = int(np.argmin(np.linalg.norm(obj.nodes[:, :2] - p[:2], axis=1)))
+            obj.fixed_nodes.add(idx)
+
+        obj.dx = float(np.mean(np.diff(obj._x_lin))) if len(obj._x_lin) > 1 else 0.0
+        obj.dy = float(np.mean(np.diff(obj._y_lin))) if len(obj._y_lin) > 1 else 0.0
+        return obj
+
+    @staticmethod
+    def _polygon_signed_area(polygon):
+        x = polygon[:, 0]
+        y = polygon[:, 1]
+        return 0.5 * float(np.sum(x * np.roll(y, -1) - y * np.roll(x, -1)))
 
     def _build_network_topology(self, forced_x, forced_y):
         is_pure_cable = self.material_type in ("cables", "cable")
 
         if is_pure_cable:
             x_lin = np.linspace(self.xmin, self.xmax, self.nx + 1)
-            y_lin = np.linspace(self.ymin, self.ymax, self.nx + 1)
-            self._x_lin, self._y_lin = x_lin, y_lin
+            self._x_lin = x_lin
+            self._y_lin = np.array([self.ymin, self.ymax], dtype=float)
             for i in range(self.nx + 1):
-                self.nodes.append([x_lin[i], y_lin[i], 0.0])
+                self.nodes.append([x_lin[i], self.ymin, 0.0])
                 if i < self.nx:
                     self.edges.append([i, i + 1])
         else:
             x_lin = np.linspace(self.xmin, self.xmax, self.nx + 1)
             y_lin = np.linspace(self.ymin, self.ymax, self.ny + 1)
-
-            # CRITICAL FIX: force every support coordinate to be an exact grid line
-            # instead of hoping the nearest sampled line falls within tolerance.
-            # np.union1d also sorts + dedups, so passing raw (possibly repeated)
-            # support coordinates straight through is safe.
             if len(forced_x) > 0:
                 x_lin = np.union1d(x_lin, np.asarray(forced_x, dtype=float))
             if len(forced_y) > 0:
                 y_lin = np.union1d(y_lin, np.asarray(forced_y, dtype=float))
-
             self._x_lin, self._y_lin = x_lin, y_lin
 
             grid_map = {}
@@ -89,6 +509,7 @@ class FormFindingDomain3D:
 
             nx_actual = len(x_lin) - 1
             ny_actual = len(y_lin) - 1
+            triangles = []
             for i in range(nx_actual + 1):
                 for j in range(ny_actual + 1):
                     curr = grid_map[(i, j)]
@@ -97,40 +518,38 @@ class FormFindingDomain3D:
                     if j < ny_actual:
                         self.edges.append([curr, grid_map[(i, j + 1)]])
                     if i < nx_actual and j < ny_actual:
-                        self.edges.append([curr, grid_map[(i + 1, j + 1)]])
-                        self.edges.append([grid_map[(i + 1, j)], grid_map[(i, j + 1)]])
+                        n_x = grid_map[(i + 1, j)]
+                        n_y = grid_map[(i, j + 1)]
+                        n_xy = grid_map[(i + 1, j + 1)]
+                        self.edges.append([curr, n_xy])
+                        self.edges.append([n_x, n_y])
+                        triangles.append([curr, n_x, n_xy])
+                        triangles.append([curr, n_xy, n_y])
 
-            # Forced lines mean actual resolution may exceed the requested nx/ny —
-            # keep these in sync so downstream tolerance math stays correct.
+            self.triangles = np.asarray(triangles, dtype=int)
             self.nx = nx_actual
             self.ny = ny_actual
 
         self.nodes = np.array(self.nodes, dtype=float)
         self.edges = np.array(self.edges, dtype=int)
+        if self.nodes.ndim == 1:
+            self.nodes = self.nodes.reshape((-1, 3))
+        if self.edges.size == 0:
+            self.edges = np.empty((0, 2), dtype=int)
 
     def _auto_tolerance(self) -> float:
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
-        # Forced grid lines put a real node at every support coordinate, so this
-        # only needs to cover floating-point slop — not "nearest sampled line".
         return max(dx, dy) * 0.51
 
     def apply_idw_surface_interpolation(self, seed_z_map: dict, power: float = 2.0):
-        """
-        Seeds initial Z-elevations for all FREE nodes using inverse-distance
-        weighting against every declared support point — not just 4 corners —
-        so line supports, off-corner points, and negative-coordinate supports
-        all contribute correctly to the starting shape.
-        STRICT GUARDRAIL: only runs for 2D surface manifolds, never 1D cables.
-        Never overwrites Z of nodes already locked by point/line supports.
-        """
         if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
             return
         if not seed_z_map:
             return
 
-        pts = np.array(list(seed_z_map.keys()), dtype=float)      # (P, 2)
-        zvals = np.array(list(seed_z_map.values()), dtype=float)  # (P,)
+        pts = np.array(list(seed_z_map.keys()), dtype=float)
+        zvals = np.array(list(seed_z_map.values()), dtype=float)
 
         free_mask = np.ones(len(self.nodes), dtype=bool)
         if self.fixed_nodes:
@@ -140,15 +559,11 @@ class FormFindingDomain3D:
         if len(free_xy) == 0:
             return
 
-        # Distance from every free node to every seed point: (N_free, P)
         diffs = free_xy[:, None, :] - pts[None, :, :]
         dists = np.linalg.norm(diffs, axis=2)
-
         weights = 1.0 / np.maximum(dists, 1e-6) ** power
         z_interp = (weights @ zvals) / np.sum(weights, axis=1)
 
-        # A free node that happens to sit exactly on a seed point (distance ~0)
-        # takes that seed's Z directly rather than the IDW blend.
         exact_hit = dists < 1e-6
         any_exact = np.any(exact_hit, axis=1)
         if np.any(any_exact):
@@ -168,24 +583,11 @@ class FormFindingDomain3D:
         if dists_2d[idx] <= tol or self.material_type in ("cables", "cable"):
             self.fixed_nodes.add(idx)
             self.nodes[idx] = [float(x), float(y), float(z)]
-
-            if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
-                fixed_list = sorted(list(self.fixed_nodes))
-                p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
-                pos1 = self.nodes[p1_idx].copy()
-                pos2 = self.nodes[p2_idx].copy()
-                for axis in range(3):
-                    self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
             return idx
 
-        # CRITICAL FIX: fail loudly instead of silently doing nothing. With forced
-        # grid lines in place (see worker_ff.js) this should essentially never
-        # trigger — if it does, something upstream failed to register the support
-        # coordinate as a forced grid line, and that's a bug worth surfacing.
         raise ValueError(
             f"Point support at ({x}, {y}) is {dists_2d[idx]:.2f}mm from the nearest "
-            f"mesh node — outside tolerance ({tol:.2f}mm). It was NOT attached, which "
-            f"is why the fabric was dropping at this location."
+            f"mesh node — outside tolerance ({tol:.2f}mm). It was NOT attached."
         )
 
     def add_line_support(self, axis: str = "x", value: float = 0.0, tol: float = None):
@@ -198,11 +600,7 @@ class FormFindingDomain3D:
         for idx in matches:
             self.fixed_nodes.add(int(idx))
 
-    def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None):
-        """
-        Constrains boundary nodes along a 3D line support vector.
-        Already-fixed point-support nodes are NOT moved to the line.
-        """
+    def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None, boundary_only: bool = None):
         p1_arr = np.array(p1, dtype=float)
         p2_arr = np.array(p2, dtype=float)
         line_vec = p2_arr - p1_arr
@@ -213,26 +611,21 @@ class FormFindingDomain3D:
             return
 
         line_dir = line_vec / line_len
-
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
-
         perp_x = -line_dir[1]
         perp_y = line_dir[0]
         directional_spacing = np.sqrt((dx * perp_x) ** 2 + (dy * perp_y) ** 2)
         effective_tol = max(directional_spacing * 1.25, 10.0) if tol is None else tol
 
-        candidate_indices = (
-            self.get_boundary_nodes()
-            if self.material_type not in ("cables", "cable")
-            else range(len(self.nodes))
-        )
+        if boundary_only is None:
+            boundary_only = self.geometry_preset != "polygon" and self.material_type not in ("cables", "cable")
+        candidate_indices = self.get_boundary_nodes() if boundary_only else range(len(self.nodes))
 
         for idx in candidate_indices:
             node = self.nodes[idx]
             node_vec = node - p1_arr
             proj_len = np.dot(node_vec, line_dir)
-
             if -effective_tol <= proj_len <= line_len + effective_tol:
                 proj_pt = p1_arr + np.clip(proj_len, 0.0, line_len) * line_dir
                 dist = np.linalg.norm(node - proj_pt)
@@ -244,6 +637,10 @@ class FormFindingDomain3D:
 
     def add_edge_support(self, edge: str = "all"):
         tol = self._auto_tolerance()
+        if self.geometry_preset == "polygon":
+            if edge == "all":
+                self.fixed_nodes.update(self.boundary_node_indices)
+            return
         if edge in ("all", "x0"):
             self.add_line_support("x", self.xmin, tol)
         if edge in ("all", "xmax"):
@@ -254,6 +651,9 @@ class FormFindingDomain3D:
             self.add_line_support("y", self.ymax, tol)
 
     def get_boundary_nodes(self) -> np.ndarray:
+        if self.geometry_preset == "polygon":
+            return np.asarray(sorted(self.boundary_node_indices), dtype=int)
+
         dx = self.Lx / self.nx if self.nx > 0 else 100.0
         dy = self.Ly / self.ny if self.ny > 0 else 100.0
         tol = max(dx, dy) * 0.51
@@ -269,9 +669,11 @@ class FormFindingDomain3D:
         return {
             "num_nodes": len(self.nodes),
             "num_edges": len(self.edges),
+            "num_triangles": int(len(self.triangles)),
             "num_fixed": len(self.fixed_nodes),
             "grid_spacing_x": self.dx,
             "grid_spacing_y": self.dy,
             "xmin": self.xmin, "xmax": self.xmax,
             "ymin": self.ymin, "ymax": self.ymax,
+            "geometry": self.geometry_preset,
         }
