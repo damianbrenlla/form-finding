@@ -1,191 +1,136 @@
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v14 — Polygon Domain Engine: Arbitrary planar perimeter polylines, explicit interior/line supports,
-#       Point-in-Polygon ray-casting, and Delaunay boundary-edge recovery pass.
+# v13 — Arbitrary bounding box (negative coordinates now inside the domain), forced
+#       grid lines at every support coordinate so a support always lands on a real
+#       node (add_point_support now fails LOUDLY instead of silently doing nothing),
+#       and inverse-distance-weighted seeding across ALL supports in place of the
+#       old 4-corner-only bilinear bucket classifier.
 
 import numpy as np
-from scipy.spatial import Delaunay
 
 
 class FormFindingDomain3D:
     def __init__(
         self,
-        nodes: np.ndarray,
-        edges: np.ndarray,
-        faces: np.ndarray,
-        fixed_nodes: set,
-        perimeter_nodes: set,
-        material_type: str = "membrane",
-        Lx: float = 6000.0,
-        Ly: float = 3000.0,
-        Lz: float = 1000.0
+        xmin: float,
+        xmax: float,
+        ymin: float,
+        ymax: float,
+        Lz: float,
+        nx: int,
+        ny: int,
+        forced_x=None,
+        forced_y=None,
+        geometry_preset: str = "surface_grid",
+        material_type: str = "cables"
     ):
-        self.nodes = np.array(nodes, dtype=float)
-        self.edges = np.array(edges, dtype=int)
-        self.faces = np.array(faces, dtype=int) if faces is not None and len(faces) > 0 else np.empty((0, 3), dtype=int)
-        self.fixed_nodes = set(fixed_nodes)
-        self.perimeter_nodes = set(perimeter_nodes)
+        self.xmin = float(xmin)
+        self.xmax = float(xmax) if xmax > xmin else float(xmin) + 1.0
+        self.ymin = float(ymin)
+        self.ymax = float(ymax) if ymax > ymin else float(ymin) + 1.0
+
+        # Kept for backwards compatibility with any code (incl. solvers) that reads
+        # domain.Lx / domain.Ly as the SPAN of the domain — never assume origin is 0.
+        self.Lx = self.xmax - self.xmin
+        self.Ly = self.ymax - self.ymin
+        self.Lz = float(Lz)
+        self.nx = int(max(nx, 2))
+        self.ny = int(max(ny, 2))
+        self.geometry_preset = geometry_preset
         self.material_type = str(material_type).lower()
 
-        # Domain extents
-        if len(self.nodes) > 0:
-            self.xmin, self.ymin, _ = np.min(self.nodes, axis=0)
-            self.xmax, self.ymax, _ = np.max(self.nodes, axis=0)
+        self.nodes = []
+        self.edges = []
+        self.fixed_nodes = set()
+        self.node_loads = {}
+
+        self._x_lin = None
+        self._y_lin = None
+        self._build_network_topology(forced_x or [], forced_y or [])
+
+        # Average spacing (grid may now be non-uniform due to forced lines near
+        # supports) — used for tolerance checks and prestress-per-metre widths.
+        self.dx = float(np.mean(np.diff(self._x_lin))) if len(self._x_lin) > 1 else 0.0
+        self.dy = float(np.mean(np.diff(self._y_lin))) if len(self._y_lin) > 1 else 0.0
+
+    def _build_network_topology(self, forced_x, forced_y):
+        is_pure_cable = self.material_type in ("cables", "cable")
+
+        if is_pure_cable:
+            x_lin = np.linspace(self.xmin, self.xmax, self.nx + 1)
+            y_lin = np.linspace(self.ymin, self.ymax, self.nx + 1)
+            self._x_lin, self._y_lin = x_lin, y_lin
+            for i in range(self.nx + 1):
+                self.nodes.append([x_lin[i], y_lin[i], 0.0])
+                if i < self.nx:
+                    self.edges.append([i, i + 1])
         else:
-            self.xmin, self.ymin = 0.0, 0.0
-            self.xmax, self.ymax = Lx, Ly
+            x_lin = np.linspace(self.xmin, self.xmax, self.nx + 1)
+            y_lin = np.linspace(self.ymin, self.ymax, self.ny + 1)
 
-        self.Lx = float(self.xmax - self.xmin)
-        self.Ly = float(self.ymax - self.ymin)
-        self.Lz = float(Lz)
+            # CRITICAL FIX: force every support coordinate to be an exact grid line
+            # instead of hoping the nearest sampled line falls within tolerance.
+            # np.union1d also sorts + dedups, so passing raw (possibly repeated)
+            # support coordinates straight through is safe.
+            if len(forced_x) > 0:
+                x_lin = np.union1d(x_lin, np.asarray(forced_x, dtype=float))
+            if len(forced_y) > 0:
+                y_lin = np.union1d(y_lin, np.asarray(forced_y, dtype=float))
 
-        # Average spacing for downstream width metrics
-        if len(self.edges) > 0:
-            edge_lens = np.linalg.norm(self.nodes[self.edges[:, 0]] - self.nodes[self.edges[:, 1]], axis=1)
-            mean_len = float(np.mean(edge_lens))
-            self.dx = mean_len
-            self.dy = mean_len
-        else:
-            self.dx, self.dy = 100.0, 100.0
+            self._x_lin, self._y_lin = x_lin, y_lin
 
-    @staticmethod
-    def _point_in_polygon(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
-        """Vectorized ray-casting Point-in-Polygon algorithm for 2D points."""
-        x, y = points[:, 0], points[:, 1]
-        n_poly = len(polygon)
-        inside = np.zeros(len(points), dtype=bool)
+            grid_map = {}
+            node_idx = 0
+            for i, x in enumerate(x_lin):
+                for j, y in enumerate(y_lin):
+                    self.nodes.append([x, y, 0.0])
+                    grid_map[(i, j)] = node_idx
+                    node_idx += 1
 
-        p1x, p1y = polygon[0]
-        for i in range(n_poly + 1):
-            p2x, p2y = polygon[i % n_poly]
-            idx = np.where((y > min(p1y, p2y)) & (y <= max(p1y, p2y)) & (x <= max(p1x, p2x)))[0]
-            if len(idx) > 0:
-                if p1y != p2y:
-                    xinters = (y[idx] - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                    inside[idx] ^= (p1x == p2x) | (x[idx] <= xinters)
-            p1x, p1y = p2x, p2y
+            nx_actual = len(x_lin) - 1
+            ny_actual = len(y_lin) - 1
+            for i in range(nx_actual + 1):
+                for j in range(ny_actual + 1):
+                    curr = grid_map[(i, j)]
+                    if i < nx_actual:
+                        self.edges.append([curr, grid_map[(i + 1, j)]])
+                    if j < ny_actual:
+                        self.edges.append([curr, grid_map[(i, j + 1)]])
+                    if i < nx_actual and j < ny_actual:
+                        self.edges.append([curr, grid_map[(i + 1, j + 1)]])
+                        self.edges.append([grid_map[(i + 1, j)], grid_map[(i, j + 1)]])
 
-        return inside
+            # Forced lines mean actual resolution may exceed the requested nx/ny —
+            # keep these in sync so downstream tolerance math stays correct.
+            self.nx = nx_actual
+            self.ny = ny_actual
 
-    @classmethod
-    def build_polygon_domain(
-        cls,
-        perimeter_pts: list,
-        interior_pts: list = None,
-        line_supports: list = None,
-        target_edge_len: float = 250.0,
-        material_type: str = "membrane"
-    ):
-        """
-        Builds an unstructured form-finding mesh for arbitrary planar polygon domains.
-        Enforces boundary segments, interior point supports, and linear support paths.
-        """
-        poly_2d = np.array([[float(pt["x"]), float(pt["y"])] for pt in perimeter_pts], dtype=float)
-        n_perim = len(poly_2d)
+        self.nodes = np.array(self.nodes, dtype=float)
+        self.edges = np.array(self.edges, dtype=int)
 
-        if n_perim < 3:
-            raise ValueError("Perimeter polygon requires at least 3 ordered points.")
-
-        # 1. Base Explicit Sites
-        nodes_list = []
-        fixed_indices = set()
-        perimeter_indices = set()
-        curr_idx = 0
-
-        # Ingest Ordered Perimeter Nodes
-        for pt in perimeter_pts:
-            nodes_list.append([float(pt["x"]), float(pt["y"]), float(pt.get("z", 0.0))])
-            perimeter_indices.add(curr_idx)
-            fixed_indices.add(curr_idx)
-            curr_idx += 1
-
-        # Ingest Interior Point Supports
-        if interior_pts:
-            for pt in interior_pts:
-                nodes_list.append([float(pt["x"]), float(pt["y"]), float(pt.get("z", 0.0))])
-                fixed_indices.add(curr_idx)
-                curr_idx += 1
-
-        # Ingest Discretized Line Support Points
-        if line_supports:
-            for lsup in line_supports:
-                p1 = np.array([float(lsup["x1"]), float(lsup["y1"]), float(lsup.get("z1", 0.0))])
-                p2 = np.array([float(lsup["x2"]), float(lsup["y2"]), float(lsup.get("z2", 0.0))])
-                length = np.linalg.norm(p2[:2] - p1[:2])
-                n_seg = max(int(np.ceil(length / target_edge_len)), 1)
-                for step in range(n_seg + 1):
-                    t = step / n_seg
-                    pt_interp = p1 + t * (p2 - p1)
-                    nodes_list.append([pt_interp[0], pt_interp[1], pt_interp[2]])
-                    fixed_indices.add(curr_idx)
-                    curr_idx += 1
-
-        # 2. Fill Background Free Grid within Polygon
-        min_x, min_y = np.min(poly_2d, axis=0)
-        max_x, max_y = np.max(poly_2d, axis=0)
-        gx = np.arange(min_x, max_x, target_edge_len)
-        gy = np.arange(min_y, max_y, target_edge_len)
-        grid_x, grid_y = np.meshgrid(gx, gy)
-        candidates = np.column_stack([grid_x.ravel(), grid_y.ravel()])
-
-        inside_mask = cls._point_in_polygon(candidates, poly_2d)
-        internal_grid = candidates[inside_mask]
-
-        explicit_sites = np.array([n[:2] for n in nodes_list], dtype=float)
-        if len(internal_grid) > 0 and len(explicit_sites) > 0:
-            dists = np.linalg.norm(internal_grid[:, None, :] - explicit_sites[None, :, :], axis=2)
-            valid_grid = internal_grid[np.min(dists, axis=1) > (target_edge_len * 0.45)]
-            for pt in valid_grid:
-                nodes_list.append([pt[0], pt[1], 0.0])
-                curr_idx += 1
-
-        nodes = np.array(nodes_list, dtype=float)
-
-        # 3. Triangulation Pass & Centroid Filtering
-        tri = Delaunay(nodes[:, :2])
-        centroids = np.mean(nodes[tri.simplices, :2], axis=1)
-        valid_mask = cls._point_in_polygon(centroids, poly_2d)
-        valid_faces = tri.simplices[valid_mask]
-
-        # 4. Boundary Edge Recovery Pass
-        # Verify that all perimeter segments (0->1, 1->2, ..., n-1->0) exist in graph
-        raw_edges = set()
-        for face in valid_faces:
-            for i in range(3):
-                u, v = face[i], face[(i + 1) % 3]
-                raw_edges.add(tuple(sorted((u, v))))
-
-        for i in range(n_perim):
-            u = i
-            v = (i + 1) % n_perim
-            edge_tuple = tuple(sorted((u, v)))
-            if edge_tuple not in raw_edges:
-                # Force edge connection for perimeter integrity
-                raw_edges.add(edge_tuple)
-
-        edges = np.array(list(raw_edges), dtype=int)
-        Lx_calc = max_x - min_x
-        Ly_calc = max_y - min_y
-        Lz_calc = float(np.max(nodes[:, 2])) if len(nodes) > 0 else 1000.0
-
-        return cls(
-            nodes=nodes,
-            edges=edges,
-            faces=valid_faces,
-            fixed_nodes=fixed_indices,
-            perimeter_nodes=perimeter_indices,
-            material_type=material_type,
-            Lx=Lx_calc,
-            Ly=Ly_calc,
-            Lz=Lz_calc
-        )
+    def _auto_tolerance(self) -> float:
+        dx = self.Lx / self.nx if self.nx > 0 else 100.0
+        dy = self.Ly / self.ny if self.ny > 0 else 100.0
+        # Forced grid lines put a real node at every support coordinate, so this
+        # only needs to cover floating-point slop — not "nearest sampled line".
+        return max(dx, dy) * 0.51
 
     def apply_idw_surface_interpolation(self, seed_z_map: dict, power: float = 2.0):
-        if self.material_type in ("cables", "cable") or len(self.nodes) == 0 or not seed_z_map:
+        """
+        Seeds initial Z-elevations for all FREE nodes using inverse-distance
+        weighting against every declared support point — not just 4 corners —
+        so line supports, off-corner points, and negative-coordinate supports
+        all contribute correctly to the starting shape.
+        STRICT GUARDRAIL: only runs for 2D surface manifolds, never 1D cables.
+        Never overwrites Z of nodes already locked by point/line supports.
+        """
+        if self.material_type in ("cables", "cable") or len(self.nodes) == 0:
+            return
+        if not seed_z_map:
             return
 
-        pts = np.array(list(seed_z_map.keys()), dtype=float)
-        zvals = np.array(list(seed_z_map.values()), dtype=float)
+        pts = np.array(list(seed_z_map.keys()), dtype=float)      # (P, 2)
+        zvals = np.array(list(seed_z_map.values()), dtype=float)  # (P,)
 
         free_mask = np.ones(len(self.nodes), dtype=bool)
         if self.fixed_nodes:
@@ -195,12 +140,15 @@ class FormFindingDomain3D:
         if len(free_xy) == 0:
             return
 
+        # Distance from every free node to every seed point: (N_free, P)
         diffs = free_xy[:, None, :] - pts[None, :, :]
         dists = np.linalg.norm(diffs, axis=2)
 
         weights = 1.0 / np.maximum(dists, 1e-6) ** power
         z_interp = (weights @ zvals) / np.sum(weights, axis=1)
 
+        # A free node that happens to sit exactly on a seed point (distance ~0)
+        # takes that seed's Z directly rather than the IDW blend.
         exact_hit = dists < 1e-6
         any_exact = np.any(exact_hit, axis=1)
         if np.any(any_exact):
@@ -208,3 +156,122 @@ class FormFindingDomain3D:
                 z_interp[row] = zvals[np.argmax(exact_hit[row])]
 
         self.nodes[free_mask, 2] = z_interp
+
+    def add_point_support(self, x: float, y: float, z: float, tol: float = None):
+        if tol is None:
+            tol = self._auto_tolerance()
+
+        pt_2d = np.array([float(x), float(y)])
+        dists_2d = np.linalg.norm(self.nodes[:, :2] - pt_2d, axis=1)
+        idx = int(np.argmin(dists_2d))
+
+        if dists_2d[idx] <= tol or self.material_type in ("cables", "cable"):
+            self.fixed_nodes.add(idx)
+            self.nodes[idx] = [float(x), float(y), float(z)]
+
+            if self.material_type in ("cables", "cable") and len(self.fixed_nodes) >= 2:
+                fixed_list = sorted(list(self.fixed_nodes))
+                p1_idx, p2_idx = fixed_list[0], fixed_list[-1]
+                pos1 = self.nodes[p1_idx].copy()
+                pos2 = self.nodes[p2_idx].copy()
+                for axis in range(3):
+                    self.nodes[:, axis] = np.linspace(pos1[axis], pos2[axis], len(self.nodes))
+            return idx
+
+        # CRITICAL FIX: fail loudly instead of silently doing nothing. With forced
+        # grid lines in place (see worker_ff.js) this should essentially never
+        # trigger — if it does, something upstream failed to register the support
+        # coordinate as a forced grid line, and that's a bug worth surfacing.
+        raise ValueError(
+            f"Point support at ({x}, {y}) is {dists_2d[idx]:.2f}mm from the nearest "
+            f"mesh node — outside tolerance ({tol:.2f}mm). It was NOT attached, which "
+            f"is why the fabric was dropping at this location."
+        )
+
+    def add_line_support(self, axis: str = "x", value: float = 0.0, tol: float = None):
+        if tol is None:
+            tol = self._auto_tolerance()
+
+        axis_map = {"x": 0, "y": 1, "z": 2}
+        col = axis_map[axis.lower()]
+        matches = np.where(np.abs(self.nodes[:, col] - value) <= tol)[0]
+        for idx in matches:
+            self.fixed_nodes.add(int(idx))
+
+    def add_line_support_3d(self, p1: tuple, p2: tuple, tol: float = None):
+        """
+        Constrains boundary nodes along a 3D line support vector.
+        Already-fixed point-support nodes are NOT moved to the line.
+        """
+        p1_arr = np.array(p1, dtype=float)
+        p2_arr = np.array(p2, dtype=float)
+        line_vec = p2_arr - p1_arr
+        line_len = np.linalg.norm(line_vec)
+
+        if line_len < 1e-3:
+            self.add_point_support(p1_arr[0], p1_arr[1], p1_arr[2], tol)
+            return
+
+        line_dir = line_vec / line_len
+
+        dx = self.Lx / self.nx if self.nx > 0 else 100.0
+        dy = self.Ly / self.ny if self.ny > 0 else 100.0
+
+        perp_x = -line_dir[1]
+        perp_y = line_dir[0]
+        directional_spacing = np.sqrt((dx * perp_x) ** 2 + (dy * perp_y) ** 2)
+        effective_tol = max(directional_spacing * 1.25, 10.0) if tol is None else tol
+
+        candidate_indices = (
+            self.get_boundary_nodes()
+            if self.material_type not in ("cables", "cable")
+            else range(len(self.nodes))
+        )
+
+        for idx in candidate_indices:
+            node = self.nodes[idx]
+            node_vec = node - p1_arr
+            proj_len = np.dot(node_vec, line_dir)
+
+            if -effective_tol <= proj_len <= line_len + effective_tol:
+                proj_pt = p1_arr + np.clip(proj_len, 0.0, line_len) * line_dir
+                dist = np.linalg.norm(node - proj_pt)
+                if dist <= effective_tol:
+                    already_fixed = idx in self.fixed_nodes
+                    self.fixed_nodes.add(idx)
+                    if not already_fixed:
+                        self.nodes[idx] = proj_pt
+
+    def add_edge_support(self, edge: str = "all"):
+        tol = self._auto_tolerance()
+        if edge in ("all", "x0"):
+            self.add_line_support("x", self.xmin, tol)
+        if edge in ("all", "xmax"):
+            self.add_line_support("x", self.xmax, tol)
+        if edge in ("all", "y0"):
+            self.add_line_support("y", self.ymin, tol)
+        if edge in ("all", "ymax"):
+            self.add_line_support("y", self.ymax, tol)
+
+    def get_boundary_nodes(self) -> np.ndarray:
+        dx = self.Lx / self.nx if self.nx > 0 else 100.0
+        dy = self.Ly / self.ny if self.ny > 0 else 100.0
+        tol = max(dx, dy) * 0.51
+        mask = (
+            (np.abs(self.nodes[:, 0] - self.xmin) < tol)
+            | (np.abs(self.nodes[:, 0] - self.xmax) < tol)
+            | (np.abs(self.nodes[:, 1] - self.ymin) < tol)
+            | (np.abs(self.nodes[:, 1] - self.ymax) < tol)
+        )
+        return np.where(mask)[0]
+
+    def get_stats(self) -> dict:
+        return {
+            "num_nodes": len(self.nodes),
+            "num_edges": len(self.edges),
+            "num_fixed": len(self.fixed_nodes),
+            "grid_spacing_x": self.dx,
+            "grid_spacing_y": self.dy,
+            "xmin": self.xmin, "xmax": self.xmax,
+            "ymin": self.ymin, "ymax": self.ymax,
+        }
