@@ -1,7 +1,7 @@
+# python_core/solvers_ff.py
 # DBSW 3D Multi-Algorithm Form-Finding Engine
 # Author: Damian Brenlla / DBSW 2026
-# Pass 5 — Origin-aware boundary detection + robust edge-projection loads
-#          for both cables (ForceDensity) and membranes (UnderwoodDR)
+
 import numpy as np
 
 
@@ -552,6 +552,9 @@ class UnderwoodDRSolver:
             nodes[free_mask] += velocities[free_mask] * dt
 
         reactions = np.zeros((num_nodes, 3), dtype=float)
+
+        # CRITICAL FIX: Reaction force at supports anchors the structure down/inward.
+        # Active reaction vector = -(Internal Tension Forces + External Applied Loads)
         reactions[~free_mask] = -(F_int[~free_mask] + F_ext[~free_mask])
 
         diagnostics = {
