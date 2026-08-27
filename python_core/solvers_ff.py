@@ -4,8 +4,18 @@
 #          for both cables (ForceDensity) and membranes (UnderwoodDR)
 import numpy as np
 
+
 class ForceDensitySolver:
-    def __init__(self, domain, E_modulus=210000.0, area_mm2=100.0, prestress_force=0.0, point_loads=None, gamma_kn_m3=78.5, **kwargs):
+    def __init__(
+        self,
+        domain,
+        E_modulus=210000.0,
+        area_mm2=100.0,
+        prestress_force=0.0,
+        point_loads=None,
+        gamma_kn_m3=78.5,
+        **kwargs
+    ):
         self.domain = domain
         self.E = max(float(E_modulus), 1.0)
         self.area = max(float(area_mm2), 1e-4)
@@ -76,7 +86,6 @@ class ForceDensitySolver:
 
         P_ext = np.zeros((N_free, 3), dtype=float)
 
-        # Self-weight
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -88,7 +97,6 @@ class ForceDensitySolver:
                 if v in free_map:
                     P_ext[free_map[v], 2] -= half_weight_N
 
-        # Robust edge-projection load attachment
         for ld in self.point_loads:
             px = float(ld.get("x", 0.0))
             py = float(ld.get("y", 0.0))
@@ -134,13 +142,17 @@ class ForceDensitySolver:
 
         diag_D = np.abs(np.diag(D))
         if np.any(diag_D < 1e-12):
-            raise ValueError("Singular force density matrix: cable network is under-constrained or missing boundary supports.")
+            raise ValueError(
+                "Singular force density matrix: cable network is under-constrained or missing boundary supports."
+            )
 
         try:
             X_free = np.linalg.solve(D, RHS)
             nodes[free_indices] = X_free
         except np.linalg.LinAlgError:
-            raise ValueError("Unstable boundary conditions: Force density matrix linear solve failed.")
+            raise ValueError(
+                "Unstable boundary conditions: Force density matrix linear solve failed."
+            )
 
         axial_forces = np.zeros(num_edges, dtype=float)
         for i, (u, v) in enumerate(edges):
@@ -172,7 +184,15 @@ class ForceDensitySolver:
 
 
 class InvertedGravityDRSolver:
-    def __init__(self, domain, E_modulus=33000.0, gamma_kn_m3=25.0, area_mm2=90000.0, point_loads=None, **kwargs):
+    def __init__(
+        self,
+        domain,
+        E_modulus=33000.0,
+        gamma_kn_m3=25.0,
+        area_mm2=90000.0,
+        point_loads=None,
+        **kwargs
+    ):
         self.domain = domain
         self.E = max(float(E_modulus), 1.0)
         self.gamma_kn_m3 = max(float(gamma_kn_m3), 0.0)
@@ -197,12 +217,16 @@ class InvertedGravityDRSolver:
             return nodes, np.zeros(num_edges), np.zeros((num_nodes, 3)), empty_diagnostics
 
         if len(fixed_nodes) < 3:
-            raise ValueError("Kinematically unstable boundary conditions: Fewer than 3 fixed support nodes resolved.")
+            raise ValueError(
+                "Kinematically unstable boundary conditions: Fewer than 3 fixed support nodes resolved."
+            )
 
         fixed_pts = nodes[list(fixed_nodes)]
         vecs = fixed_pts[1:] - fixed_pts[0]
         if np.linalg.matrix_rank(vecs) < 2:
-            raise ValueError("Kinematically unstable boundary conditions: Support nodes are collinear, leaving rotation unconstrained.")
+            raise ValueError(
+                "Kinematically unstable boundary conditions: Support nodes are collinear, leaving rotation unconstrained."
+            )
 
         C = np.zeros((num_edges, num_nodes), dtype=float)
         for i, (u, v) in enumerate(edges):
@@ -229,13 +253,15 @@ class InvertedGravityDRSolver:
             closest_idx = int(np.argmin(dists))
             F_ext[closest_idx, 2] += fz_N
 
-        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
+        total_ext_force_mag = (
+            np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
+        )
         force_denom = max(total_ext_force_mag, 1.0)
 
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
         node_stiffness = np.abs(C.T) @ k_edges
-        nodal_mass = np.maximum(0.5 * (dt ** 2) * node_stiffness * 2.5, 1e-6)[:, None]
+        nodal_mass = np.maximum(0.5 * (dt**2) * node_stiffness * 2.5, 1e-6)[:, None]
 
         velocities = np.zeros((num_nodes, 3), dtype=float)
         prev_ke = 0.0
@@ -303,9 +329,17 @@ class InvertedGravityDRSolver:
 
 class UnderwoodDRSolver:
     def __init__(
-        self, domain, E_modulus=210000.0, gamma_kn_m3=78.5, area_mm2=90000.0,
-        prestress_force=0.0, prestress_warp_N_mm=0.0, prestress_weft_N_mm=0.0,
-        edge_cable_prestress_N=0.0, point_loads=None, **kwargs
+        self,
+        domain,
+        E_modulus=210000.0,
+        gamma_kn_m3=78.5,
+        area_mm2=90000.0,
+        prestress_force=0.0,
+        prestress_warp_N_mm=0.0,
+        prestress_weft_N_mm=0.0,
+        edge_cable_prestress_N=0.0,
+        point_loads=None,
+        **kwargs
     ):
         self.domain = domain
         self.E = max(float(E_modulus), 1.0)
@@ -343,8 +377,12 @@ class UnderwoodDRSolver:
         rest_lengths = np.linalg.norm(edge_vecs, axis=1)
         rest_lengths = np.where(rest_lengths < 1e-4, 1.0, rest_lengths)
 
-        dy_spacing = float(getattr(self.domain, "dy", self.domain.Ly / max(self.domain.ny, 1)))
-        dx_spacing = float(getattr(self.domain, "dx", self.domain.Lx / max(self.domain.nx, 1)))
+        dy_spacing = float(
+            getattr(self.domain, "dy", self.domain.Ly / max(self.domain.ny, 1))
+        )
+        dx_spacing = float(
+            getattr(self.domain, "dx", self.domain.Lx / max(self.domain.nx, 1))
+        )
 
         prestress_array = np.full(num_edges, self.prestress, dtype=float)
         if self.prestress_warp_N_mm > 0.0 or self.prestress_weft_N_mm > 0.0:
@@ -354,15 +392,15 @@ class UnderwoodDRSolver:
             prestress_array = np.where(
                 is_warp,
                 self.prestress_warp_N_mm * dy_spacing,
-                self.prestress_weft_N_mm * dx_spacing
+                self.prestress_weft_N_mm * dx_spacing,
             )
 
-        # Boundary detection for perimeter sleeve-cable prestress.
-        # Polygon domains expose their exact declared perimeter edges; the legacy
-        # bounding-box heuristic is retained for rectangular domains.
         if self.edge_cable_prestress_N > 0.0:
             explicit_boundary_edges = getattr(self.domain, "boundary_edges", None)
-            if explicit_boundary_edges is not None and len(explicit_boundary_edges) > 0:
+            if (
+                explicit_boundary_edges is not None
+                and len(explicit_boundary_edges) > 0
+            ):
                 boundary_set = {
                     tuple(sorted((int(edge[0]), int(edge[1]))))
                     for edge in np.asarray(explicit_boundary_edges, dtype=int)
@@ -379,8 +417,18 @@ class UnderwoodDRSolver:
                 for i, (u, v) in enumerate(edges):
                     xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
                     xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
-                    u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
-                    v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
+                    u_bound = (
+                        xu < xmin + tol
+                        or xu > xmax - tol
+                        or yu < ymin + tol
+                        or yu > ymax - tol
+                    )
+                    v_bound = (
+                        xv < xmin + tol
+                        or xv > xmax - tol
+                        or yv < ymin + tol
+                        or yv > ymax - tol
+                    )
                     if u_bound and v_bound:
                         prestress_array[i] += self.edge_cable_prestress_N
 
@@ -392,7 +440,6 @@ class UnderwoodDRSolver:
 
         F_ext = np.zeros((num_nodes, 3), dtype=float)
 
-        # Self-weight
         if self.gamma_kn_m3 > 0.0:
             density_kg_mm3 = (self.gamma_kn_m3 / 9.81) * 1e-6
             for i, (u, v) in enumerate(edges):
@@ -401,9 +448,6 @@ class UnderwoodDRSolver:
                 F_ext[u, 2] -= half_weight_N
                 F_ext[v, 2] -= half_weight_N
 
-        # ---------------------------------------------------------------
-        # ROBUST EDGE-PROJECTION LOAD ATTACHMENT (same logic as cables)
-        # ---------------------------------------------------------------
         for ld in self.point_loads:
             px = float(ld.get("x", 0.0))
             py = float(ld.get("y", 0.0))
@@ -439,20 +483,23 @@ class UnderwoodDRSolver:
             if best_u >= 0:
                 w_u = 1.0 - best_t
                 w_v = best_t
-                # On a membrane we apply the force even if the node is fixed
-                # (it simply increases the reaction).  For free nodes it
-                # correctly distributes the load.
                 F_ext[best_u] += w_u * force_vec
                 F_ext[best_v] += w_v * force_vec
 
-        total_ext_force_mag = np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
-        total_prestress_nodal_mag = np.max(np.linalg.norm(F_prestress_nodal, axis=1)) if len(F_prestress_nodal) > 0 else 1.0
+        total_ext_force_mag = (
+            np.max(np.linalg.norm(F_ext, axis=1)) if len(F_ext) > 0 else 1.0
+        )
+        total_prestress_nodal_mag = (
+            np.max(np.linalg.norm(F_prestress_nodal, axis=1))
+            if len(F_prestress_nodal) > 0
+            else 1.0
+        )
         force_denom = max(total_ext_force_mag, total_prestress_nodal_mag, 1.0)
 
         dt = 0.005
         k_edges = (self.E * self.area) / rest_lengths
         node_stiffness = np.abs(C.T) @ k_edges
-        nodal_mass = np.maximum(0.5 * (dt ** 2) * node_stiffness * 2.0, 1e-6)[:, None]
+        nodal_mass = np.maximum(0.5 * (dt**2) * node_stiffness * 2.0, 1e-6)[:, None]
 
         velocities = np.zeros((num_nodes, 3), dtype=float)
         prev_ke = 0.0
@@ -472,7 +519,10 @@ class UnderwoodDRSolver:
             strains = (curr_lengths - rest_lengths) / rest_lengths
             axial_forces = (self.E * self.area * strains) + prestress_array
 
-            if str(getattr(self.domain, "material_type", "")).lower() in ("membrane", "fabric"):
+            if str(getattr(self.domain, "material_type", "")).lower() in (
+                "membrane",
+                "fabric",
+            ):
                 axial_forces = np.maximum(0.0, axial_forces)
 
             f_vecs = axial_forces[:, None] * unit_vecs
@@ -519,11 +569,17 @@ class FormFindingSolverFactory:
     def create(material_type, domain, mat_props, **kwargs):
         mat_type = str(material_type).lower()
         if mat_type in ("cables", "cable"):
-            return ForceDensitySolver(domain=domain, E_modulus=mat_props.get("E", 160000.0), **kwargs)
+            return ForceDensitySolver(
+                domain=domain, E_modulus=mat_props.get("E", 160000.0), **kwargs
+            )
         elif mat_type in ("concrete", "masonry", "stone"):
-            return InvertedGravityDRSolver(domain=domain, E_modulus=mat_props.get("E", 33000.0), **kwargs)
+            return InvertedGravityDRSolver(
+                domain=domain, E_modulus=mat_props.get("E", 33000.0), **kwargs
+            )
         else:
-            return UnderwoodDRSolver(domain=domain, E_modulus=mat_props.get("E", 210000.0), **kwargs)
+            return UnderwoodDRSolver(
+                domain=domain, E_modulus=mat_props.get("E", 210000.0), **kwargs
+            )
 
 
 class UniversalFormFindingSolver(UnderwoodDRSolver):
