@@ -1,7 +1,11 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
- * v20 — Origin-aware domain + forced grid lines
+ * v21 — Reports actual solved grid resolution (nx_actual, ny_actual) so the
+ *       frontend mesh reconstruction never desyncs from the forced-grid-line
+ *       domain (which can silently grow nx/ny beyond the UI's requested values
+ *       whenever support coordinates don't fall on the regular grid).
+ *       v20 — Origin-aware domain + forced grid lines
  *       + pure 1-D polyline for cables (prevents disconnected ends / floating reactions)
  *       + robust edge-projection load handling (via solvers_ff.py)
  */
@@ -289,6 +293,18 @@ for idx in fixed_indices:
         "R_total_kN": round(R_total / 1000.0, 3),
     })
 
+# --- CRITICAL FIX: report the ACTUAL solved grid resolution -----------------
+# domain.nx / domain.ny are overwritten by _build_network_topology() whenever
+# forced support coordinates (via np.union1d) push the real column/row count
+# above whatever nx/ny the UI originally requested. The frontend's
+# reRenderMesh() rebuilds triangle indices assuming a regular (nx+1) x (ny+1)
+# node layout with stride (ny+1) — if it uses the stale UI values instead of
+# these actual values, indices silently point at the wrong nodes and the
+# mesh fails to reach some (or all) of the outlying supports even though
+# those nodes are present and solved correctly.
+nx_actual_val = int(getattr(domain, "nx", payload.get("nx", 36)))
+ny_actual_val = int(getattr(domain, "ny", payload.get("ny", 12)))
+
 json.dumps({
     "nodes":          [[float(v) for v in row] for row in equilibrium_nodes.tolist()],
     "edges":          [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()],
@@ -302,6 +318,8 @@ json.dumps({
     "material":       mat_props.get("material_name", mat_type),
     "num_nodes":      len(equilibrium_nodes),
     "num_edges":      len(domain.edges),
+    "nx_actual":      nx_actual_val,
+    "ny_actual":      ny_actual_val,
     "diagnostics":    diagnostics,
 })
 `);
