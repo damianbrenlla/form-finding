@@ -555,7 +555,7 @@
 <script>
     var scene, camera, renderer, controls, mesh;
     var supportGizmos = [], forceArrows = [];
-    var reactionGroup = null, sagIndicatorGroup = null;
+    var reactionGroup = null, sagIndicatorGroup = null, originalCableGroup = null;
     var axesScene, axesCamera, axesGroup;
     var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
     // CRITICAL FIX: actual solved grid resolution reported by the backend.
@@ -849,8 +849,10 @@
                     inp.style.cursor = 'default';
                 }
             });
+            // Delete (×) always visible so individual span loads can be removed,
+            // same as point-support rows. Values stay read-only for cables.
             var delBtn = tr.querySelector('.btn-del');
-            if (delBtn) delBtn.style.display = editable ? '' : 'none';
+            if (delBtn) delBtn.style.display = '';
         });
     }
 
@@ -895,8 +897,10 @@
 
         reactionGroup = new THREE.Group();
         sagIndicatorGroup = new THREE.Group();
+        originalCableGroup = new THREE.Group();
         scene.add(reactionGroup);
         scene.add(sagIndicatorGroup);
+        scene.add(originalCableGroup);
 
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
@@ -1100,10 +1104,9 @@
         Fy = (Fy === undefined) ? 0 : Fy;
         Fz = (Fz === undefined) ? -12.5 : Fz;
 
-        // Cables: table is display-only — loads come only from the span generator.
+        // Cables: values read-only (loads only via span generator), but × delete stays available.
         var isCable = (matType === 'cables');
         var roAttr = isCable ? ' readonly style="background:#f5f5f5;cursor:default;"' : ' oninput="updateDomainVisuals()"';
-        var delCell = isCable ? '<td></td>' : '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
 
         var tr = document.createElement('tr');
         tr.innerHTML = '<td><input type="number" class="ld-x" value="' + x + '"' + roAttr + '></td>' +
@@ -1112,7 +1115,7 @@
                        '<td><input type="number" class="ld-fx" value="' + Fx + '"' + roAttr + '></td>' +
                        '<td><input type="number" class="ld-fy" value="' + Fy + '"' + roAttr + '></td>' +
                        '<td><input type="number" class="ld-fz" value="' + Fz + '"' + roAttr + '></td>' +
-                       delCell;
+                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('load_table_body').appendChild(tr);
         updateDomainVisuals();
     }
@@ -1759,9 +1762,46 @@
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
+        if (originalCableGroup) {
+            while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
+        }
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
         updateDomainVisuals();
+    }
+
+    /** Grey reference of the undeformed cable chord (supports only). Shown only after a solve. */
+    function renderOriginalCableReference() {
+        if (!originalCableGroup) return;
+        while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
+
+        var matType = document.getElementById('mat_type').value;
+        if (matType !== 'cables' || !currentVertices.length) return;
+
+        var pointSups = getPointSupportArrayData();
+        if (pointSups.length < 2) return;
+
+        var pA = pointSups[0], pB = pointSups[1];
+        // Match Three.js scene mapping used elsewhere: (X, Z, Y)
+        var p1 = new THREE.Vector3(pA.x, pA.z, pA.y);
+        var p2 = new THREE.Vector3(pB.x, pB.z, pB.y);
+
+        var nx = parseInt(document.getElementById('nx').value) || 36;
+        nx = Math.max(nx, 2);
+        var positions = [];
+        for (var i = 0; i < nx; i++) {
+            var t1 = i / nx, t2 = (i + 1) / nx;
+            positions.push(
+                p1.x + t1 * (p2.x - p1.x), p1.y + t1 * (p2.y - p1.y), p1.z + t1 * (p2.z - p1.z),
+                p1.x + t2 * (p2.x - p1.x), p1.y + t2 * (p2.y - p1.y), p1.z + t2 * (p2.z - p1.z)
+            );
+        }
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        var line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+            color: 0xaaaaaa, transparent: true, opacity: 0.85, depthTest: false
+        }));
+        originalCableGroup.add(line);
     }
 
     function format2DP(val) { return Number(val).toFixed(2); }
@@ -1782,6 +1822,8 @@
         var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 1.0;
 
         if (matType === 'cables') {
+            renderOriginalCableReference();
+
             var cableGroup = new THREE.Group();
             var d = parseFloat(document.getElementById('sec_cable_d').value) || 24.0;
             var radius = Math.max(d / 2.0, 10.0);
@@ -1812,6 +1854,11 @@
             scene.add(mesh);
             toggleRenderModeUI();
             return;
+        }
+
+        // Membranes / other: never show the cable original reference
+        if (originalCableGroup) {
+            while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
         }
 
         // CRITICAL FIX: reconstruct triangle indices using the ACTUAL solved
