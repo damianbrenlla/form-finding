@@ -254,6 +254,90 @@ class FormFindingDomain3D:
         )
 
     @classmethod
+    def _delaunay_triangles(cls, points):
+        """Lightweight 2D Bowyer-Watson Delaunay triangulation.
+
+        This deliberately avoids scipy so the browser only needs Pyodide + NumPy
+        at startup.  DBSW's default membrane meshes are small enough for this
+        O(N^2) implementation to be practical in-browser.
+        """
+        pts = np.asarray(points, dtype=float)
+        n = len(pts)
+        if n < 3:
+            return np.empty((0, 3), dtype=int)
+
+        min_x, min_y = np.min(pts, axis=0)
+        max_x, max_y = np.max(pts, axis=0)
+        span = max(max_x - min_x, max_y - min_y, 1.0)
+        cx = 0.5 * (min_x + max_x)
+        cy = 0.5 * (min_y + max_y)
+
+        # Large enclosing triangle.
+        super_pts = np.array([
+            [cx - 20.0 * span, cy - 20.0 * span],
+            [cx,               cy + 20.0 * span],
+            [cx + 20.0 * span, cy - 20.0 * span],
+        ], dtype=float)
+        all_pts = np.vstack([pts, super_pts])
+        st0, st1, st2 = n, n + 1, n + 2
+        triangles = [(st0, st1, st2)]
+
+        def circumcircle(tri):
+            a, b, c = all_pts[list(tri)]
+            ax, ay = a; bx, by = b; cx_, cy_ = c
+            d = 2.0 * (ax * (by - cy_) + bx * (cy_ - ay) + cx_ * (ay - by))
+            if abs(d) < 1e-18:
+                return None
+            a2 = ax * ax + ay * ay
+            b2 = bx * bx + by * by
+            c2 = cx_ * cx_ + cy_ * cy_
+            ux = (a2 * (by - cy_) + b2 * (cy_ - ay) + c2 * (ay - by)) / d
+            uy = (a2 * (cx_ - bx) + b2 * (ax - cx_) + c2 * (bx - ax)) / d
+            centre = np.array([ux, uy])
+            r2 = float(np.dot(centre - a, centre - a))
+            return centre, r2
+
+        circles = {triangles[0]: circumcircle(triangles[0])}
+        eps = max(span * span * 1e-12, 1e-12)
+
+        for pi in range(n):
+            pnt = all_pts[pi]
+            bad = []
+            for tri in triangles:
+                circle = circles.get(tri)
+                if circle is None:
+                    continue
+                centre, r2 = circle
+                d2 = float(np.dot(pnt - centre, pnt - centre))
+                if d2 <= r2 + eps:
+                    bad.append(tri)
+
+            edge_count = {}
+            for tri in bad:
+                for edge in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+                    key = tuple(sorted(edge))
+                    edge_count[key] = edge_count.get(key, 0) + 1
+
+            for tri in bad:
+                if tri in circles:
+                    del circles[tri]
+                triangles.remove(tri)
+
+            boundary = [edge for edge, count in edge_count.items() if count == 1]
+            for a, b in boundary:
+                tri = (a, b, pi)
+                # Keep a consistent non-zero orientation.
+                if cls._orientation(all_pts[a], all_pts[b], all_pts[pi]) < 0.0:
+                    tri = (b, a, pi)
+                if abs(cls._orientation(all_pts[tri[0]], all_pts[tri[1]], all_pts[tri[2]])) < 1e-18:
+                    continue
+                triangles.append(tri)
+                circles[tri] = circumcircle(tri)
+
+        result = [tri for tri in triangles if all(v < n for v in tri)]
+        return np.asarray(result, dtype=int) if result else np.empty((0, 3), dtype=int)
+
+    @classmethod
     def build_polygon_domain(
         cls,
         perimeter_points,
@@ -406,15 +490,13 @@ class FormFindingDomain3D:
         if len(xy) < 3:
             raise ValueError("Polygon mesh generation produced fewer than 3 mesh vertices.")
 
-        # scipy is loaded by worker_ff.js before this module is used.
-        from scipy.spatial import Delaunay
         try:
-            delaunay = Delaunay(xy)
+            delaunay_triangles = cls._delaunay_triangles(xy)
         except Exception as exc:
             raise ValueError(f"Polygon triangulation failed: {exc}")
 
         valid_triangles = []
-        for simplex in delaunay.simplices:
+        for simplex in delaunay_triangles:
             tri_xy = xy[simplex]
             if cls._triangle_is_inside_polygon(tri_xy, polygon):
                 valid_triangles.append([int(simplex[0]), int(simplex[1]), int(simplex[2])])
@@ -451,6 +533,29 @@ class FormFindingDomain3D:
             edge = tuple(sorted((ip, iq)))
             edge_set.add(edge)
             boundary_edges.append(edge)
+
+        # Internal line supports are structural restraint lines, not merely a
+        # collection of fixed points. Explicitly add their sampled segments to
+        # the spring network so the solver contains a continuous internal line.
+        for seg in interior_line_segments:
+            p1 = np.asarray(seg[0], dtype=float)
+            p2 = np.asarray(seg[1], dtype=float)
+            line_len = np.linalg.norm(p2[:2] - p1[:2])
+            target_spacing = min(
+                obj.Lx / max(obj.nx, 2),
+                obj.Ly / max(obj.ny, 2),
+                max(line_len, 1e-6)
+            )
+            nseg = max(1, min(150, int(np.ceil(line_len / max(target_spacing, 1e-6)))))
+            line_indices = []
+            for k in range(nseg + 1):
+                t = k / nseg
+                pt = p1 + t * (p2 - p1)
+                idx = int(np.argmin(np.linalg.norm(xy - pt[:2], axis=1)))
+                line_indices.append(idx)
+            for a, b in zip(line_indices[:-1], line_indices[1:]):
+                if a != b:
+                    edge_set.add(tuple(sorted((a, b))))
 
         obj.nodes = nodes
         obj.triangles = triangles
