@@ -13,7 +13,7 @@ async function initPyodideRuntime() {
 
         self.postMessage({ status: 'log', message: 'Fetching DBSW core domain and solver logic from /python_core...' });
         
-        // 1. Fetch Python source files from the python_core/ directory
+        // 1. Await fetch requests synchronously before proceeding
         const [domainRes, materialsRes, solversRes] = await Promise.all([
             fetch('python_core/domain_ff.py'),
             fetch('python_core/materials.py'),
@@ -21,28 +21,42 @@ async function initPyodideRuntime() {
         ]);
 
         if (!domainRes.ok || !materialsRes.ok || !solversRes.ok) {
-            throw new Error("Failed to fetch one or more Python files from 'python_core/'. Check server paths.");
+            throw new Error(`HTTP Fetch Failed: domain (${domainRes.status}), materials (${materialsRes.status}), solvers (${solversRes.status})`);
         }
 
         const domainCode = await domainRes.text();
         const materialsCode = await materialsRes.text();
         const solversCode = await solversRes.text();
 
-        // 2. Write them directly to Pyodide's in-memory Virtual File System (FS)
-        // This ensures Python standard imports like `import python_core.domain_ff` or `from domain_ff import *` work properly.
-        pyodide.FS.mkdir('/home/pyodide/python_core');
+        // 2. Initialize directory structure inside Emscripten VFS
+        try {
+            pyodide.FS.mkdir('/home/pyodide/python_core');
+        } catch (e) {
+            // Directory exists across re-inits
+        }
+
         pyodide.FS.writeFile('/home/pyodide/python_core/__init__.py', '');
         pyodide.FS.writeFile('/home/pyodide/python_core/domain_ff.py', domainCode);
         pyodide.FS.writeFile('/home/pyodide/python_core/materials.py', materialsCode);
         pyodide.FS.writeFile('/home/pyodide/python_core/solvers_ff.py', solversCode);
 
-        // 3. Inject modules into Pyodide's global execution scope
+        // 3. Force path addition and load symbol bindings into Pyodide's __main__ scope
         await pyodide.runPythonAsync(`
 import sys
-sys.path.append('/home/pyodide')
+import importlib
+
+if '/home/pyodide' not in sys.path:
+    sys.path.insert(0, '/home/pyodide')
+
+# Invalidate import caches to prevent stale file reads
+importlib.invalidate_caches()
 
 from python_core.domain_ff import FormFindingDomain3D
 from python_core.solvers_ff import FormFindingSolverFactory
+
+# Verify scope injection
+assert 'FormFindingDomain3D' in globals(), "Scope injection failed: FormFindingDomain3D missing"
+assert 'FormFindingSolverFactory' in globals(), "Scope injection failed: FormFindingSolverFactory missing"
 `);
 
         self.postMessage({ status: 'ready' });
@@ -67,6 +81,7 @@ self.onmessage = async function(e) {
             
             pyodide.globals.set("js_payload", JSON.stringify(payload));
 
+            // Execute solver script using pre-loaded global scope
             const runnerScript = `
 import json
 import numpy as np
@@ -103,7 +118,7 @@ for ls in line_supports:
     else:
         int_lines.append(seg)
 
-# Domain Construction Logic
+# Build Domain
 if mat_type in ("cables", "cable"):
     domain = FormFindingDomain3D(
         xmin=0.0, xmax=float(payload.get("Lx", 6000)),
@@ -132,7 +147,7 @@ else:
     )
     domain.add_edge_support("all")
 
-# Section & Solver Selection
+# Cross-sectional area and material properties
 sec_d = float(payload.get("sec_cable_d", 24.0))
 sec_t = float(payload.get("sec_fabric_t", 1.2))
 area = (np.pi * (sec_d**2) / 4.0) if mat_type in ("cables", "cable") else (sec_t * 1.0)
@@ -142,6 +157,7 @@ mat_props = {
     "gamma": float(payload.get("custom_gamma_kn_m3", 78.5))
 }
 
+# Instantiate Solver
 solver = FormFindingSolverFactory.create(
     material_type=mat_type, domain=domain, mat_props=mat_props,
     area_mm2=area, prestress_force=float(payload.get("prestress", 0.0)),
