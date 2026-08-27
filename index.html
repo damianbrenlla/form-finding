@@ -388,8 +388,8 @@
         <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">Internal supports lift the membrane from inside (e.g. masts). They must lie inside the perimeter polygon.</label>
     </div>
 
-    <!-- Line Supports Container -->
-    <div id="line_supports_container" class="control-group" style="margin-top: 4px;">
+    <!-- Line Supports Container (hidden — disabled for membranes and cables) -->
+    <div id="line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
             <div class="btn-group">
@@ -1164,7 +1164,8 @@
 
         document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
         document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
-        document.getElementById('line_supports_container').style.display = isPolygon ? 'none' : ((matType === 'membrane') ? 'flex' : 'none');
+        // Line supports UI is disabled for all structural forms (hidden for membranes and cables).
+        document.getElementById('line_supports_container').style.display = 'none';
 
         updateDomainVisuals();
     }
