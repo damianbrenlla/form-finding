@@ -342,14 +342,9 @@
             </div>
         </div>
         <table class="data-table">
-            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Role</th><th>DOFs</th><th></th></tr></thead>
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="support_table_body"></tbody>
         </table>
-        <p style="font-size: 0.66rem; color: #666666; margin: 4px 0 0 0; line-height: 1.35;">
-            For Membranes, <b>Perimeter</b> rows define the polygon boundary in table order.
-            <b>Interior</b> rows are fixed supports inside that boundary and do not change the perimeter.
-            Use at least 3 Perimeter points. Line Supports may be <b>External</b> (their endpoints form polygon edges) or <b>Internal</b> (fixed line restraints inside the membrane).
-        </p>
     </div>
 
     <!-- Line Supports Container -->
@@ -362,7 +357,7 @@
             </div>
         </div>
         <table class="data-table">
-            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>Role</th><th>DOFs</th><th></th></tr></thead>
+            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="line_support_table_body"></tbody>
         </table>
     </div>
@@ -510,8 +505,7 @@
     var supportGizmos = [], forceArrows = [];
     var reactionGroup = null, sagIndicatorGroup = null;
     var axesScene, axesCamera, axesGroup;
-    var currentVertices = [], currentFaces = [], currentEdges = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
-    var currentNxActual = null, currentNyActual = null;
+    var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
     var worker = null, engineReady = false;
 
     var raycaster = new THREE.Raycaster();
@@ -847,6 +841,7 @@
             return;
         }
 
+        // Always order supports so that p1 is the “start” (lower X, or lower parameter)
         var pA = pointSups[0];
         var pB = pointSups[1];
         var orderByX = Math.abs(pB.x - pA.x) > Math.abs(pB.y - pA.y);
@@ -893,36 +888,27 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
-    function addSupportRow(x, y, z, dofs, role) {
+    function addSupportRow(x, y, z, dofs) {
         var matType = document.getElementById('mat_type').value;
         var currentCount = document.querySelectorAll('#support_table_body tr').length;
-
+        
         if (matType === 'cables' && currentCount >= 2) {
             showAppModal("Boundary Constraint Limit", "Cable structures are restricted to a maximum of 2 boundary supports.");
             return;
         }
 
-        x = (x === undefined) ? 0 : x;
-        y = (y === undefined) ? 0 : y;
-        z = (z === undefined) ? 0 : z;
-        dofs = (dofs === undefined) ? 'xyz' : dofs;
-        role = (role === undefined) ? 'perimeter' : role;
-
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
         tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><select class="sp-role" onchange="updateDomainVisuals()">' +
-                           '<option value="perimeter"' + (role === 'perimeter' ? ' selected' : '') + '>Perimeter</option>' +
-                           '<option value="interior"' + (role === 'interior' ? ' selected' : '') + '>Interior</option>' +
-                       '</select></td>' +
                        '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('support_table_body').appendChild(tr);
         updateDomainVisuals();
     }
 
-    function addLineSupportRow(x1, y1, z1, x2, y2, z2, role, dofs) {
+    function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
         var existingSups = getLineSupportArrayData();
         
         if (existingSups.length === 1 && y1 === undefined) {
@@ -932,7 +918,6 @@
             x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
             x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
         }
-        role = (role === undefined) ? 'external' : role;
         dofs = (dofs === undefined) ? 'xyz' : dofs;
 
         var tr = document.createElement('tr');
@@ -942,10 +927,6 @@
                        '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><select class="lsp-role" onchange="updateDomainVisuals()">' +
-                           '<option value="external"' + (role === 'external' ? ' selected' : '') + '>External</option>' +
-                           '<option value="internal"' + (role === 'internal' ? ' selected' : '') + '>Internal</option>' +
-                       '</select></td>' +
                        '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('line_support_table_body').appendChild(tr);
@@ -953,6 +934,7 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
+        // Sensible defaults for cables: place at mid-span of current supports
         var matType = document.getElementById('mat_type').value;
         if (x === undefined && matType === 'cables') {
             var pointSups = getPointSupportArrayData();
@@ -998,13 +980,7 @@
     function getPointSupportArrayData() {
         var supports = [];
         document.querySelectorAll('#support_table_body tr').forEach(function(r) {
-            supports.push({
-                x: parseFloat(r.querySelector('.sp-x').value) || 0,
-                y: parseFloat(r.querySelector('.sp-y').value) || 0,
-                z: parseFloat(r.querySelector('.sp-z').value) || 0,
-                role: ((r.querySelector('.sp-role') && r.querySelector('.sp-role').value) || 'perimeter').toLowerCase(),
-                dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase()
-            });
+            supports.push({ x: parseFloat(r.querySelector('.sp-x').value) || 0, y: parseFloat(r.querySelector('.sp-y').value) || 0, z: parseFloat(r.querySelector('.sp-z').value) || 0, dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase() });
         });
         return supports;
     }
@@ -1012,54 +988,18 @@
     function getLineSupportArrayData() {
         var lineSupports = [];
         document.querySelectorAll('#line_support_table_body tr').forEach(function(r) {
-            lineSupports.push({ x1: parseFloat(r.querySelector('.lsp-x1').value) || 0, y1: parseFloat(r.querySelector('.lsp-y1').value) || 0, z1: parseFloat(r.querySelector('.lsp-z1').value) || 0, x2: parseFloat(r.querySelector('.lsp-x2').value) || 0, y2: parseFloat(r.querySelector('.lsp-y2').value) || 0, z2: parseFloat(r.querySelector('.lsp-z2').value) || 0, role: ((r.querySelector('.lsp-role') && r.querySelector('.lsp-role').value) || 'external').toLowerCase(), dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase() });
+            lineSupports.push({ x1: parseFloat(r.querySelector('.lsp-x1').value) || 0, y1: parseFloat(r.querySelector('.lsp-y1').value) || 0, z1: parseFloat(r.querySelector('.lsp-z1').value) || 0, x2: parseFloat(r.querySelector('.lsp-x2').value) || 0, y2: parseFloat(r.querySelector('.lsp-y2').value) || 0, z2: parseFloat(r.querySelector('.lsp-z2').value) || 0, dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase() });
         });
         return lineSupports;
     }
 
     function calculateBoundingBox() {
-        var matType = document.getElementById('mat_type').value;
-        var pointSups = getPointSupportArrayData();
-        var lineSups = getLineSupportArrayData();
-        var loads = getLoadArrayData();
-
-        if (matType === 'membrane') {
-            var perimeter = pointSups.filter(function(p) {
-                return ['perimeter', 'boundary', 'external'].includes(p.role);
-            });
-            var externalLines = lineSups.filter(function(l) {
-                return ['external', 'boundary', 'perimeter'].includes(l.role);
-            });
-            if (perimeter.length >= 3 && externalLines.length === 0) {
-                return {
-                    Lx: Math.max(...perimeter.map(p => p.x), 1000),
-                    Ly: Math.max(...perimeter.map(p => p.y), 1000),
-                    Lz: Math.max(...perimeter.map(p => p.z), 1000)
-                };
-            }
-            if (perimeter.length === 0 && externalLines.length >= 3) {
-                var bpts = [];
-                externalLines.forEach(function(l) {
-                    bpts.push([l.x1, l.y1, l.z1], [l.x2, l.y2, l.z2]);
-                });
-                return {
-                    Lx: Math.max(...bpts.map(p => p[0]), 1000),
-                    Ly: Math.max(...bpts.map(p => p[1]), 1000),
-                    Lz: Math.max(...bpts.map(p => p[2]), 1000)
-                };
-            }
-        }
-
         var pts = [];
-        pointSups.forEach(p => pts.push([p.x, p.y, p.z]));
-        lineSups.forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
-        loads.forEach(ld => pts.push([ld.x, ld.y, ld.z]));
+        getPointSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
+        getLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
+        getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
         if (pts.length === 0) return { Lx: 6000, Ly: 3000, Lz: 1000 };
-        return {
-            Lx: Math.max(...pts.map(p => p[0]), 1000),
-            Ly: Math.max(...pts.map(p => p[1]), 1000),
-            Lz: Math.max(...pts.map(p => p[2]), 1000)
-        };
+        return { Lx: Math.max(...pts.map(p => p[0]), 1000), Ly: Math.max(...pts.map(p => p[1]), 1000), Lz: Math.max(...pts.map(p => p[2]), 1000) };
     }
 
     function updateDomainVisuals() {
@@ -1069,25 +1009,16 @@
         supportGizmos.forEach(function(g) { scene.remove(g); }); supportGizmos = [];
         forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
 
+        var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
         var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
 
         getPointSupportArrayData().forEach(function(ps) {
-            var isInterior = ps.role === 'interior' || ps.role === 'internal';
-            var pinMat = new THREE.MeshStandardMaterial({
-                color: isInterior ? 0x5555cc : 0x00aa55,
-                roughness: 0.3
-            });
             var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
             ptMesh.position.set(ps.x, ps.z - 75, ps.y);
             scene.add(ptMesh); supportGizmos.push(ptMesh);
         });
 
         getLineSupportArrayData().forEach(function(ls) {
-            var isInternal = ls.role === 'internal' || ls.role === 'interior';
-            var pinMat = new THREE.MeshStandardMaterial({
-                color: isInternal ? 0x5555cc : 0x00aa55,
-                roughness: 0.3
-            });
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
             var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
             if (len > 1e-3) {
@@ -1134,6 +1065,7 @@
             var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
             var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
             var nx = parseInt(document.getElementById('nx').value) || 36;
+
             var positions = [];
             for (var i = 0; i < nx; i++) {
                 var t1 = i / nx; var t2 = (i + 1) / nx;
@@ -1141,6 +1073,7 @@
                 var x2 = p1.x + t2 * (p2.x - p1.x); var y2 = p1.y + t2 * (p2.y - p1.y); var z2 = p1.z + t2 * (p2.z - p1.z);
                 positions.push(x1, z1, y1, x2, z2, y2);
             }
+
             var geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
             mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
@@ -1148,54 +1081,33 @@
             return;
         }
 
-        var perimeter = pointSups.filter(function(p) {
-            return ['perimeter', 'boundary', 'external'].includes(p.role);
-        });
-
-        if (perimeter.length >= 3) {
-            var positions = [];
-            for (var i = 0; i < perimeter.length; i++) {
-                var a = perimeter[i];
-                var b = perimeter[(i + 1) % perimeter.length];
-                positions.push(a.x, a.z, a.y, b.x, b.z, b.y);
-            }
-            var geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            mesh = new THREE.LineSegments(
-                geo,
-                new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.75 })
-            );
-            scene.add(mesh);
-            return;
-        }
-
-        var externalLines = getLineSupportArrayData().filter(function(l) {
-            return ['external', 'boundary', 'perimeter'].includes(l.role);
-        });
-        if (perimeter.length < 3 && externalLines.length >= 3) {
-            var positions = [];
-            externalLines.forEach(function(l) {
-                positions.push(l.x1, l.z1, l.y1, l.x2, l.z2, l.y2);
-            });
-            var geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.75 }));
-            scene.add(mesh);
-            return;
-        }
-
         var nx = parseInt(document.getElementById('nx').value) || 36;
         var ny = parseInt(document.getElementById('ny').value) || 12;
+
+        var z00 = 0.0, z10 = 0.0, z01 = 0.0, z11 = 0.0;
+        pointSups.forEach(ps => {
+            if (ps.x <= activeLx * 0.25 && ps.y <= activeLy * 0.25) z00 = ps.z;
+            if (ps.x >= activeLx * 0.75 && ps.y <= activeLy * 0.25) z10 = ps.z;
+            if (ps.x <= activeLx * 0.25 && ps.y >= activeLy * 0.75) z01 = ps.z;
+            if (ps.x >= activeLx * 0.75 && ps.y >= activeLy * 0.75) z11 = ps.z;
+        });
+
         var previewNodes = [], previewEdges = [];
         var xLin = Array.from({length: nx + 1}, (_, i) => (i / nx) * activeLx);
         var yLin = Array.from({length: ny + 1}, (_, j) => (j / ny) * activeLy);
-        var idx = 0, gridMap = {};
+
+        var gridMap = {};
+        var idx = 0;
         for (var i = 0; i <= nx; i++) {
+            var xi = i / nx;
             for (var j = 0; j <= ny; j++) {
-                previewNodes.push([xLin[i], 0, yLin[j]]);
+                var eta = j / ny;
+                var z_interp = (1.0 - xi) * (1.0 - eta) * z00 + xi * (1.0 - eta) * z10 + (1.0 - xi) * eta * z01 + xi * eta * z11;
+                previewNodes.push([xLin[i], z_interp, yLin[j]]);
                 gridMap[`${i},${j}`] = idx++;
             }
         }
+
         for (var i = 0; i <= nx; i++) {
             for (var j = 0; j <= ny; j++) {
                 var curr = gridMap[`${i},${j}`];
@@ -1203,17 +1115,16 @@
                 if (j < ny) previewEdges.push([curr, gridMap[`${i},${j+1}`]]);
             }
         }
+
         var positions = [];
         previewEdges.forEach(function(edge) {
             var p1 = previewNodes[edge[0]], p2 = previewNodes[edge[1]];
             positions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
         });
+
         var geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        mesh = new THREE.LineSegments(
-            geo,
-            new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 })
-        );
+        mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 }));
         scene.add(mesh);
     }
 
@@ -1253,7 +1164,7 @@
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
                     var sprite = makeTextSprite(labelText, '#00aa55');
-                    sprite.scale.multiplyScalar(1.5);
+                    sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
                     sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
                     reactionGroup.add(sprite);
                 }
@@ -1277,7 +1188,7 @@
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText, '#00aa55');
-                sprite.scale.multiplyScalar(1.5);
+                sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
@@ -1325,14 +1236,14 @@
 
             var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
             var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-            sprite.scale.multiplyScalar(1.5);
+            sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
             sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
             sagIndicatorGroup.add(sprite);
         }
     }
 
     function initWasmEngine() {
-        worker = new Worker('worker_ff.js');
+        worker = new Worker('worker_ff.js?cb=' + Date.now());
         worker.onmessage = handleWorkerMessage;
         worker.postMessage({ action: 'init' });
     }
@@ -1348,12 +1259,9 @@
             btnExec.disabled = false; btnExec.innerText = "Execute Form Finding";
             btnStop.style.display = 'none'; actionsGroup.style.display = 'flex';
 
-            currentVertices = data.data.nodes; currentEdges = data.data.edges || []; currentFaces = data.data.triangles || [];
+            currentVertices = data.data.nodes; currentFaces = data.data.edges;
             currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
-
-            currentNxActual = (typeof data.data.nx_actual === 'number') ? data.data.nx_actual : null;
-            currentNyActual = (typeof data.data.ny_actual === 'number') ? data.data.ny_actual : null;
 
             if (currentForcesN.length) {
                 var maxForceKN = Math.max(...currentForcesN.map(f => Math.abs(f))) / 1000.0;
@@ -1415,14 +1323,12 @@
 
     function stopOptimisation() {
         document.getElementById('btn-stop').style.display = 'none';
-        document.getElementById('btn-exec').disabled = false;
-        document.getElementById('status').innerText = "Form finding stopped. Wasm engine remains ready.";
-        if (worker) worker.postMessage({ action: 'cancel' });
+        document.getElementById('btn-exec').disabled = true;
+        engineReady = false; if (worker) worker.terminate(); initWasmEngine();
     }
 
     function clearResults() {
-        currentVertices = []; currentFaces = []; currentEdges = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
-        currentNxActual = null; currentNyActual = null;
+        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
@@ -1434,7 +1340,7 @@
     function format2DP(val) { return Number(val).toFixed(2); }
 
     function reRenderMesh() {
-        if (!currentVertices.length || (!currentFaces.length && !currentEdges.length)) return;
+        if (!currentVertices.length || !currentFaces.length) return;
         if (mesh) scene.remove(mesh);
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
 
@@ -1453,7 +1359,7 @@
             var d = parseFloat(document.getElementById('sec_cable_d').value) || 24.0;
             var radius = Math.max(d / 2.0, 10.0);
 
-            currentEdges.forEach(function(edge, idx) {
+            currentFaces.forEach(function(edge, idx) {
                 var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][2], currentVertices[edge[0]][1]);
                 var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][2], currentVertices[edge[1]][1]);
                 
@@ -1481,34 +1387,41 @@
             return;
         }
 
-        var positions = [];
-        var colors = [];
-        var indices = [];
-        var surfaceGeo = new THREE.BufferGeometry();
+        var nx = parseInt(document.getElementById('nx').value) || 36;
+        var ny = parseInt(document.getElementById('ny').value) || 12;
 
-        currentVertices.forEach(function(v) {
-            positions.push(v[0], v[2], v[1]);
-        });
+        var surfaceGeo = new THREE.BufferGeometry();
+        var positions = [], colors = [], indices = [];
 
         currentVertices.forEach(function(v, idx) {
-            var c = new THREE.Color(0xdddddd);
+            positions.push(v[0], v[2], v[1]);
+
+            var c = new THREE.Color(0x808080);
             if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
-                var stress = currentStressesMPa[idx] || 0.0;
-                var norm = Math.min(Math.max(stress, 0.0) / activeMaxTens, 1.0);
-                c.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
+                var s = currentStressesMPa[idx] || 0.0;
+                if (s <= activeMaxTens) {
+                    var norm = Math.min(Math.max(s / activeMaxTens, 0.0), 1.0);
+                    c.setHSL((1.0 - norm) * 0.33, 0.85, 0.45);
+                }
             } else if (renderMode === 'deflection' && currentDeflectionsMM.length) {
-                var defl = currentDeflectionsMM[idx] || 0.0;
+                var d = currentDeflectionsMM[idx] || 0.0;
                 var maxD = Math.max(...currentDeflectionsMM, 1e-3);
-                var normD = Math.min(defl / maxD, 1.0);
-                c.setHSL((1.0 - normD) * 0.66, 1.0, 0.45);
+                var norm = Math.min(Math.max(d / maxD, 0.0), 1.0);
+                c.setHSL((1.0 - norm) * 0.66, 0.85, 0.45);
             }
             colors.push(c.r, c.g, c.b);
         });
 
-        currentFaces.forEach(function(tri) {
-            if (!tri || tri.length !== 3) return;
-            indices.push(tri[0], tri[1], tri[2]);
-        });
+        for (var i = 0; i < nx; i++) {
+            for (var j = 0; j < ny; j++) {
+                var row1 = i * (ny + 1);
+                var row2 = (i + 1) * (ny + 1);
+
+                var a = row1 + j, b = row2 + j, c = row2 + j + 1, d = row1 + j + 1;
+                indices.push(a, b, d);
+                indices.push(b, c, d);
+            }
+        }
 
         surfaceGeo.setIndex(indices);
         surfaceGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -1533,9 +1446,7 @@
     }
 
     function exportSTL() {
-        var matType = document.getElementById('mat_type').value;
-        var hasGeometry = currentVertices.length && (matType === 'cables' ? currentEdges.length : currentFaces.length);
-        if (!hasGeometry) {
+        if (!currentVertices.length || !currentFaces.length) {
             showAppModal("Export Error", "No solved form-found geometry available for STL export.");
             return;
         }
@@ -1543,44 +1454,36 @@
         var stl = "solid DBSW_FormFound_Mesh\n";
         var r = 15.0;
 
-        if (matType === 'cables') {
-            currentEdges.forEach(function(edge) {
-                var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
-                var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][1], currentVertices[edge[1]][2]);
-                var dir = new THREE.Vector3().subVectors(p2, p1);
-                var len = dir.length();
-                if (len < 1e-3) return;
-                var axis = dir.clone().normalize();
-                var perp1 = new THREE.Vector3(0, 1, 0);
-                if (Math.abs(axis.y) > 0.9) perp1.set(1, 0, 0);
-                var uVec = new THREE.Vector3().crossVectors(axis, perp1).normalize().multiplyScalar(r);
-                var vVec = new THREE.Vector3().crossVectors(axis, uVec).normalize().multiplyScalar(r);
-                var v1 = p1.clone().add(uVec), v2 = p1.clone().add(vVec), v3 = p1.clone().sub(uVec), v4 = p1.clone().sub(vVec);
-                var v5 = p2.clone().add(uVec), v6 = p2.clone().add(vVec), v7 = p2.clone().sub(uVec), v8 = p2.clone().sub(vVec);
+        currentFaces.forEach(function(edge) {
+            var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
+            var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][1], currentVertices[edge[1]][2]);
 
-                var quadToTri = function(a, b, c, d) {
-                    var norm = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
-                    stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
-                    stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${b.x} ${b.y} ${b.z}\n      vertex ${c.x} ${c.y} ${c.z}\n    endloop\n  endfacet\n`;
-                    stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
-                    stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${c.x} ${c.y} ${c.z}\n      vertex ${d.x} ${d.y} ${d.z}\n    endloop\n  endfacet\n`;
-                };
-                quadToTri(v1, v2, v6, v5);
-                quadToTri(v2, v3, v7, v6);
-                quadToTri(v3, v4, v8, v7);
-                quadToTri(v4, v1, v5, v8);
-            });
-        } else {
-            currentFaces.forEach(function(tri) {
-                if (!tri || tri.length !== 3) return;
-                var a = new THREE.Vector3(currentVertices[tri[0]][0], currentVertices[tri[0]][1], currentVertices[tri[0]][2]);
-                var b = new THREE.Vector3(currentVertices[tri[1]][0], currentVertices[tri[1]][1], currentVertices[tri[1]][2]);
-                var c = new THREE.Vector3(currentVertices[tri[2]][0], currentVertices[tri[2]][1], currentVertices[tri[2]][2]);
+            var dir = new THREE.Vector3().subVectors(p2, p1);
+            var len = dir.length();
+            if (len < 1e-3) return;
+
+            var axis = dir.clone().normalize();
+            var perp1 = new THREE.Vector3(0, 1, 0);
+            if (Math.abs(axis.y) > 0.9) perp1.set(1, 0, 0);
+            var uVec = new THREE.Vector3().crossVectors(axis, perp1).normalize().multiplyScalar(r);
+            var vVec = new THREE.Vector3().crossVectors(axis, uVec).normalize().multiplyScalar(r);
+
+            var v1 = p1.clone().add(uVec), v2 = p1.clone().add(vVec), v3 = p1.clone().sub(uVec), v4 = p1.clone().sub(vVec);
+            var v5 = p2.clone().add(uVec), v6 = p2.clone().add(vVec), v7 = p2.clone().sub(uVec), v8 = p2.clone().sub(vVec);
+
+            var quadToTri = function(a, b, c, d) {
                 var norm = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
                 stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
                 stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${b.x} ${b.y} ${b.z}\n      vertex ${c.x} ${c.y} ${c.z}\n    endloop\n  endfacet\n`;
-            });
-        }
+                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
+                stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${c.x} ${c.y} ${c.z}\n      vertex ${d.x} ${d.y} ${d.z}\n    endloop\n  endfacet\n`;
+            };
+
+            quadToTri(v1, v2, v6, v5);
+            quadToTri(v2, v3, v7, v6);
+            quadToTri(v3, v4, v8, v7);
+            quadToTri(v4, v1, v5, v8);
+        });
 
         stl += "endsolid DBSW_FormFound_Mesh\n";
         var blob = new Blob([stl], { type: 'text/plain' });
