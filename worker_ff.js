@@ -1,4 +1,6 @@
-// worker_ff.js — DBSW WebAssembly Worker Bridge (v1.0.4 - Force Cache Bust)
+// worker_ff.js — DBSW WebAssembly Worker Bridge
+// Author: Damian Brenlla / DBSW 2026
+// Pass 6 — Cache-busting dynamic module loader + Continuum 2D Tributary Stress Integration
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
 let pyodide = null;
@@ -13,7 +15,7 @@ async function initPyodideRuntime() {
 
         self.postMessage({ status: 'log', message: 'Fetching DBSW core domain and solver logic from /python_core...' });
         
-        // Cache-busting fetch requests to prevent stale worker script locks
+        // Cache-busting fetch requests to guarantee fresh scripts on reload
         const cb = '?v=' + Date.now();
         const [domainRes, materialsRes, solversRes] = await Promise.all([
             fetch('python_core/domain_ff.py' + cb),
@@ -31,7 +33,9 @@ async function initPyodideRuntime() {
 
         try {
             pyodide.FS.mkdir('/home/pyodide/python_core');
-        } catch (e) {}
+        } catch (e) {
+            // Directory exists across re-inits
+        }
 
         pyodide.FS.writeFile('/home/pyodide/python_core/__init__.py', '');
         pyodide.FS.writeFile('/home/pyodide/python_core/domain_ff.py', domainCode);
@@ -165,47 +169,67 @@ solved_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(it
 num_nodes = len(solved_nodes)
 
 # ------------------------------------------------------------------
-# CONTINUOUS TRIBUTARY MEMBRANE STRESS INTEGRATION
+# SEPARATED MEMBRANE CONTINUUM VS 1D EDGE CABLE STRESS INTEGRATION
 # ------------------------------------------------------------------
 if mat_type in ("cables", "cable"):
     stresses_mpa = (axial_forces / max(area, 1e-4)).tolist()
 else:
-    # Build edge-to-force lookup dictionary
+    # Identify explicit boundary edges containing sleeve cables
+    boundary_edge_set = set()
+    if hasattr(domain, "boundary_edges") and len(domain.boundary_edges) > 0:
+        boundary_edge_set = {
+            tuple(sorted((int(e[0]), int(e[1])))) for e in domain.boundary_edges
+        }
+
     edge_force_map = {}
+    edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 0.0)) * 1000.0
+
     for i, (u, v) in enumerate(domain.edges):
         edge_key = tuple(sorted((int(u), int(v))))
-        edge_force_map[edge_key] = abs(float(axial_forces[i]))
+        f_val = abs(float(axial_forces[i]))
+        
+        # Isolate 1D sleeve cable tension from 2D fabric continuum
+        if edge_key in boundary_edge_set and edge_cable_prestress_N > 0:
+            f_val = max(0.0, f_val - edge_cable_prestress_N)
+            
+        edge_force_map[edge_key] = f_val
 
     nodal_tributary_area = np.zeros(num_nodes, dtype=float)
     nodal_force_sum = np.zeros(num_nodes, dtype=float)
 
-    # Compute area-weighted Cauchy stresses across 2D Delaunay triangles
+    # 2D Delaunay Triangle Tributary Integration
     for tri in domain.triangles:
         u, v, w = map(int, tri)
         p_u, p_v, p_w = solved_nodes[u], solved_nodes[v], solved_nodes[w]
         
-        # 2D Triangle Area via Cross Product
+        # 3D Triangle Planar Surface Area (mm^2)
         tri_area = 0.5 * np.linalg.norm(np.cross(p_v - p_u, p_w - p_u))
         if tri_area < 1e-6:
             continue
 
-        # Average internal tension force of the 3 triangle edges
         e1 = tuple(sorted((u, v)))
         e2 = tuple(sorted((v, w)))
         e3 = tuple(sorted((w, u)))
+        
+        # Average internal fabric force in element (N)
         f_avg = (edge_force_map.get(e1, 0.0) + edge_force_map.get(e2, 0.0) + edge_force_map.get(e3, 0.0)) / 3.0
 
-        # Distribute 1/3 area and force to each vertex node
+        # Equal Voronoi/Tributary distribution (1/3 area to each corner node)
         trib_contribution = tri_area / 3.0
         for node_idx in (u, v, w):
             nodal_tributary_area[node_idx] += trib_contribution
             nodal_force_sum[node_idx] += f_avg * trib_contribution
 
-    # Cauchy Tensile Stress: MPa = N / mm^2
-    # Stress = (Accumulated Force) / (Tributary Area * Thickness t)
+    # Average element spacing across domain mesh
+    avg_grid_spacing = max(0.5 * (float(domain.dx) + float(domain.dy)), 10.0)
+    
     valid_mask = nodal_tributary_area > 1e-6
     stresses_mpa = np.zeros(num_nodes, dtype=float)
-    stresses_mpa[valid_mask] = nodal_force_sum[valid_mask] / (nodal_tributary_area[valid_mask] * sec_t)
+    
+    # Cauchy Tensile Stress (MPa = N/mm^2):
+    # Stress = (Tension N/mm) / (Thickness t mm)
+    # Tension (N/mm) = (Sum Force * Area) / (Total Tributary Area * Element Length)
+    stresses_mpa[valid_mask] = (nodal_force_sum[valid_mask] / nodal_tributary_area[valid_mask]) / (avg_grid_spacing * sec_t)
     stresses_mpa = stresses_mpa.tolist()
 
 initial_nodes = domain.nodes.astype(float)
