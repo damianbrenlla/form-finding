@@ -1676,12 +1676,19 @@
 
             var diag = data.data.diagnostics || {};
             var convText;
-            if (diag.converged) {
+            // Cables use Force Density Method (linear solve) — not iterative DR.
+            // Prefer FDM-specific fields so we never report "undefined" residuals.
+            if (diag.system_solved_linearly || (diag.method && String(diag.method).indexOf('Force Density') >= 0)) {
+                var slack = (typeof diag.slack_cables === 'number') ? diag.slack_cables : 0;
+                convText = `[FDM linear solve OK` + (slack > 0 ? `; slack members: ${slack}` : '') + `]`;
+            } else if (diag.converged) {
                 convText = `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]`;
             } else if (diag.settled) {
                 convText = `[Settled: residual plateaued (Iters: ${diag.iterations_run}, Res: ${diag.best_relative_residual})]`;
-            } else {
+            } else if (typeof diag.iterations_run === 'number') {
                 convText = `[Equilibrium not reached (hit iteration cap at ${diag.iterations_run}, best Res: ${diag.best_relative_residual})]`;
+            } else {
+                convText = `[Solve finished]`;
             }
 
             status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
