@@ -1092,6 +1092,11 @@
         });
 
         getLineSupportArrayData().forEach(function(ls) {
+            var isInternal = ls.role === 'internal' || ls.role === 'interior';
+            var pinMat = new THREE.MeshStandardMaterial({
+                color: isInternal ? 0x5555cc : 0x00aa55,
+                roughness: 0.3
+            });
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
             var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
             if (len > 1e-3) {
@@ -1337,7 +1342,7 @@
     }
 
     function initWasmEngine() {
-        worker = new Worker('worker_ff.js?cb=' + Date.now());
+        worker = new Worker('worker_ff.js');
         worker.onmessage = handleWorkerMessage;
         worker.postMessage({ action: 'init' });
     }
@@ -1426,8 +1431,9 @@
 
     function stopOptimisation() {
         document.getElementById('btn-stop').style.display = 'none';
-        document.getElementById('btn-exec').disabled = true;
-        engineReady = false; if (worker) worker.terminate(); initWasmEngine();
+        document.getElementById('btn-exec').disabled = false;
+        document.getElementById('status').innerText = "Form finding stopped. Wasm engine remains ready.";
+        if (worker) worker.postMessage({ action: 'cancel' });
     }
 
     function clearResults() {
