@@ -1,275 +1,314 @@
-// worker_ff.js — DBSW WebAssembly Worker Bridge
-// Author: Damian Brenlla / DBSW 2026
-// Pass 6 — Cache-busting dynamic module loader + Continuum 2D Tributary Stress Integration
+/**
+ * DBSW 3D Form-Finding WebWorker Engine
+ * Author: Damian Brenlla / DBSW 2026
+ * v20 — Origin-aware domain + forced grid lines
+ *       + pure 1-D polyline for cables (prevents disconnected ends / floating reactions)
+ *       + robust edge-projection load handling (via solvers_ff.py)
+ */
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
 let pyodide = null;
 
-async function initPyodideRuntime() {
+function corePythonUrl(filename) {
+    return new URL(`./python_core/${filename}`, self.location.href).href;
+}
+
+async function initEngine() {
     try {
-        self.postMessage({ status: 'log', message: 'Downloading Pyodide core & WebAssembly engine...' });
-        pyodide = await loadPyodide();
-        
-        self.postMessage({ status: 'log', message: 'Compiling NumPy vectorisation library...' });
-        await pyodide.loadPackage(["numpy"]);
-
-        self.postMessage({ status: 'log', message: 'Fetching DBSW core domain and solver logic from /python_core...' });
-        
-        // Cache-busting fetch requests to guarantee fresh scripts on reload
-        const cb = '?v=' + Date.now();
-        const [domainRes, materialsRes, solversRes] = await Promise.all([
-            fetch('python_core/domain_ff.py' + cb),
-            fetch('python_core/materials.py' + cb),
-            fetch('python_core/solvers_ff.py' + cb)
-        ]);
-
-        if (!domainRes.ok || !materialsRes.ok || !solversRes.ok) {
-            throw new Error(`HTTP Fetch Failed: domain (${domainRes.status}), materials (${materialsRes.status}), solvers (${solversRes.status})`);
+        postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
+        pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/"
+        });
+        postMessage({ status: "log", message: "Loading NumPy into Wasm memory..." });
+        await pyodide.loadPackage("numpy");
+        postMessage({ status: "log", message: "Mounting Python core files..." });
+        pyodide.FS.mkdirTree("/home/pyodide/core");
+        const files = ["domain_ff.py", "materials.py", "solvers_ff.py"];
+        for (const file of files) {
+            const url = corePythonUrl(file) + `?cb=${Date.now()}`;
+            let response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} fetching ${file} at ${url}.`);
+            }
+            const code = await response.text();
+            pyodide.FS.writeFile(`/home/pyodide/core/${file}`, code);
         }
-
-        const domainCode = await domainRes.text();
-        const materialsCode = await materialsRes.text();
-        const solversCode = await solversRes.text();
-
-        try {
-            pyodide.FS.mkdir('/home/pyodide/python_core');
-        } catch (e) {
-            // Directory exists across re-inits
-        }
-
-        pyodide.FS.writeFile('/home/pyodide/python_core/__init__.py', '');
-        pyodide.FS.writeFile('/home/pyodide/python_core/domain_ff.py', domainCode);
-        pyodide.FS.writeFile('/home/pyodide/python_core/materials.py', materialsCode);
-        pyodide.FS.writeFile('/home/pyodide/python_core/solvers_ff.py', solversCode);
-
         await pyodide.runPythonAsync(`
 import sys
-import importlib
-
 if '/home/pyodide' not in sys.path:
-    sys.path.insert(0, '/home/pyodide')
-
-importlib.invalidate_caches()
-
-from python_core.domain_ff import FormFindingDomain3D
-from python_core.solvers_ff import FormFindingSolverFactory
-
-assert 'FormFindingDomain3D' in globals(), "Scope injection failed: FormFindingDomain3D missing"
-assert 'FormFindingSolverFactory' in globals(), "Scope injection failed: FormFindingSolverFactory missing"
+    sys.path.append('/home/pyodide')
 `);
-
-        self.postMessage({ status: 'ready' });
+        postMessage({ status: "ready" });
     } catch (err) {
-        self.postMessage({ status: 'error', message: "Initialization error: " + err.message });
+        console.error("[worker_ff.js] Init failed:", err);
+        postMessage({ status: "error", message: "Init failed: " + err.toString() });
     }
 }
 
 self.onmessage = async function(e) {
     const { action, payload } = e.data;
-
-    if (action === 'init') {
-        await initPyodideRuntime();
-    } else if (action === 'form_find') {
+    if (action === "init") {
+        await initEngine();
+        return;
+    }
+    if (action === "solve" || action === "form_find") {
         if (!pyodide) {
-            self.postMessage({ status: 'error', message: 'Pyodide engine is not initialized yet.' });
+            postMessage({ status: "error", message: "Engine not initialised." });
             return;
         }
-
+        pyodide.globals.set("payload_json", JSON.stringify(payload));
         try {
-            self.postMessage({ status: 'log', message: 'Executing FE Equilibrium Solver...' });
-            
-            pyodide.globals.set("js_payload", JSON.stringify(payload));
-
-            const runnerScript = `
+            const resultJson = await pyodide.runPythonAsync(`
 import json
 import numpy as np
-from python_core.domain_ff import FormFindingDomain3D
-from python_core.solvers_ff import FormFindingSolverFactory
+from core.domain_ff import FormFindingDomain3D
+from core.materials import FormFindingMaterialRegistry
+from core.solvers_ff import FormFindingSolverFactory
 
-payload = json.loads(js_payload)
+payload = json.loads(payload_json)
 
-mat_type = str(payload.get("material_type", "membrane")).lower()
-nx = int(payload.get("nx", 36))
-ny = int(payload.get("ny", 12))
+# Fallback Material Type Resolution
+mat_type = str(payload.get("material_type") or payload.get("material_grade") or "cables").lower()
+if "cable" in mat_type or "rope" in mat_type or "strand" in mat_type:
+    payload["material_type"] = "cables"
+elif "fabric" in mat_type or "ptfe" in mat_type or "membrane" in mat_type:
+    payload["material_type"] = "membrane"
+elif "concrete" in mat_type or "c20" in mat_type or "c30" in mat_type:
+    payload["material_type"] = "concrete"
+elif "timber" in mat_type or "gl" in mat_type or "c24" in mat_type:
+    payload["material_type"] = "timber"
+elif "masonry" in mat_type or "mortar" in mat_type or "brick" in mat_type:
+    payload["material_type"] = "masonry"
 
-point_supports = payload.get("point_supports", [])
-line_supports = payload.get("line_supports", [])
+mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
+mat_type  = mat_props.get("material_type", "cables")
 
-perim_pts = []
-inter_pts = []
+Lx_val = float(payload.get("Lx", 6000))
+Ly_val = float(payload.get("Ly", 3000))
+Lz_val = float(payload.get("Lz", 1000))
+point_sups = payload.get("point_supports", [])
+line_sups  = payload.get("line_supports", [])
+sup_preset = payload.get("support_preset", "")
 
-for ps in point_supports:
-    role = str(ps.get("role", "perimeter")).lower()
-    pt = [float(ps["x"]), float(ps["y"]), float(ps["z"])]
-    if role in ("perimeter", "external", "boundary"):
-        perim_pts.append(pt)
-    else:
-        inter_pts.append(pt)
+# --- CRITICAL FIX: compute the TRUE bounding box from every declared support ---
+xs = [0.0, Lx_val]
+ys = [0.0, Ly_val]
+for pt in point_sups:
+    xs.append(float(pt.get("x", 0)))
+    ys.append(float(pt.get("y", 0)))
+for l_sup in line_sups:
+    xs.append(float(l_sup.get("x1", 0)))
+    xs.append(float(l_sup.get("x2", 0)))
+    ys.append(float(l_sup.get("y1", 0)))
+    ys.append(float(l_sup.get("y2", 0)))
+xmin_val, xmax_val = min(xs), max(xs)
+ymin_val, ymax_val = min(ys), max(ys)
 
-ext_lines = []
-int_lines = []
-for ls in line_supports:
-    role = str(ls.get("role", "external")).lower()
-    seg = [[float(ls["x1"]), float(ls["y1"]), float(ls["z1"])], [float(ls["x2"]), float(ls["y2"]), float(ls["z2"])]]
-    if role in ("external", "boundary", "perimeter"):
-        ext_lines.append(seg)
-    else:
-        int_lines.append(seg)
+forced_x = [float(pt.get("x", 0)) for pt in point_sups]
+forced_y = [float(pt.get("y", 0)) for pt in point_sups]
+for l_sup in line_sups:
+    forced_x.append(float(l_sup.get("x1", 0)))
+    forced_x.append(float(l_sup.get("x2", 0)))
+    forced_y.append(float(l_sup.get("y1", 0)))
+    forced_y.append(float(l_sup.get("y2", 0)))
 
+_ny = int(payload.get("ny", 12))
 if mat_type in ("cables", "cable"):
-    domain = FormFindingDomain3D(
-        xmin=0.0, xmax=float(payload.get("Lx", 6000)),
-        ymin=0.0, ymax=float(payload.get("Ly", 3000)),
-        Lz=float(payload.get("Lz", 1000)),
-        nx=nx, ny=1, material_type="cables"
-    )
-    for ps in point_supports:
-        domain.add_point_support(float(ps["x"]), float(ps["y"]), float(ps["z"]))
-elif len(ext_lines) >= 3:
-    domain = FormFindingDomain3D.build_polygon_domain_from_line_segments(
-        boundary_segments=ext_lines, interior_points=inter_pts, interior_line_segments=int_lines,
-        nx=nx, ny=ny, Lz=float(payload.get("Lz", 1000)), material_type="membrane"
-    )
-elif len(perim_pts) >= 3:
-    domain = FormFindingDomain3D.build_polygon_domain(
-        perimeter_points=perim_pts, interior_points=inter_pts, interior_line_segments=int_lines,
-        nx=nx, ny=ny, Lz=float(payload.get("Lz", 1000)), material_type="membrane"
-    )
-else:
-    domain = FormFindingDomain3D(
-        xmin=0.0, xmax=float(payload.get("Lx", 6000)),
-        ymin=0.0, ymax=float(payload.get("Ly", 3000)),
-        Lz=float(payload.get("Lz", 1000)),
-        nx=nx, ny=ny, material_type="membrane"
-    )
-    domain.add_edge_support("all")
+    _ny = 1
 
-sec_d = float(payload.get("sec_cable_d", 24.0))
-sec_t = float(payload.get("sec_fabric_t", 1.2))
-sec_t = max(sec_t, 0.1) # Thickness in mm
-area = (np.pi * (sec_d**2) / 4.0) if mat_type in ("cables", "cable") else (sec_t * 1.0)
-
-mat_props = {
-    "E": float(payload.get("custom_E", 210000.0)),
-    "gamma": float(payload.get("custom_gamma_kn_m3", 78.5))
-}
-
-solver = FormFindingSolverFactory.create(
-    material_type=mat_type, domain=domain, mat_props=mat_props,
-    area_mm2=area, prestress_force=float(payload.get("prestress", 0.0)),
-    prestress_warp_N_mm=float(payload.get("prestress_warp_kn_m", 2.0)),
-    prestress_weft_N_mm=float(payload.get("prestress_weft_kn_m", 2.0)),
-    edge_cable_prestress_N=float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0,
-    point_loads=payload.get("loads", []),
-    gamma_kn_m3=mat_props["gamma"] if payload.get("include_self_weight", True) else 0.0
+domain = FormFindingDomain3D(
+    xmin=xmin_val,
+    xmax=xmax_val,
+    ymin=ymin_val,
+    ymax=ymax_val,
+    Lz=Lz_val,
+    nx=int(payload.get("nx", 36)),
+    ny=_ny,
+    forced_x=forced_x,
+    forced_y=forced_y,
+    geometry_preset="surface_grid",
+    material_type=mat_type
 )
 
-solved_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(iterations=1200)
-
-num_nodes = len(solved_nodes)
-
 # ------------------------------------------------------------------
-# SEPARATED MEMBRANE CONTINUUM VS 1D EDGE CABLE STRESS INTEGRATION
+# CABLE SPECIAL CASE – force a pure 1-D polyline between the two
+# supports.  This completely overrides the surface_grid so that
+# ForceDensity always solves a single chain that reaches the supports.
 # ------------------------------------------------------------------
+if mat_type in ("cables", "cable") and len(point_sups) >= 2:
+    pA = point_sups[0]
+    pB = point_sups[1]
+    # order by dominant plan direction so ratio 0 → start is consistent
+    if abs(float(pB.get("x",0)) - float(pA.get("x",0))) >= abs(float(pB.get("y",0)) - float(pA.get("y",0))):
+        if float(pA.get("x",0)) > float(pB.get("x",0)):
+            pA, pB = pB, pA
+    else:
+        if float(pA.get("y",0)) > float(pB.get("y",0)):
+            pA, pB = pB, pA
+
+    x1, y1, z1 = float(pA.get("x",0)), float(pA.get("y",0)), float(pA.get("z",0))
+    x2, y2, z2 = float(pB.get("x",0)), float(pB.get("y",0)), float(pB.get("z",0))
+    nx = max(int(payload.get("nx", 36)), 2)
+
+    nodes = np.zeros((nx + 1, 3), dtype=float)
+    for i in range(nx + 1):
+        t = i / nx
+        nodes[i, 0] = x1 + t * (x2 - x1)
+        nodes[i, 1] = y1 + t * (y2 - y1)
+        nodes[i, 2] = z1 + t * (z2 - z1)
+
+    edges = np.array([[i, i + 1] for i in range(nx)], dtype=int)
+
+    # overwrite domain geometry
+    domain.nodes = nodes
+    domain.edges = edges
+    domain.fixed_nodes = {0, nx}          # the two ends
+    domain.nx = nx
+    domain.ny = 1
+    # keep xmin/xmax etc. for any downstream code that reads them
+    domain.xmin, domain.xmax = min(x1, x2), max(x1, x2)
+    domain.ymin, domain.ymax = min(y1, y2), max(y1, y2)
+
+# Discrete Point Supports (only needed for non-cable cases now)
+seed_z_map = {}
+if mat_type not in ("cables", "cable"):
+    for pt in point_sups:
+        px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
+        domain.add_point_support(px, py, pz)
+        seed_z_map[(px, py)] = pz
+
+    for l_sup in line_sups:
+        p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
+        p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
+        if hasattr(domain, 'add_line_support_3d'):
+            domain.add_line_support_3d(p1, p2)
+        if (p1[0], p1[1]) not in seed_z_map:
+            seed_z_map[(p1[0], p1[1])] = p1[2]
+        if (p2[0], p2[1]) not in seed_z_map:
+            seed_z_map[(p2[0], p2[1])] = p2[2]
+
+    # Fallback presets
+    if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
+        domain.add_point_support(domain.xmin, domain.ymin, 0.0)
+        domain.add_point_support(domain.xmax, domain.ymin, 0.0)
+        domain.add_point_support(domain.xmin, domain.ymax, 0.0)
+        domain.add_point_support(domain.xmax, domain.ymax, 0.0)
+    elif sup_preset == "two_opposite_lines":
+        if hasattr(domain, 'add_line_support_3d'):
+            domain.add_line_support_3d((domain.xmin, domain.ymin, 0.0), (domain.xmin, domain.ymax, 0.0))
+            domain.add_line_support_3d((domain.xmax, domain.ymin, 0.0), (domain.xmax, domain.ymax, 0.0))
+
+if len(domain.fixed_nodes) == 0:
+    raise ValueError("No support nodes resolved. Add at least one point or line support.")
+
+# Seed interior elevations (skip for cables – already done by the polyline)
+if hasattr(domain, 'apply_idw_surface_interpolation') and mat_type not in ("cables", "cable"):
+    domain.apply_idw_surface_interpolation(seed_z_map)
+
+# Material Cross-Section Area & Prestress Parsing
+prestress_warp_N_mm = 0.0
+prestress_weft_N_mm = 0.0
+edge_cable_prestress_N = 0.0
+prestress_N = 0.0
+
 if mat_type in ("cables", "cable"):
-    stresses_mpa = (axial_forces / max(area, 1e-4)).tolist()
+    d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
+    area_mm2 = np.pi * (d_mm / 2.0) ** 2
+    prestress_N = float(payload.get("prestress", 0.0))
+elif mat_type in ("membrane", "fabric"):
+    t_mm     = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
+    area_mm2 = t_mm * 1000.0
+    prestress_warp_N_mm = float(payload.get("prestress_warp_kn_m", 2.0))
+    prestress_weft_N_mm = float(payload.get("prestress_weft_kn_m", 2.0))
+    edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0
+elif mat_type == "concrete":
+    t_mm     = max(float(payload.get("sec_concrete_t", 150.0)), 10.0)
+    area_mm2 = t_mm * 1000.0
+elif mat_type == "timber":
+    b_mm     = max(float(payload.get("sec_b", 60.0)), 1.0)
+    h_mm     = max(float(payload.get("sec_h", 120.0)), 1.0)
+    area_mm2 = b_mm * h_mm
 else:
-    # Identify explicit boundary edges containing sleeve cables
-    boundary_edge_set = set()
-    if hasattr(domain, "boundary_edges") and len(domain.boundary_edges) > 0:
-        boundary_edge_set = {
-            tuple(sorted((int(e[0]), int(e[1])))) for e in domain.boundary_edges
-        }
+    b_mm     = max(float(payload.get("sec_b", 300.0)), 1.0)
+    h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
+    area_mm2 = b_mm * h_mm
 
-    edge_force_map = {}
-    edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 0.0)) * 1000.0
+include_sw = bool(payload.get("include_self_weight", True))
+gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
 
-    for i, (u, v) in enumerate(domain.edges):
-        edge_key = tuple(sorted((int(u), int(v))))
-        f_val = abs(float(axial_forces[i]))
-        
-        # Isolate 1D sleeve cable tension from 2D fabric continuum
-        if edge_key in boundary_edge_set and edge_cable_prestress_N > 0:
-            f_val = max(0.0, f_val - edge_cable_prestress_N)
-            
-        edge_force_map[edge_key] = f_val
+solver = FormFindingSolverFactory.create(
+    material_type          = mat_type,
+    domain                 = domain,
+    mat_props              = mat_props,
+    gamma_kn_m3            = gamma,
+    area_mm2               = area_mm2,
+    prestress_force        = prestress_N,
+    prestress_warp_N_mm    = prestress_warp_N_mm,
+    prestress_weft_N_mm    = prestress_weft_N_mm,
+    edge_cable_prestress_N = edge_cable_prestress_N,
+    point_loads            = payload.get("loads", [])
+)
 
-    nodal_tributary_area = np.zeros(num_nodes, dtype=float)
-    nodal_force_sum = np.zeros(num_nodes, dtype=float)
+equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
+    iterations = 1000,
+    rel_tol    = 1e-4
+)
 
-    # 2D Delaunay Triangle Tributary Integration
-    for tri in domain.triangles:
-        u, v, w = map(int, tri)
-        p_u, p_v, p_w = solved_nodes[u], solved_nodes[v], solved_nodes[w]
-        
-        # 3D Triangle Planar Surface Area (mm^2)
-        tri_area = 0.5 * np.linalg.norm(np.cross(p_v - p_u, p_w - p_u))
-        if tri_area < 1e-6:
-            continue
+displacement_vecs = equilibrium_nodes - np.copy(domain.nodes).astype(float)
+deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
+u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
 
-        e1 = tuple(sorted((u, v)))
-        e2 = tuple(sorted((v, w)))
-        e3 = tuple(sorted((w, u)))
-        
-        # Average internal fabric force in element (N)
-        f_avg = (edge_force_map.get(e1, 0.0) + edge_force_map.get(e2, 0.0) + edge_force_map.get(e3, 0.0)) / 3.0
+element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
+num_nodes = len(equilibrium_nodes)
+nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
+node_degree = np.zeros(num_nodes, dtype=float)
+for i, (u, v) in enumerate(domain.edges):
+    s = element_stresses_mpa[i]
+    nodal_stresses_mpa[u] += s
+    nodal_stresses_mpa[v] += s
+    node_degree[u] += 1.0
+    node_degree[v] += 1.0
+node_degree = np.maximum(node_degree, 1.0)
+nodal_stresses_mpa /= node_degree
 
-        # Equal Voronoi/Tributary distribution (1/3 area to each corner node)
-        trib_contribution = tri_area / 3.0
-        for node_idx in (u, v, w):
-            nodal_tributary_area[node_idx] += trib_contribution
-            nodal_force_sum[node_idx] += f_avg * trib_contribution
+sigma_max_tens = float(np.max(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
+sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 
-    # Average element spacing across domain mesh
-    avg_grid_spacing = max(0.5 * (float(domain.dx) + float(domain.dy)), 10.0)
-    
-    valid_mask = nodal_tributary_area > 1e-6
-    stresses_mpa = np.zeros(num_nodes, dtype=float)
-    
-    # Cauchy Tensile Stress (MPa = N/mm^2):
-    # Stress = (Tension N/mm) / (Thickness t mm)
-    # Tension (N/mm) = (Sum Force * Area) / (Total Tributary Area * Element Length)
-    stresses_mpa[valid_mask] = (nodal_force_sum[valid_mask] / nodal_tributary_area[valid_mask]) / (avg_grid_spacing * sec_t)
-    stresses_mpa = stresses_mpa.tolist()
-
-initial_nodes = domain.nodes.astype(float)
-deflections_mm = np.linalg.norm(solved_nodes - initial_nodes, axis=1).tolist()
-
-reaction_list = []
-for idx in sorted(list(domain.fixed_nodes)):
-    rx, ry, rz = reactions[idx]
-    r_tot = float(np.linalg.norm(reactions[idx])) / 1000.0
-    reaction_list.append({
-        "node_index": int(idx),
-        "pos": solved_nodes[idx].tolist(),
-        "Rx_kN": float(rx) / 1000.0,
-        "Ry_kN": float(ry) / 1000.0,
-        "Rz_kN": float(rz) / 1000.0,
-        "R_total_kN": r_tot
+fixed_indices = sorted(list(domain.fixed_nodes))
+reaction_data = []
+for idx in fixed_indices:
+    pos        = [float(v) for v in equilibrium_nodes[idx].tolist()]
+    rx, ry, rz = [float(v) for v in reactions[idx].tolist()]
+    R_total    = float(np.linalg.norm([rx, ry, rz]))
+    reaction_data.append({
+        "node":       int(idx),
+        "pos":        pos,
+        "Rx_kN":      round(rx / 1000.0, 3),
+        "Ry_kN":      round(ry / 1000.0, 3),
+        "Rz_kN":      round(rz / 1000.0, 3),
+        "R_total_kN": round(R_total / 1000.0, 3),
     })
 
-result = {
-    "nodes": solved_nodes.tolist(),
-    "edges": domain.edges.tolist(),
-    "triangles": domain.triangles.tolist(),
-    "axial_forces": axial_forces.tolist(),
-    "stresses_mpa": stresses_mpa,
-    "deflections_mm": deflections_mm,
-    "reactions": reaction_list,
-    "diagnostics": diagnostics,
-    "material": mat_type,
-    "nx_actual": int(domain.nx),
-    "ny_actual": int(domain.ny)
-}
-
-json.dumps(result)
-`;
-
-            let jsonResult = await pyodide.runPythonAsync(runnerScript);
-            self.postMessage({ status: 'completed', data: JSON.parse(jsonResult) });
-
+json.dumps({
+    "nodes":          [[float(v) for v in row] for row in equilibrium_nodes.tolist()],
+    "edges":          [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()],
+    "axial_forces":   [float(v) for v in axial_forces.tolist()],
+    "stresses_mpa":   [float(v) for v in nodal_stresses_mpa.tolist()],
+    "deflections_mm": [float(v) for v in deflections_mm.tolist()],
+    "sigma_max_tens": round(sigma_max_tens, 3),
+    "sigma_max_comp": round(sigma_max_comp, 3),
+    "u_max":          round(u_max, 3),
+    "reactions":      reaction_data,
+    "material":       mat_props.get("material_name", mat_type),
+    "num_nodes":      len(equilibrium_nodes),
+    "num_edges":      len(domain.edges),
+    "diagnostics":    diagnostics,
+})
+`);
+            postMessage({ status: "completed", data: JSON.parse(resultJson) });
         } catch (err) {
-            self.postMessage({ status: 'error', message: err.message });
+            console.error("[worker_ff.js] Solve failed:", err);
+            postMessage({ status: "error", message: err.toString() });
         }
     }
 };
