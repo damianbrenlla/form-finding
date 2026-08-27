@@ -13,7 +13,6 @@ async function initPyodideRuntime() {
 
         self.postMessage({ status: 'log', message: 'Fetching DBSW core domain and solver logic from /python_core...' });
         
-        // 1. Await fetch requests synchronously before proceeding
         const [domainRes, materialsRes, solversRes] = await Promise.all([
             fetch('python_core/domain_ff.py'),
             fetch('python_core/materials.py'),
@@ -28,7 +27,6 @@ async function initPyodideRuntime() {
         const materialsCode = await materialsRes.text();
         const solversCode = await solversRes.text();
 
-        // 2. Initialize directory structure inside Emscripten VFS
         try {
             pyodide.FS.mkdir('/home/pyodide/python_core');
         } catch (e) {
@@ -40,7 +38,6 @@ async function initPyodideRuntime() {
         pyodide.FS.writeFile('/home/pyodide/python_core/materials.py', materialsCode);
         pyodide.FS.writeFile('/home/pyodide/python_core/solvers_ff.py', solversCode);
 
-        // 3. Force path addition and load symbol bindings into Pyodide's __main__ scope
         await pyodide.runPythonAsync(`
 import sys
 import importlib
@@ -48,13 +45,11 @@ import importlib
 if '/home/pyodide' not in sys.path:
     sys.path.insert(0, '/home/pyodide')
 
-# Invalidate import caches to prevent stale file reads
 importlib.invalidate_caches()
 
 from python_core.domain_ff import FormFindingDomain3D
 from python_core.solvers_ff import FormFindingSolverFactory
 
-# Verify scope injection
 assert 'FormFindingDomain3D' in globals(), "Scope injection failed: FormFindingDomain3D missing"
 assert 'FormFindingSolverFactory' in globals(), "Scope injection failed: FormFindingSolverFactory missing"
 `);
@@ -81,7 +76,6 @@ self.onmessage = async function(e) {
             
             pyodide.globals.set("js_payload", JSON.stringify(payload));
 
-            // Execute solver script using pre-loaded global scope
             const runnerScript = `
 import json
 import numpy as np
@@ -118,7 +112,6 @@ for ls in line_supports:
     else:
         int_lines.append(seg)
 
-# Build Domain
 if mat_type in ("cables", "cable"):
     domain = FormFindingDomain3D(
         xmin=0.0, xmax=float(payload.get("Lx", 6000)),
@@ -147,7 +140,6 @@ else:
     )
     domain.add_edge_support("all")
 
-# Cross-sectional area and material properties
 sec_d = float(payload.get("sec_cable_d", 24.0))
 sec_t = float(payload.get("sec_fabric_t", 1.2))
 area = (np.pi * (sec_d**2) / 4.0) if mat_type in ("cables", "cable") else (sec_t * 1.0)
@@ -157,7 +149,6 @@ mat_props = {
     "gamma": float(payload.get("custom_gamma_kn_m3", 78.5))
 }
 
-# Instantiate Solver
 solver = FormFindingSolverFactory.create(
     material_type=mat_type, domain=domain, mat_props=mat_props,
     area_mm2=area, prestress_force=float(payload.get("prestress", 0.0)),
@@ -170,7 +161,20 @@ solver = FormFindingSolverFactory.create(
 
 solved_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(iterations=1200)
 
-stresses_mpa = (axial_forces / max(area, 1e-4)).tolist()
+# Smooth Nodal Cauchy Stress Averaging
+nodal_forces = np.zeros(len(solved_nodes), dtype=float)
+nodal_edge_counts = np.zeros(len(solved_nodes), dtype=float)
+
+for i, (u, v) in enumerate(domain.edges):
+    f_abs = abs(axial_forces[i])
+    nodal_forces[u] += f_abs
+    nodal_forces[v] += f_abs
+    nodal_edge_counts[u] += 1.0
+    nodal_edge_counts[v] += 1.0
+
+nodal_edge_counts = np.maximum(nodal_edge_counts, 1.0)
+stresses_mpa = (nodal_forces / (nodal_edge_counts * max(sec_t, 0.1))).tolist()
+
 initial_nodes = domain.nodes.astype(float)
 deflections_mm = np.linalg.norm(solved_nodes - initial_nodes, axis=1).tolist()
 
