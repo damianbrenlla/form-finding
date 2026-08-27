@@ -1,13 +1,6 @@
+# python_core/domain_ff.py
 # DBSW Spatial Form-Finding Network Domain
 # Author: Damian Brenlla / DBSW 2026
-# v14 — Polygonal membrane domains with explicit perimeter/interior support roles.
-#
-# Membranes may now be meshed over an arbitrary ordered 2D polygon.  Perimeter
-# support points define the boundary in table order; interior support points are
-# retained as fixed internal mesh vertices.  A regular candidate fill is clipped
-# to the polygon and triangulated with scipy.spatial.Delaunay.  Boundary edges
-# are retained explicitly so the structural network follows the declared
-# perimeter rather than the bounding rectangle.
 
 import numpy as np
 
@@ -57,9 +50,6 @@ class FormFindingDomain3D:
         self.dx = float(np.mean(np.diff(self._x_lin))) if self._x_lin is not None and len(self._x_lin) > 1 else 0.0
         self.dy = float(np.mean(np.diff(self._y_lin))) if self._y_lin is not None and len(self._y_lin) > 1 else 0.0
 
-    # ------------------------------------------------------------------
-    # Polygon geometry helpers
-    # ------------------------------------------------------------------
     @staticmethod
     def _point_on_segment(p, a, b, tol=1e-8):
         p = np.asarray(p, dtype=float)
@@ -77,7 +67,6 @@ class FormFindingDomain3D:
 
     @classmethod
     def _point_in_polygon(cls, point, polygon, tol=1e-7):
-        """Ray-casting point-in-polygon with boundary points treated as inside."""
         p = np.asarray(point, dtype=float)
         inside = False
         n = len(polygon)
@@ -101,10 +90,6 @@ class FormFindingDomain3D:
 
     @classmethod
     def _proper_segment_intersection(cls, a, b, c, d, tol=1e-8):
-        """
-        True only for a genuine crossing. Touching an endpoint is allowed,
-        because triangle vertices can lie on the perimeter.
-        """
         o1 = cls._orientation(a, b, c)
         o2 = cls._orientation(a, b, d)
         o3 = cls._orientation(c, d, a)
@@ -124,7 +109,6 @@ class FormFindingDomain3D:
 
     @classmethod
     def _triangle_is_inside_polygon(cls, tri_xy, polygon):
-        # All vertices and edge midpoints must be inside/on the boundary.
         centroid = np.mean(tri_xy, axis=0)
         if not cls._point_in_polygon(centroid, polygon):
             return False
@@ -136,9 +120,6 @@ class FormFindingDomain3D:
             if not cls._point_in_polygon(midpoint, polygon):
                 return False
 
-        # Reject triangle edges which genuinely cross the polygon boundary.
-        # This makes concave notches behave correctly without requiring a full
-        # constrained-Delaunay implementation.
         for i in range(3):
             a = tri_xy[i]
             b = tri_xy[(i + 1) % 3]
@@ -151,7 +132,6 @@ class FormFindingDomain3D:
 
     @classmethod
     def _order_boundary_segments(cls, line_segments, tol=1e-6):
-        """Order connected boundary line segments into one closed polygon loop."""
         if len(line_segments) < 3:
             raise ValueError("Polygon membrane requires at least 3 External line supports.")
 
@@ -166,9 +146,6 @@ class FormFindingDomain3D:
         def same_xy(a, b):
             return np.linalg.norm(a[:2] - b[:2]) <= tol
 
-        # Every boundary vertex of a simple closed polygon must connect to exactly
-        # two external line segments. This also prevents an open chain or branching
-        # boundary from being interpreted as a membrane perimeter.
         vertices = []
         incidences = []
         for si, (a, b) in enumerate(segs):
@@ -195,8 +172,6 @@ class FormFindingDomain3D:
                     f"is connected to {len(inc)} line supports instead of 2."
                 )
 
-        # Traverse the segment graph. Segment row order is irrelevant; geometric
-        # connectivity determines the polygon order.
         ordered = [vertices[0].copy()]
         current_vertex = 0
         previous_segment = None
@@ -244,7 +219,6 @@ class FormFindingDomain3D:
         Lz=1000.0,
         material_type="membrane",
     ):
-        """Build a polygon membrane where External line supports are boundary edges."""
         perimeter = cls._order_boundary_segments(boundary_segments)
         return cls.build_polygon_domain(
             perimeter_points=perimeter.tolist(),
@@ -255,12 +229,6 @@ class FormFindingDomain3D:
 
     @classmethod
     def _delaunay_triangles(cls, points):
-        """Lightweight 2D Bowyer-Watson Delaunay triangulation.
-
-        This deliberately avoids scipy so the browser only needs Pyodide + NumPy
-        at startup.  DBSW's default membrane meshes are small enough for this
-        O(N^2) implementation to be practical in-browser.
-        """
         pts = np.asarray(points, dtype=float)
         n = len(pts)
         if n < 3:
@@ -272,7 +240,6 @@ class FormFindingDomain3D:
         cx = 0.5 * (min_x + max_x)
         cy = 0.5 * (min_y + max_y)
 
-        # Large enclosing triangle.
         super_pts = np.array([
             [cx - 20.0 * span, cy - 20.0 * span],
             [cx,               cy + 20.0 * span],
@@ -326,7 +293,6 @@ class FormFindingDomain3D:
             boundary = [edge for edge, count in edge_count.items() if count == 1]
             for a, b in boundary:
                 tri = (a, b, pi)
-                # Keep a consistent non-zero orientation.
                 if cls._orientation(all_pts[a], all_pts[b], all_pts[pi]) < 0.0:
                     tri = (b, a, pi)
                 if abs(cls._orientation(all_pts[tri[0]], all_pts[tri[1]], all_pts[tri[2]])) < 1e-18:
@@ -348,13 +314,6 @@ class FormFindingDomain3D:
         Lz=1000.0,
         material_type="membrane",
     ):
-        """
-        Build a membrane domain from:
-          - perimeter_points: ordered [(x, y, z), ...]. Order is structural:
-            consecutive rows define consecutive perimeter segments.
-          - interior_points: [(x, y, z), ...]. These are explicit fixed internal
-            vertices and do NOT alter the polygon boundary.
-        """
         interior_points = interior_points or []
         interior_line_segments = interior_line_segments or []
 
@@ -365,15 +324,12 @@ class FormFindingDomain3D:
         if perim3.ndim != 2 or perim3.shape[1] != 3:
             raise ValueError("Perimeter support points must be [x, y, z] coordinates.")
 
-        # Remove a duplicated closing point if the user supplied the first point
-        # again as the last row; the polygon is closed automatically.
         if len(perim3) >= 4 and np.linalg.norm(perim3[0, :2] - perim3[-1, :2]) < 1e-9:
             perim3 = perim3[:-1]
 
         if len(perim3) < 3:
             raise ValueError("Polygon membrane requires at least 3 distinct Perimeter points.")
 
-        # Reject duplicate perimeter vertices.
         for i in range(len(perim3)):
             for j in range(i):
                 if np.linalg.norm(perim3[i, :2] - perim3[j, :2]) < 1e-8:
@@ -381,11 +337,9 @@ class FormFindingDomain3D:
 
         polygon = perim3[:, :2].copy()
 
-        # Basic self-intersection check.
         for i in range(len(polygon)):
             a, b = polygon[i], polygon[(i + 1) % len(polygon)]
             for j in range(i + 1, len(polygon)):
-                # Adjacent segments share endpoints by definition.
                 if j in (i, (i + 1) % len(polygon), (i - 1) % len(polygon)):
                     continue
                 c, d = polygon[j], polygon[(j + 1) % len(polygon)]
@@ -404,8 +358,6 @@ class FormFindingDomain3D:
                 raise ValueError(
                     f"Interior support {i + 1} at ({p[0]:.1f}, {p[1]:.1f}) lies outside the Perimeter polygon."
                 )
-            # An interior-role point on the boundary is ambiguous and should be
-            # explicitly represented as a perimeter row instead.
             for k in range(len(polygon)):
                 if cls._point_on_segment(p[:2], polygon[k], polygon[(k + 1) % len(polygon)], 1e-7):
                     raise ValueError(
@@ -413,9 +365,6 @@ class FormFindingDomain3D:
                         "Change its Role to Perimeter."
                     )
 
-        # Internal line restraints are represented by exact mesh vertices sampled
-        # along each declared line. They are fixed nodes, but never become part of
-        # the polygon boundary.
         internal_line_pts = []
         for li, seg in enumerate(interior_line_segments):
             if len(seg) != 2:
@@ -431,8 +380,8 @@ class FormFindingDomain3D:
                     )
             line_len = np.linalg.norm(p2[:2] - p1[:2])
             target_spacing = min(
-                (obj_dx := (np.max(polygon[:, 0]) - np.min(polygon[:, 0])) / max(int(nx), 2)),
-                (obj_dy := (np.max(polygon[:, 1]) - np.min(polygon[:, 1])) / max(int(ny), 2))
+                ((np.max(polygon[:, 0]) - np.min(polygon[:, 0])) / max(int(nx), 2)),
+                ((np.max(polygon[:, 1]) - np.min(polygon[:, 1])) / max(int(ny), 2))
             )
             nseg = max(1, int(np.ceil(line_len / max(target_spacing, 1e-6))))
             nseg = min(nseg, 150)
@@ -464,8 +413,6 @@ class FormFindingDomain3D:
         obj._x_lin = np.linspace(obj.xmin, obj.xmax, obj.nx + 1)
         obj._y_lin = np.linspace(obj.ymin, obj.ymax, obj.ny + 1)
 
-        # Candidate fill: regular grid clipped to polygon, plus exact perimeter
-        # and interior support vertices.
         candidates = []
         for x in obj._x_lin:
             for y in obj._y_lin:
@@ -504,7 +451,6 @@ class FormFindingDomain3D:
         if not valid_triangles:
             raise ValueError("Polygon triangulation produced no valid interior triangles.")
 
-        # Explicitly map support elevations to their exact mesh nodes.
         nodes = np.zeros((len(candidates), 3), dtype=float)
         nodes[:, :2] = xy
         for p in perim3:
@@ -516,7 +462,6 @@ class FormFindingDomain3D:
 
         triangles = np.asarray(valid_triangles, dtype=int)
 
-        # Structural edges = unique triangle edges + explicit perimeter segments.
         edge_set = set()
         for tri in triangles:
             a, b, c = map(int, tri)
@@ -534,9 +479,6 @@ class FormFindingDomain3D:
             edge_set.add(edge)
             boundary_edges.append(edge)
 
-        # Internal line supports are structural restraint lines, not merely a
-        # collection of fixed points. Explicitly add their sampled segments to
-        # the spring network so the solver contains a continuous internal line.
         for seg in interior_line_segments:
             p1 = np.asarray(seg[0], dtype=float)
             p2 = np.asarray(seg[1], dtype=float)
@@ -563,7 +505,6 @@ class FormFindingDomain3D:
         obj.boundary_edges = np.asarray(boundary_edges, dtype=int)
         obj.boundary_node_indices = set(int(v) for edge in boundary_edges for v in edge)
 
-        # All perimeter and interior support nodes are structural restraints.
         for p in perim3:
             idx = int(np.argmin(np.linalg.norm(obj.nodes[:, :2] - p[:2], axis=1)))
             obj.fixed_nodes.add(idx)
@@ -576,6 +517,15 @@ class FormFindingDomain3D:
 
         obj.dx = float(np.mean(np.diff(obj._x_lin))) if len(obj._x_lin) > 1 else 0.0
         obj.dy = float(np.mean(np.diff(obj._y_lin))) if len(obj._y_lin) > 1 else 0.0
+
+        # CRITICAL FIX: Seed candidate interior vertices with IDW surface elevation
+        # interpolation using support heights to prevent planar membrane collapse.
+        seed_z_map = {(float(p[0]), float(p[1])): float(p[2]) for p in perim3}
+        for p in interior3:
+            seed_z_map[(float(p[0]), float(p[1]))] = float(p[2])
+        if len(seed_z_map) >= 3:
+            obj.apply_idw_surface_interpolation(seed_z_map, power=2.0)
+
         return obj
 
     @staticmethod
