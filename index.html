@@ -781,7 +781,7 @@
             renderSelect.value = ["grey", "cable_sag", "cable_tension"].includes(currentMode) ? currentMode : "cable_sag";
 
         } else if (matType === 'membrane') {
-            lineSupportContainer.style.display = 'flex';
+            lineSupportContainer.style.display = 'none';
             cutPlanesContainer.style.display = 'block';
             cableSpanBuilder.style.display = 'none';
             membranePrestressCard.style.display = 'flex';
