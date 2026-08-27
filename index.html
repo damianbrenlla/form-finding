@@ -338,8 +338,8 @@
     <hr>
     <div class="section-header">Boundary Restraints</div>
 
-    <!-- Domain Mode: Rectangular vs Polygon -->
-    <div class="control-group">
+    <!-- Domain Mode: Rectangular vs Polygon (membranes only) -->
+    <div id="domain_mode_container" class="control-group">
         <label id="domain_mode_label">Domain Mode</label>
         <select id="domain_mode" onchange="onDomainModeChange()">
             <option value="rectangular">Rectangular Bounding Box</option>
@@ -773,6 +773,8 @@
         var currentMode = renderSelect.value;
         renderSelect.innerHTML = '';
 
+        var domainModeContainer = document.getElementById('domain_mode_container');
+
         if (matType === 'cables') {
             lineSupportContainer.style.display = 'none';
             cutPlanesContainer.style.display = 'none';
@@ -781,6 +783,14 @@
             prestressContainer.style.display = 'flex';
             meshLabel.innerText = "Cable Segments (nx)";
             nyContainer.style.display = 'none';
+            if (domainModeContainer) domainModeContainer.style.display = 'none';
+            var polyHint = document.getElementById('polygon_hint');
+            if (polyHint) polyHint.style.display = 'none';
+            var internalSup = document.getElementById('internal_supports_container');
+            if (internalSup) internalSup.style.display = 'none';
+            // Cables always use a simple 1-D span; force rectangular domain for the payload path.
+            var domainSelect = document.getElementById('domain_mode');
+            if (domainSelect) domainSelect.value = 'rectangular';
 
             var opt1 = document.createElement('option'); opt1.value = "grey"; opt1.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "cable_sag"; opt2.innerText = "Maximum Sag Drop-Line Indicator"; renderSelect.appendChild(opt2);
@@ -796,6 +806,7 @@
             prestressContainer.style.display = 'none';
             meshLabel.innerText = "FE Mesh Divisions nx, ny";
             nyContainer.style.display = 'block';
+            if (domainModeContainer) domainModeContainer.style.display = '';
 
             var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (Tension)"; renderSelect.appendChild(opt1);
             var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
