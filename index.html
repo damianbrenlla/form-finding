@@ -1392,11 +1392,6 @@
                 
                 var arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, arrowLen * 0.25, arrowLen * 0.12);
                 scene.add(arrow); forceArrows.push(arrow);
-
-                var fzText = `${ld.Fz.toFixed(1)} kN`;
-                var labelSprite = makeTextSprite(fzText, '#000000');
-                labelSprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 60));
-                scene.add(labelSprite); forceArrows.push(labelSprite);
             }
         });
 
