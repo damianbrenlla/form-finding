@@ -1,4 +1,4 @@
-// worker_ff.js — DBSW WebAssembly Worker Bridge
+// worker_ff.js — DBSW WebAssembly Worker Bridge (v1.0.4 - Force Cache Bust)
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
 let pyodide = null;
@@ -13,10 +13,12 @@ async function initPyodideRuntime() {
 
         self.postMessage({ status: 'log', message: 'Fetching DBSW core domain and solver logic from /python_core...' });
         
+        // Cache-busting fetch requests to prevent stale worker script locks
+        const cb = '?v=' + Date.now();
         const [domainRes, materialsRes, solversRes] = await Promise.all([
-            fetch('python_core/domain_ff.py'),
-            fetch('python_core/materials.py'),
-            fetch('python_core/solvers_ff.py')
+            fetch('python_core/domain_ff.py' + cb),
+            fetch('python_core/materials.py' + cb),
+            fetch('python_core/solvers_ff.py' + cb)
         ]);
 
         if (!domainRes.ok || !materialsRes.ok || !solversRes.ok) {
@@ -29,9 +31,7 @@ async function initPyodideRuntime() {
 
         try {
             pyodide.FS.mkdir('/home/pyodide/python_core');
-        } catch (e) {
-            // Directory exists across re-inits
-        }
+        } catch (e) {}
 
         pyodide.FS.writeFile('/home/pyodide/python_core/__init__.py', '');
         pyodide.FS.writeFile('/home/pyodide/python_core/domain_ff.py', domainCode);
@@ -142,6 +142,7 @@ else:
 
 sec_d = float(payload.get("sec_cable_d", 24.0))
 sec_t = float(payload.get("sec_fabric_t", 1.2))
+sec_t = max(sec_t, 0.1) # Thickness in mm
 area = (np.pi * (sec_d**2) / 4.0) if mat_type in ("cables", "cable") else (sec_t * 1.0)
 
 mat_props = {
@@ -161,19 +162,51 @@ solver = FormFindingSolverFactory.create(
 
 solved_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(iterations=1200)
 
-# Smooth Nodal Cauchy Stress Averaging
-nodal_forces = np.zeros(len(solved_nodes), dtype=float)
-nodal_edge_counts = np.zeros(len(solved_nodes), dtype=float)
+num_nodes = len(solved_nodes)
 
-for i, (u, v) in enumerate(domain.edges):
-    f_abs = abs(axial_forces[i])
-    nodal_forces[u] += f_abs
-    nodal_forces[v] += f_abs
-    nodal_edge_counts[u] += 1.0
-    nodal_edge_counts[v] += 1.0
+# ------------------------------------------------------------------
+# CONTINUOUS TRIBUTARY MEMBRANE STRESS INTEGRATION
+# ------------------------------------------------------------------
+if mat_type in ("cables", "cable"):
+    stresses_mpa = (axial_forces / max(area, 1e-4)).tolist()
+else:
+    # Build edge-to-force lookup dictionary
+    edge_force_map = {}
+    for i, (u, v) in enumerate(domain.edges):
+        edge_key = tuple(sorted((int(u), int(v))))
+        edge_force_map[edge_key] = abs(float(axial_forces[i]))
 
-nodal_edge_counts = np.maximum(nodal_edge_counts, 1.0)
-stresses_mpa = (nodal_forces / (nodal_edge_counts * max(sec_t, 0.1))).tolist()
+    nodal_tributary_area = np.zeros(num_nodes, dtype=float)
+    nodal_force_sum = np.zeros(num_nodes, dtype=float)
+
+    # Compute area-weighted Cauchy stresses across 2D Delaunay triangles
+    for tri in domain.triangles:
+        u, v, w = map(int, tri)
+        p_u, p_v, p_w = solved_nodes[u], solved_nodes[v], solved_nodes[w]
+        
+        # 2D Triangle Area via Cross Product
+        tri_area = 0.5 * np.linalg.norm(np.cross(p_v - p_u, p_w - p_u))
+        if tri_area < 1e-6:
+            continue
+
+        # Average internal tension force of the 3 triangle edges
+        e1 = tuple(sorted((u, v)))
+        e2 = tuple(sorted((v, w)))
+        e3 = tuple(sorted((w, u)))
+        f_avg = (edge_force_map.get(e1, 0.0) + edge_force_map.get(e2, 0.0) + edge_force_map.get(e3, 0.0)) / 3.0
+
+        # Distribute 1/3 area and force to each vertex node
+        trib_contribution = tri_area / 3.0
+        for node_idx in (u, v, w):
+            nodal_tributary_area[node_idx] += trib_contribution
+            nodal_force_sum[node_idx] += f_avg * trib_contribution
+
+    # Cauchy Tensile Stress: MPa = N / mm^2
+    # Stress = (Accumulated Force) / (Tributary Area * Thickness t)
+    valid_mask = nodal_tributary_area > 1e-6
+    stresses_mpa = np.zeros(num_nodes, dtype=float)
+    stresses_mpa[valid_mask] = nodal_force_sum[valid_mask] / (nodal_tributary_area[valid_mask] * sec_t)
+    stresses_mpa = stresses_mpa.tolist()
 
 initial_nodes = domain.nodes.astype(float)
 deflections_mm = np.linalg.norm(solved_nodes - initial_nodes, axis=1).tolist()
