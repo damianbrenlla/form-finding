@@ -330,8 +330,33 @@
         </div>
     </div>
 
+    <div class="control-group">
+        <label id="max_iter_label" style="font-size: 0.7rem;">Max DR Iterations (equilibrium cap)</label>
+        <input type="number" id="max_iterations" value="20000" min="500" step="500" style="width: 100%;">
+    </div>
+
     <hr>
     <div class="section-header">Boundary Restraints</div>
+
+    <!-- Domain Mode: Rectangular vs Polygon -->
+    <div class="control-group">
+        <label id="domain_mode_label">Domain Mode</label>
+        <select id="domain_mode" onchange="onDomainModeChange()">
+            <option value="rectangular">Rectangular Bounding Box</option>
+            <option value="polygon">Irregular Perimeter (Polygon)</option>
+        </select>
+        <button class="btn-secondary" style="margin-top: 4px; padding: 2px 6px; font-size: 0.68rem; width: 100%;" onclick="loadExampleForCurrentMode()">Load Example Shape for This Mode</button>
+    </div>
+
+    <!-- Polygon Helper Hint -->
+    <div id="polygon_hint" class="control-group" style="display: none;">
+        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
+            Perimeter supports below (table above) define the boundary.<br>
+            Enter them sequentially clockwise or anti-clockwise around the outline.<br>
+            These become both the domain and the external fixed supports.
+        </label>
+        <div id="polygon_validation_msg" style="font-size: 0.7rem; font-weight: 600; margin-top: 4px;"></div>
+    </div>
 
     <div class="control-group">
         <div class="load-header-row">
@@ -345,6 +370,22 @@
             <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="support_table_body"></tbody>
         </table>
+    </div>
+
+    <!-- Internal Supports Container (polygon mode only) -->
+    <div id="internal_supports_container" class="control-group" style="display: none;">
+        <div class="load-header-row">
+            <label style="margin: 0;">Internal Supports (mm)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addInternalSupportRow()">+ Add Internal Support</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllInternalSupports()">Clear Internal</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
+            <tbody id="internal_support_table_body"></tbody>
+        </table>
+        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">Internal supports lift the membrane from inside (e.g. masts). They must lie inside the perimeter polygon.</label>
     </div>
 
     <!-- Line Supports Container -->
@@ -514,6 +555,12 @@
     // indices, or the mesh will fail to reach the outlying supports even
     // though their nodes were solved correctly and exist in currentVertices.
     var currentNxActual = null, currentNyActual = null;
+    // Backend-returned triangle connectivity (polygon/irregular domain mode).
+    // Null in rectangular mode, where reRenderMesh() rebuilds triangles from
+    // the (nx+1) x (ny+1) grid stride instead.
+    var currentTriangles = null;
+    var currentDomainMode = "rectangular";
+    var perimeterPreviewGroup = null;
     var worker = null, engineReady = false;
 
     var raycaster = new THREE.Raycaster();
@@ -572,9 +619,45 @@
         return sprite;
     }
 
+    // Stock default support layouts (membrane only). Used both at material
+    // init and when toggling Domain Mode, so a first-time user immediately sees
+    // an example of each shape. User-entered supports are never clobbered —
+    // these only auto-replace when the current rows still match a stock layout.
+    var STOCK_RECT_SUPPORTS = [
+        [0, 0, 1000, 'xyz'], [6000, 0, 0, 'xyz'], [6000, 3000, 1000, 'xyz'], [0, 3000, 0, 'xyz']
+    ];
+    var STOCK_POLYGON_SUPPORTS = [
+        // Irregular pentagon, entered anti-clockwise (in plan, X-Y).
+        [2000, 0, 1500, 'xyz'], [5800, 800, 0, 'xyz'], [5400, 4200, 1500, 'xyz'],
+        [2200, 4600, 0, 'xyz'], [0, 2300, 1800, 'xyz']
+    ];
+    var STOCK_POLYGON_INTERNAL = [
+        [3000, 2300, 2500, 'xyz']
+    ];
+
+    function supportsMatchStock(stockArr) {
+        var rows = document.querySelectorAll('#support_table_body tr');
+        if (rows.length !== stockArr.length) return false;
+        for (var i = 0; i < rows.length; i++) {
+            var x = parseFloat(rows[i].querySelector('.sp-x').value);
+            var y = parseFloat(rows[i].querySelector('.sp-y').value);
+            var z = parseFloat(rows[i].querySelector('.sp-z').value);
+            if (Math.abs(x - stockArr[i][0]) > 0.01 || Math.abs(y - stockArr[i][1]) > 0.01 || Math.abs(z - stockArr[i][2]) > 0.01) return false;
+        }
+        return true;
+    }
+
+    function loadStockSupports(stockArr) {
+        clearAllSupports();
+        for (var i = 0; i < stockArr.length; i++) {
+            addSupportRow(stockArr[i][0], stockArr[i][1], stockArr[i][2], stockArr[i][3]);
+        }
+    }
+
     function onMaterialChange() {
         clearAllSupports();
         clearAllLineSupports();
+        clearAllInternalSupports();
         clearAllLoads();
         clearResults();
 
@@ -584,13 +667,17 @@
             addSupportRow(0, 0, 0, 'xyz');
             addSupportRow(6000, 0, 0, 'xyz');
         } else if (matType === 'membrane') {
-            addSupportRow(0, 0, 1000, 'xyz');
-            addSupportRow(6000, 0, 0, 'xyz');
-            addSupportRow(6000, 3000, 1000, 'xyz');
-            addSupportRow(0, 3000, 0, 'xyz');
+            var domainMode = document.getElementById('domain_mode').value;
+            if (domainMode === 'polygon') {
+                loadStockSupports(STOCK_POLYGON_SUPPORTS);
+                addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
+            } else {
+                loadStockSupports(STOCK_RECT_SUPPORTS);
+            }
         }
 
         updateMaterialUI();
+        onDomainModeChange();
         updateDomainVisuals();
     }
 
@@ -977,6 +1064,82 @@
     function clearAllLineSupports() { document.getElementById('line_support_table_body').innerHTML = ''; updateDomainVisuals(); }
     function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
 
+    // -----------------------------------------------------------------------
+    // Internal Supports (polygon mode — interior masts/pins)
+    // -----------------------------------------------------------------------
+    function addInternalSupportRow(x, y, z, dofs) {
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 1000 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="number" class="isp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="text" class="isp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        document.getElementById('internal_support_table_body').appendChild(tr);
+        updateDomainVisuals();
+    }
+    function clearAllInternalSupports() { document.getElementById('internal_support_table_body').innerHTML = ''; updateDomainVisuals(); }
+
+    function getInternalSupportArrayData() {
+        var supports = [];
+        document.querySelectorAll('#internal_support_table_body tr').forEach(function(r) {
+            supports.push({ x: parseFloat(r.querySelector('.isp-x').value) || 0, y: parseFloat(r.querySelector('.isp-y').value) || 0, z: parseFloat(r.querySelector('.isp-z').value) || 0, dofs: (r.querySelector('.isp-dofs').value || 'xyz').toLowerCase() });
+        });
+        return supports;
+    }
+
+    // -----------------------------------------------------------------------
+    // Domain Mode (Rectangular / Polygon)
+    // -----------------------------------------------------------------------
+    function onDomainModeChange() {
+        var mode = document.getElementById('domain_mode').value;
+        var matType = document.getElementById('mat_type').value;
+        var isPolygon = (mode === 'polygon' && matType !== 'cables');
+
+        // Auto-swap the example support layout ONLY when the current rows
+        // are still an untouched app default (or the table is empty). A user's
+        // edited supports are preserved across mode toggles. Use the
+        // "Load Example Shape" button to force a reset at any time.
+        if (matType === 'membrane') {
+            var rows = document.querySelectorAll('#support_table_body tr');
+            var isEmpty = (rows.length === 0);
+            if (isPolygon) {
+                var internalEmpty = (document.querySelectorAll('#internal_support_table_body tr').length === 0);
+                if (isEmpty || supportsMatchStock(STOCK_RECT_SUPPORTS)) {
+                    loadStockSupports(STOCK_POLYGON_SUPPORTS);
+                    if (internalEmpty) addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
+                }
+            } else {
+                if (isEmpty || supportsMatchStock(STOCK_POLYGON_SUPPORTS)) {
+                    loadStockSupports(STOCK_RECT_SUPPORTS);
+                    clearAllInternalSupports();
+                }
+            }
+        }
+
+        document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
+        document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
+        document.getElementById('line_supports_container').style.display = isPolygon ? 'none' : ((matType === 'membrane') ? 'flex' : 'none');
+
+        updateDomainVisuals();
+    }
+
+    function loadExampleForCurrentMode() {
+        var mode = document.getElementById('domain_mode').value;
+        var matType = document.getElementById('mat_type').value;
+        if (matType === 'cables') { clearResults(); return; } // point supports are domain-agnostic
+        clearResults();
+        if (mode === 'polygon') {
+            loadStockSupports(STOCK_POLYGON_SUPPORTS);
+            clearAllInternalSupports();
+            addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
+        } else {
+            loadStockSupports(STOCK_RECT_SUPPORTS);
+            clearAllInternalSupports();
+        }
+        updateDomainVisuals();
+    }
+
     function getLoadArrayData() {
         var loads = [];
         document.querySelectorAll('#load_table_body tr').forEach(function(r) {
@@ -1004,13 +1167,107 @@
     function calculateBoundingBox() {
         var pts = [];
         getPointSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
+        getInternalSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
         getLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
         getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
         if (pts.length === 0) return { Lx: 6000, Ly: 3000, Lz: 1000 };
         return { Lx: Math.max(...pts.map(p => p[0]), 1000), Ly: Math.max(...pts.map(p => p[1]), 1000), Lz: Math.max(...pts.map(p => p[2]), 1000) };
     }
 
+    // -----------------------------------------------------------------------
+    // Client-side polygon validation (instant feedback, mirrors worker).
+    // -----------------------------------------------------------------------
+    function segmentsIntersect2D(ax, ay, bx, by, cx, cy, dx, dy) {
+        var d1 = ((dx - cx) * (ay - cy)) - ((dy - cy) * (ax - cx));
+        var d2 = ((dx - cx) * (by - cy)) - ((dy - cy) * (bx - cx));
+        var d3 = ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
+        var d4 = ((bx - ax) * (dy - ay)) - ((by - ay) * (dx - ax));
+        return (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)));
+    }
+
+    function polygonSignedArea2D(pts) {
+        var a = 0;
+        for (var i = 0; i < pts.length; i++) {
+            var j = (i + 1) % pts.length;
+            a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+        }
+        return a / 2;
+    }
+
+    function polygonIsSimple2D(pts) {
+        var n = pts.length;
+        if (n < 4) return true;
+        for (var i = 0; i < n; i++) {
+            var j = (i + 1) % n;
+            for (var k = i + 1; k < n; k++) {
+                var l = (k + 1) % n;
+                if (i === k || i === l || j === k || j === l) continue;
+                if (segmentsIntersect2D(pts[i][0], pts[i][1], pts[j][0], pts[j][1], pts[k][0], pts[k][1], pts[l][0], pts[l][1])) return false;
+            }
+        }
+        return true;
+    }
+
+    function validatePolygonPerimeter() {
+        var msgEl = document.getElementById('polygon_validation_msg');
+        if (!msgEl) return;
+        var sups = getPointSupportArrayData();
+        var isPolygon = (document.getElementById('domain_mode').value === 'polygon' &&
+                         document.getElementById('mat_type').value !== 'cables');
+        if (!isPolygon) { msgEl.innerHTML = ''; return; }
+
+        var pts = sups.map(function(s) { return [s.x, s.y]; });
+        var n = pts.length;
+        if (n < 3) {
+            msgEl.style.color = '#c0392b';
+            msgEl.innerHTML = 'Need at least 3 perimeter points (have ' + n + ').';
+            return;
+        }
+
+        var area = polygonSignedArea2D(pts);
+        if (Math.abs(area) < 1.0) {
+            msgEl.style.color = '#c0392b';
+            msgEl.innerHTML = 'Degenerate polygon (zero area) — points are colinear or repeated.';
+            return;
+        }
+
+        if (!polygonIsSimple2D(pts)) {
+            msgEl.style.color = '#c0392b';
+            msgEl.innerHTML = 'Self-intersecting perimeter — enter points clockwise or anti-clockwise in order.';
+            return;
+        }
+
+        var orientation = (area > 0) ? 'anti-clockwise (CCW)' : 'clockwise (CW)';
+        var absArea = Math.round(Math.abs(area));
+        var ok = true;
+
+        // also check internal supports are inside the polygon
+        var internalSups = getInternalSupportArrayData();
+        if (internalSups.length > 0) {
+            // ray-cast point-in-polygon
+            var outside = internalSups.filter(function(s) {
+                var inside = false;
+                for (var i = 0, j = n - 1; i < n; j = i++) {
+                    if (((pts[i][1] > s.y) !== (pts[j][1] > s.y)) && (s.x < (pts[j][0] - pts[i][0]) * (s.y - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0])) inside = !inside;
+                }
+                return !inside;
+            });
+            if (outside.length > 0) {
+                ok = false;
+                msgEl.style.color = '#c0392b';
+                msgEl.innerHTML = 'Internal support' + (outside.length > 1 ? 's' : '') + ' outside the perimeter (' + outside.length + ' point' + (outside.length > 1 ? 's' : '') + ') — move them inside the shape.';
+                return;
+            }
+        }
+
+        if (ok) {
+            msgEl.style.color = '#27ae60';
+            msgEl.innerHTML = 'Valid polygon: ' + n + ' perimeter points, ' + orientation + '.  Area: ' + absArea.toLocaleString() + ' mm²';
+        }
+    }
+
     function updateDomainVisuals() {
+        var matType = document.getElementById('mat_type').value;
         var bounds = calculateBoundingBox();
         activeLx = bounds.Lx; activeLy = bounds.Ly; activeLz = bounds.Lz;
 
@@ -1018,13 +1275,38 @@
         forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
 
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
+        var intMat = new THREE.MeshStandardMaterial({ color: 0x0077cc, roughness: 0.3 });
         var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
+
+        var isPolygon = (document.getElementById('domain_mode').value === 'polygon' && matType !== 'cables');
 
         getPointSupportArrayData().forEach(function(ps) {
             var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
             ptMesh.position.set(ps.x, ps.z - 75, ps.y);
             scene.add(ptMesh); supportGizmos.push(ptMesh);
         });
+
+        // Internal supports — different color (blue) when in polygon mode
+        if (isPolygon) {
+            getInternalSupportArrayData().forEach(function(is) {
+                var ptMesh = new THREE.Mesh(ptPinGeo, intMat);
+                ptMesh.position.set(is.x, is.z - 75, is.y);
+                scene.add(ptMesh); supportGizmos.push(ptMesh);
+            });
+        }
+
+        // Polygon perimeter outline preview
+        if (perimeterPreviewGroup) { scene.remove(perimeterPreviewGroup); perimeterPreviewGroup = null; }
+        if (isPolygon && getPointSupportArrayData().length >= 3) {
+            var pts2D = getPointSupportArrayData().map(function(p) { return new THREE.Vector3(p.x, p.z, p.y); });
+            pts2D.push(pts2D[0].clone());
+            var lineGeo = new THREE.BufferGeometry().setFromPoints(pts2D);
+            var lineMat = new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 });
+            var perimeterLine = new THREE.Line(lineGeo, lineMat);
+            perimeterPreviewGroup = new THREE.Group();
+            perimeterPreviewGroup.add(perimeterLine);
+            scene.add(perimeterPreviewGroup);
+        }
 
         getLineSupportArrayData().forEach(function(ls) {
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
@@ -1060,6 +1342,7 @@
             drawInitialPreviewMesh();
         }
 
+        validatePolygonPerimeter();
         setupCutPlaneSliders();
     }
 
@@ -1068,6 +1351,39 @@
         var pointSups = getPointSupportArrayData();
 
         if (mesh) scene.remove(mesh);
+
+        var domainMode = document.getElementById('domain_mode').value;
+        var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
+
+        if (isPolygon && pointSups.length >= 3) {
+            // Preview: flat outline of the perimeter at z = average support Z,
+            // plus a faint triangulated fill so the user sees the domain shape.
+            var avgZ = pointSups.reduce(function(s, p) { return s + (p.z || 0); }, 0) / pointSups.length;
+            var pts3D = pointSups.map(function(p) { return new THREE.Vector3(p.x, avgZ, p.y); });
+            pts3D.push(pts3D[0].clone());
+
+            var lineGeo = new THREE.BufferGeometry().setFromPoints(pts3D);
+            var outline = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 }));
+
+            var group = new THREE.Group();
+            group.add(outline);
+
+            // Faint filled surface via a shape (2D, lifted to avgZ).
+            var shape = new THREE.Shape();
+            shape.moveTo(pointSups[0].x, pointSups[0].y);
+            for (var k = 1; k < pointSups.length; k++) shape.lineTo(pointSups[k].x, pointSups[k].y);
+            shape.closePath();
+            var fillGeo = new THREE.ShapeGeometry(shape);
+            var fillMesh = new THREE.Mesh(fillGeo, new THREE.MeshStandardMaterial({ color: 0x88ccee, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+            // ShapeGeometry is in XY plane; rotate so it lies in the XZ (plan) plane at y=avgZ.
+            fillMesh.rotation.x = -Math.PI / 2;
+            fillMesh.position.y = avgZ;
+            group.add(fillMesh);
+
+            mesh = group;
+            scene.add(mesh);
+            return;
+        }
 
         if (matType === 'cables') {
             var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
@@ -1268,6 +1584,8 @@
             btnStop.style.display = 'none'; actionsGroup.style.display = 'flex';
 
             currentVertices = data.data.nodes; currentFaces = data.data.edges;
+            currentTriangles = (data.data.triangles != null && data.data.triangles.length > 0) ? data.data.triangles : null;
+            currentDomainMode = data.data.domain_mode || "rectangular";
             currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
 
@@ -1289,7 +1607,14 @@
             }
 
             var diag = data.data.diagnostics || {};
-            var convText = diag.converged ? `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]` : `[Converged: NO (Iters: ${diag.iterations_run})]`;
+            var convText;
+            if (diag.converged) {
+                convText = `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]`;
+            } else if (diag.settled) {
+                convText = `[Settled: residual plateaued (Iters: ${diag.iterations_run}, Res: ${diag.best_relative_residual})]`;
+            } else {
+                convText = `[Equilibrium not reached (hit iteration cap at ${diag.iterations_run}, best Res: ${diag.best_relative_residual})]`;
+            }
 
             status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
             reRenderMesh();
@@ -1331,9 +1656,33 @@
             Lx: bounds.Lx, Ly: bounds.Ly, Lz: bounds.Lz,
             nx: parseInt(document.getElementById('nx').value),
             ny: (matType === 'cables') ? 1 : parseInt(document.getElementById('ny').value),
+            max_iterations: Math.max(500, parseInt(document.getElementById('max_iterations').value) || 20000),
             point_supports: getPointSupportArrayData(), line_supports: getLineSupportArrayData(),
             loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
         };
+
+        // Domain Mode: irregular polygon defined by ordered perimeter supports,
+        // plus optional internal supports (masts/pins) inside the perimeter.
+        var domainMode = document.getElementById('domain_mode').value;
+        var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
+        payload.domain_mode = isPolygon ? "polygon" : "rectangular";
+
+        if (isPolygon) {
+            payload.perimeter_supports = getPointSupportArrayData();
+            payload.internal_supports = getInternalSupportArrayData();
+            // In polygon mode, point_supports and line_supports are not used
+            // by the worker — strip them to avoid confusion.
+            payload.point_supports = [];
+            payload.line_supports = [];
+
+            // Client-side guard: at least 3 perimeter points required.
+            if (payload.perimeter_supports.length < 3) {
+                document.getElementById('btn-exec').disabled = false;
+                document.getElementById('btn-stop').style.display = 'none';
+                document.getElementById('status').innerText = "Polygon mode requires at least 3 ordered perimeter support points (entered clockwise or anti-clockwise).";
+                return;
+            }
+        }
 
         worker.postMessage({ action: 'form_find', payload: payload });
     }
@@ -1346,6 +1695,7 @@
 
     function clearResults() {
         currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
+        currentTriangles = null; currentDomainMode = "rectangular";
         currentNxActual = null; currentNyActual = null;
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
@@ -1443,14 +1793,23 @@
             colors.push(c.r, c.g, c.b);
         });
 
-        for (var i = 0; i < nx; i++) {
-            for (var j = 0; j < ny; j++) {
-                var row1 = i * (ny + 1);
-                var row2 = (i + 1) * (ny + 1);
+        // If the backend returned explicit triangle connectivity (polygon /
+        // irregular domain mode), use it directly. Otherwise rebuild triangle
+        // indices from the (nx+1)x(ny+1) rectangular grid stride (legacy mode).
+        if (currentTriangles && currentTriangles.length) {
+            currentTriangles.forEach(function(tri) {
+                indices.push(tri[0], tri[1], tri[2]);
+            });
+        } else {
+            for (var i = 0; i < nx; i++) {
+                for (var j = 0; j < ny; j++) {
+                    var row1 = i * (ny + 1);
+                    var row2 = (i + 1) * (ny + 1);
 
-                var a = row1 + j, b = row2 + j, c = row2 + j + 1, d = row1 + j + 1;
-                indices.push(a, b, d);
-                indices.push(b, c, d);
+                    var a = row1 + j, b = row2 + j, c = row2 + j + 1, d = row1 + j + 1;
+                    indices.push(a, b, d);
+                    indices.push(b, c, d);
+                }
             }
         }
 
@@ -1477,13 +1836,41 @@
     }
 
     function exportSTL() {
-        if (!currentVertices.length || !currentFaces.length) {
+        if (!currentVertices.length || (!currentFaces.length && !currentTriangles)) {
             showAppModal("Export Error", "No solved form-found geometry available for STL export.");
             return;
         }
 
         var stl = "solid DBSW_FormFound_Mesh\n";
         var r = 15.0;
+
+        // When the backend returned explicit triangles (polygon / irregular
+        // domain mode), export those facets directly as a watertight surface.
+        if (currentTriangles && currentTriangles.length) {
+            currentTriangles.forEach(function(tri) {
+                var pa = currentVertices[tri[0]];
+                var pb = currentVertices[tri[1]];
+                var pc = currentVertices[tri[2]];
+                var va = new THREE.Vector3(pa[0], pa[1], pa[2]);
+                var vb = new THREE.Vector3(pb[0], pb[1], pb[2]);
+                var vc = new THREE.Vector3(pc[0], pc[1], pc[2]);
+                var norm = new THREE.Vector3().crossVectors(
+                    new THREE.Vector3().subVectors(vb, va),
+                    new THREE.Vector3().subVectors(vc, va)
+                ).normalize();
+                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
+                stl += `      vertex ${va.x} ${va.y} ${va.z}\n      vertex ${vb.x} ${vb.y} ${vb.z}\n      vertex ${vc.x} ${vc.y} ${vc.z}\n    endloop\n  endfacet\n`;
+            });
+            stl += "endsolid DBSW_FormFound_Mesh\n";
+            var blobT = new Blob([stl], { type: 'text/plain' });
+            var linkT = document.createElement('a');
+            linkT.download = 'DBSW_FormFound_Mesh.stl';
+            linkT.href = URL.createObjectURL(blobT);
+            document.body.appendChild(linkT); linkT.click(); document.body.removeChild(linkT);
+            URL.revokeObjectURL(linkT.href);
+            showAppModal("Export Complete", "Surface mesh exported as STL (" + currentTriangles.length + " facets).");
+            return;
+        }
 
         currentFaces.forEach(function(edge) {
             var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
@@ -1525,7 +1912,336 @@
     }
 
     initThree();
+    onDomainModeChange();
     initWasmEngine();
 </script>
-</body>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
 </html>
