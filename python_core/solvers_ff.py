@@ -357,20 +357,32 @@ class UnderwoodDRSolver:
                 self.prestress_weft_N_mm * dx_spacing
             )
 
-        # Origin-aware boundary detection for edge-cable prestress
+        # Boundary detection for perimeter sleeve-cable prestress.
+        # Polygon domains expose their exact declared perimeter edges; the legacy
+        # bounding-box heuristic is retained for rectangular domains.
         if self.edge_cable_prestress_N > 0.0:
-            xmin = getattr(self.domain, "xmin", 0.0)
-            xmax = getattr(self.domain, "xmax", self.domain.Lx)
-            ymin = getattr(self.domain, "ymin", 0.0)
-            ymax = getattr(self.domain, "ymax", self.domain.Ly)
-            tol = 1e-3
-            for i, (u, v) in enumerate(edges):
-                xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
-                xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
-                u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
-                v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
-                if u_bound and v_bound:
-                    prestress_array[i] += self.edge_cable_prestress_N
+            explicit_boundary_edges = getattr(self.domain, "boundary_edges", None)
+            if explicit_boundary_edges is not None and len(explicit_boundary_edges) > 0:
+                boundary_set = {
+                    tuple(sorted((int(edge[0]), int(edge[1]))))
+                    for edge in np.asarray(explicit_boundary_edges, dtype=int)
+                }
+                for i, (u, v) in enumerate(edges):
+                    if tuple(sorted((int(u), int(v)))) in boundary_set:
+                        prestress_array[i] += self.edge_cable_prestress_N
+            else:
+                xmin = getattr(self.domain, "xmin", 0.0)
+                xmax = getattr(self.domain, "xmax", self.domain.Lx)
+                ymin = getattr(self.domain, "ymin", 0.0)
+                ymax = getattr(self.domain, "ymax", self.domain.Ly)
+                tol = 1e-3
+                for i, (u, v) in enumerate(edges):
+                    xu, yu = self.domain.nodes[u, 0], self.domain.nodes[u, 1]
+                    xv, yv = self.domain.nodes[v, 0], self.domain.nodes[v, 1]
+                    u_bound = (xu < xmin + tol or xu > xmax - tol or yu < ymin + tol or yu > ymax - tol)
+                    v_bound = (xv < xmin + tol or xv > xmax - tol or yv < ymin + tol or yv > ymax - tol)
+                    if u_bound and v_bound:
+                        prestress_array[i] += self.edge_cable_prestress_N
 
         unit_vecs_0 = edge_vecs / rest_lengths[:, None]
         f_prestress_vecs = prestress_array[:, None] * unit_vecs_0
