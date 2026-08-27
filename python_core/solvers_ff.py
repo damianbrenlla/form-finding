@@ -243,8 +243,17 @@ class InvertedGravityDRSolver:
         free_mask[list(fixed_nodes)] = False
 
         converged = False
+        settled = False
+        stop_reason = "iteration_cap"
         final_rel_res = 1.0
         iters_run = 0
+
+        # Stall-based stop (see UnderwoodDRSolver for rationale). `converged`
+        # is reserved for residual < rel_tol; a plateau is reported as
+        # `settled` with stop_reason "residual_plateau".
+        best_res = np.inf
+        last_improvement_iter = 0
+        stall_window = max(int(iterations * 0.05), 300)
 
         for it in range(max(iterations, 200)):
             iters_run = it + 1
@@ -266,8 +275,17 @@ class InvertedGravityDRSolver:
 
             max_res = np.max(np.linalg.norm(R_residual, axis=1))
             final_rel_res = max_res / force_denom
+
+            if final_rel_res < best_res * 0.999:
+                best_res = final_rel_res
+                last_improvement_iter = it
             if final_rel_res < rel_tol and it > 50:
                 converged = True
+                stop_reason = "residual_tolerance"
+                break
+            if it > 200 and (it - last_improvement_iter) >= stall_window:
+                settled = True
+                stop_reason = "residual_plateau"
                 break
 
             accel = R_residual / nodal_mass
@@ -296,7 +314,10 @@ class InvertedGravityDRSolver:
             "form_inverted": True,
             "iterations_run": iters_run,
             "converged": converged,
+            "settled": settled,
+            "stop_reason": stop_reason,
             "relative_residual": round(float(final_rel_res), 6),
+            "best_relative_residual": round(float(best_res), 6),
         }
         return nodes, axial_forces, reactions, diagnostics
 
@@ -448,8 +469,22 @@ class UnderwoodDRSolver:
         free_mask[list(fixed_nodes)] = False
 
         converged = False
+        settled = False
+        stop_reason = "iteration_cap"
         final_rel_res = 1.0
         iters_run = 0
+
+        # Stall-based stop: DR residuals oscillate with each kinetic-damping
+        # cycle, so a fixed tolerance may never be met even though the form has
+        # settled. We track the best (minimum) residual seen so far; if it fails
+        # to improve meaningfully over a sliding window the system has
+        # plateaued and we stop early instead of grinding to the cap. This is
+        # NOT the same as tight convergence — `converged` is reserved for the
+        # residual actually dropping below rel_tol; a plateau is reported as
+        # `settled` with stop_reason "residual_plateau".
+        best_res = np.inf
+        last_improvement_iter = 0
+        stall_window = max(int(iterations * 0.05), 300)
 
         for it in range(max(iterations, 200)):
             iters_run = it + 1
@@ -473,8 +508,23 @@ class UnderwoodDRSolver:
 
             max_res = np.max(np.linalg.norm(R_residual, axis=1))
             final_rel_res = max_res / force_denom
+
+            # Track the best residual achieved; only count a meaningful
+            # improvement (>0.1% gain) so numerical noise can't extend a run.
+            if final_rel_res < best_res * 0.999:
+                best_res = final_rel_res
+                last_improvement_iter = it
+
+            # Hard convergence: residual below the requested tolerance.
             if final_rel_res < rel_tol and it > 50:
                 converged = True
+                stop_reason = "residual_tolerance"
+                break
+
+            # Soft (plateau) stop: residual has not improved for a full window.
+            if it > 200 and (it - last_improvement_iter) >= stall_window:
+                settled = True
+                stop_reason = "residual_plateau"
                 break
 
             accel = R_residual / nodal_mass
@@ -497,7 +547,10 @@ class UnderwoodDRSolver:
             "form_inverted": False,
             "iterations_run": iters_run,
             "converged": converged,
+            "settled": settled,
+            "stop_reason": stop_reason,
             "relative_residual": round(float(final_rel_res), 6),
+            "best_relative_residual": round(float(best_res), 6),
         }
         return nodes, axial_forces, reactions, diagnostics
 
