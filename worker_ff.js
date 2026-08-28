@@ -1,6 +1,13 @@
 /**
  * DBSW 3D Form-Finding WebWorker Engine
  * Author: Damian Brenlla / DBSW 2026
+ * v23 — Unified External/Internal point + line supports:
+ *       - Polygon mode applies payload.line_supports (external lines) via
+ *         domain.add_line_support_3d after the Delaunay mesh is built.
+ *       - Internal line supports are sampled client-side into internal_supports
+ *         (points); this worker still accepts them as fixed nodes.
+ *       - Rectangular mode unchanged: point_supports + line_supports.
+ *
  * v22 — Polygon (irregular) domain mode:
  *       External perimeter supports define a simple closed polygon (CW or CCW).
  *       Delaunay triangulation + strict polygon filtering builds the mesh.
@@ -8,27 +15,18 @@
  *       Returns triangles[] for mesh rendering alongside edges[] for solver.
  *       Rectangular mode (domain_mode="rectangular" or absent) is unchanged.
  *
- * v21 — Reports actual solved grid resolution (nx_actual, ny_actual) so the
- *       frontend mesh reconstruction never desyncs from the forced-grid-line
- *       domain (which can silently grow nx/ny beyond the UI's requested values
- *       whenever support coordinates don't fall on the regular grid).
- *       v20 — Origin-aware domain + forced grid lines
- *       + pure 1-D polyline for cables (prevents disconnected ends / floating reactions)
- *       + robust edge-projection load handling (via solvers_ff.py)
+ * v21 — Reports actual solved grid resolution (nx_actual, ny_actual)
+ * v20 — Origin-aware domain + forced grid lines
  */
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 importScripts("./vendor/delaunator.min.js");
-
 let pyodide = null;
-
 function corePythonUrl(filename) {
     return new URL(`./python_core/${filename}`, self.location.href).href;
 }
-
 // ---------------------------------------------------------------------------
 // POLYGON GEOMETRY HELPERS
 // ---------------------------------------------------------------------------
-
 /** Signed area (positive = CCW). */
 function polygonSignedArea(pts) {
     let a = 0;
@@ -38,7 +36,6 @@ function polygonSignedArea(pts) {
     }
     return 0.5 * a;
 }
-
 /** Point-in-polygon via ray casting. */
 function pointInPolygon(px, py, poly) {
     let inside = false;
@@ -51,22 +48,16 @@ function pointInPolygon(px, py, poly) {
     }
     return inside;
 }
-
 /**
  * Is the polygon "simple" (no two edges crossing at interior points)?
- * Adjacent edges share exactly one endpoint (no interior crossing); any pair
- * of non-adjacent edges must not intersect at all. A point-coincident vertex
- * loop (e.g. two consecutive identical supports) is tolerated but degenerates
- * the area check upstream.
  */
 function polygonIsSimple(poly) {
     const n = poly.length;
-    if (n < 4) return true; // triangle can't self-intersect
+    if (n < 4) return true;
     for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
         for (let k = i + 1; k < n; k++) {
             const l = (k + 1) % n;
-            // skip adjacent (sharing a vertex) and identical edges
             if (i === k || i === l || j === k || j === l) continue;
             if (segmentsIntersect(
                     poly[i][0], poly[i][1], poly[j][0], poly[j][1],
@@ -77,7 +68,6 @@ function polygonIsSimple(poly) {
     }
     return true;
 }
-
 /** Segment AB vs segment CD intersection (ignoring shared endpoints). */
 function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
     const dxAB = bx - ax, dyAB = by - ay;
@@ -88,7 +78,6 @@ function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
     const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom;
     return t > 1e-8 && t < 1 - 1e-8 && u > 1e-8 && u < 1 - 1e-8;
 }
-
 /** Shortest distance from point P to segment AB. */
 function distPointToSegment(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
@@ -98,7 +87,6 @@ function distPointToSegment(px, py, ax, ay, bx, by) {
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
-
 /** True if point lies within `tol` of any polygon boundary edge. */
 function pointOnPolygonBoundary(px, py, poly, tol) {
     const n = poly.length;
@@ -108,36 +96,17 @@ function pointOnPolygonBoundary(px, py, poly, tol) {
     }
     return false;
 }
-
 /** Inclusive point-in-polygon: strictly inside OR on the boundary (within tol). */
 function pointInPolygonInclusive(px, py, poly, tol) {
     return pointInPolygon(px, py, poly) || pointOnPolygonBoundary(px, py, poly, tol);
 }
-
 /**
  * Triangle validity check for Delaunay-of-perimeter meshes.
- *
- * Perimeter vertices legitimately sit ON the polygon boundary, so every
- * triangle touching the perimeter has at least one vertex that fails a
- * *strict* inside test -- checking "all 3 vertices strictly inside" would
- * therefore reject every triangle that touches the boundary, i.e. the
- * entire mesh. Instead:
- *   - the CENTROID must be strictly inside the polygon (this is what
- *     actually distinguishes a real interior triangle from a sliver that
- *     pokes outside a concave notch), while
- *   - the 3 vertices and 3 edge midpoints only need to be inside-OR-ON the
- *     boundary (inclusive), and
- *   - no triangle edge may cross a polygon boundary edge at an interior
- *     point (shared endpoints/collinear touches are fine; only a proper
- *     transversal crossing disqualifies the triangle).
  */
 function triangleStrictlyInsidePolygon(ax, ay, bx, by, cx, cy, poly, tol) {
     tol = (tol === undefined) ? 1e-6 : tol;
-    // Centroid must be strictly interior.
     const mx = (ax + bx + cx) / 3, my = (ay + by + cy) / 3;
     if (!pointInPolygon(mx, my, poly)) return false;
-
-    // Vertices and edge midpoints: inclusive (boundary-touching allowed).
     const checks = [
         [ax, ay], [bx, by], [cx, cy],
         [(ax + bx) / 2, (ay + by) / 2],
@@ -147,8 +116,6 @@ function triangleStrictlyInsidePolygon(ax, ay, bx, by, cx, cy, poly, tol) {
     for (const [ex, ey] of checks) {
         if (!pointInPolygonInclusive(ex, ey, poly, tol)) return false;
     }
-
-    // No triangle edge may properly cross a polygon boundary edge.
     const triSegs = [[ax, ay, bx, by], [bx, by, cx, cy], [ax, ay, cx, cy]];
     const n = poly.length;
     for (const [tAx, tAy, tBx, tBy] of triSegs) {
@@ -163,24 +130,19 @@ function triangleStrictlyInsidePolygon(ax, ay, bx, by, cx, cy, poly, tol) {
     }
     return true;
 }
-
 /**
  * Build a Delaunay mesh over the polygon defined by perimeterPts (ordered
  * XY pairs), with holes added for strictly interior refinement grid points
  * and internalSupportPts.
  *
- * Returns { nodes: [[x,y,z],...], edges: [[i,j],...], triangles: [[a,b,c],...],
- *           fixedIndices: Set<int>, dx, dy }.
+ * Returns { nodes, edges, triangles, fixedIndices, xmin, xmax, ymin, ymax, Lx, Ly, dx, dy }.
  */
 function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
-    // Compute bounding box
     const xs = perimeterPts.map(p => p[0]);
     const ys = perimeterPts.map(p => p[1]);
     const xmin = Math.min(...xs), xmax = Math.max(...xs);
     const ymin = Math.min(...ys), ymax = Math.max(...ys);
     const Lx = xmax - xmin, Ly = ymax - ymin;
-
-    // Interior grid refinement points sampled inside the polygon
     const refinePts = [];
     const nxi = Math.max(nx - 1, 1), nyi = Math.max(ny - 1, 1);
     for (let i = 1; i < nxi; i++) {
@@ -192,8 +154,6 @@ function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
             }
         }
     }
-
-    // All point cloud = perimeter vertices + internal supports + refinement
     const allPts = [
         ...perimeterPts.map(p => [p[0], p[1]]),
         ...internalSupportPts.map(p => [p[0], p[1]]),
@@ -201,13 +161,9 @@ function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
     ];
     const nPerim = perimeterPts.length;
     const nInternal = internalSupportPts.length;
-
-    // Flat coords array for Delaunator
     const coords = [];
     for (const p of allPts) { coords.push(p[0], p[1]); }
     const delaunay = new Delaunator(coords);
-
-    // Build triangles with strict polygon filter
     const validTris = [];
     for (let t = 0; t < delaunay.triangles.length; t += 3) {
         const a = delaunay.triangles[t];
@@ -220,8 +176,6 @@ function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
             validTris.push([a, b, c]);
         }
     }
-
-    // Unique edges from triangles
     const edgeSet = new Set();
     const addEdge = (u, v) => {
         const key = u < v ? `${u},${v}` : `${v},${u}`;
@@ -230,27 +184,18 @@ function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
     for (const [a, b, c] of validTris) {
         addEdge(a, b); addEdge(b, c); addEdge(a, c);
     }
-
-    // Also add explicit perimeter edges (ensures support edges are always connected)
     for (let i = 0; i < nPerim; i++) {
         const j = (i + 1) % nPerim;
         addEdge(i, j);
     }
-
     const edges = [...edgeSet].map(k => k.split(',').map(Number));
-
-    // Build node array: Z from support Z values; free nodes get IDW-seeded Z
     const zValues = allPts.map(() => 0.0);
-    // Perimeter supports carry Z
     for (let i = 0; i < nPerim; i++) {
         zValues[i] = perimeterPts[i][2] || 0.0;
     }
-    // Internal supports carry Z
     for (let i = 0; i < nInternal; i++) {
         zValues[nPerim + i] = internalSupportPts[i][2] || 0.0;
     }
-
-    // IDW seed Z for refinement/free nodes from all support points
     const seedPts = [
         ...perimeterPts.map(p => ({ x: p[0], y: p[1], z: p[2] || 0 })),
         ...internalSupportPts.map(p => ({ x: p[0], y: p[1], z: p[2] || 0 }))
@@ -265,23 +210,43 @@ function buildPolygonMesh(perimeterPts, internalSupportPts, nx, ny, Lz) {
         }
         zValues[i] = wSum > 0 ? zSum / wSum : 0;
     }
-
     const nodes = allPts.map((p, i) => [p[0], p[1], zValues[i]]);
-
-    // Fixed indices: all perimeter + all internal supports
     const fixedIndices = new Set();
     for (let i = 0; i < nPerim + nInternal; i++) fixedIndices.add(i);
-
     const dx = Lx / Math.max(nx, 1);
     const dy = Ly / Math.max(ny, 1);
-
     return { nodes, edges, triangles: validTris, fixedIndices, xmin, xmax, ymin, ymax, Lx, Ly, dx, dy };
+}
+
+/**
+ * Sample intermediate points along external line supports so they become
+ * fixed nodes on the polygon mesh (used when add_line_support_3d alone is
+ * not enough because the mesh was built without those coordinates).
+ */
+function sampleLineSupportPoints(lineSupports, spacingMm) {
+    spacingMm = spacingMm || 500;
+    const pts = [];
+    for (const ls of lineSupports) {
+        const x1 = parseFloat(ls.x1) || 0, y1 = parseFloat(ls.y1) || 0, z1 = parseFloat(ls.z1) || 0;
+        const x2 = parseFloat(ls.x2) || 0, y2 = parseFloat(ls.y2) || 0, z2 = parseFloat(ls.z2) || 0;
+        const len = Math.hypot(x2 - x1, y2 - y1, z2 - z1);
+        const n = Math.max(2, Math.round(len / spacingMm));
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            pts.push({
+                x: x1 + t * (x2 - x1),
+                y: y1 + t * (y2 - y1),
+                z: z1 + t * (z2 - z1),
+                dofs: (ls.dofs || "xyz").toLowerCase()
+            });
+        }
+    }
+    return pts;
 }
 
 // ---------------------------------------------------------------------------
 // WORKER INIT
 // ---------------------------------------------------------------------------
-
 async function initEngine() {
     try {
         postMessage({ status: "log", message: "Initialising Pyodide WebAssembly runtime..." });
@@ -313,11 +278,9 @@ if '/home/pyodide' not in sys.path:
         postMessage({ status: "error", message: "Init failed: " + err.toString() });
     }
 }
-
 // ---------------------------------------------------------------------------
 // MAIN MESSAGE HANDLER
 // ---------------------------------------------------------------------------
-
 self.onmessage = async function(e) {
     const { action, payload } = e.data;
     if (action === "init") {
@@ -329,9 +292,7 @@ self.onmessage = async function(e) {
             postMessage({ status: "error", message: "Engine not initialised." });
             return;
         }
-
         const domainMode = payload.domain_mode || "rectangular";
-
         // -----------------------------------------------------------------------
         // POLYGON MODE
         // -----------------------------------------------------------------------
@@ -341,45 +302,49 @@ self.onmessage = async function(e) {
                 const Lz_val  = parseFloat(payload.Lz) || 1000;
                 const nx_req  = parseInt(payload.nx)   || 24;
                 const ny_req  = parseInt(payload.ny)   || 24;
-
                 const perimeterPts  = payload.perimeter_supports  || [];
-                const internalPts   = payload.internal_supports   || [];
+                let internalPts     = payload.internal_supports   || [];
+                const externalLines = payload.line_supports       || [];
+                const internalLines = payload.internal_line_supports || [];
 
                 if (perimeterPts.length < 3) {
                     postMessage({ status: "error", message: "At least 3 perimeter supports are required." });
                     return;
                 }
-
-                // Validate: signed area ≠ 0 (degenerate polygon guard)
                 const area = polygonSignedArea(perimeterPts.map(p => [p.x, p.y]));
                 if (Math.abs(area) < 1.0) {
                     postMessage({ status: "error", message: "Perimeter polygon is degenerate (zero area). Please add more distinct supports." });
                     return;
                 }
-
-                // Validate: perimeter must be a SIMPLE polygon — no self-intersecting
-                // edges (this is the whole point of entering points CW or CCW in
-                // order, to avoid complicated geometries). Check every pair of
-                // non-adjacent edges; shared-endpoint adjacent edges are allowed.
                 const pPts2D = perimeterPts.map(p => [p.x, p.y]);
                 if (!polygonIsSimple(pPts2D)) {
                     postMessage({ status: "error", message: "Perimeter polygon is self-intersecting. Please enter perimeter supports in clockwise or anti-clockwise order (in plan, X-Y) so the outline has no crossing edges." });
                     return;
                 }
 
-                // Build mesh in JS
+                // Merge any residual internal-line samples (frontend usually already expands these)
+                if (internalLines.length > 0) {
+                    const sampled = sampleLineSupportPoints(internalLines, 500);
+                    internalPts = internalPts.concat(sampled);
+                }
+
+                // External line supports: sample endpoints + intermediates into the
+                // internal fixed set so the Delaunay mesh includes those nodes.
+                // They will also be re-applied via add_line_support_3d in Python.
+                if (externalLines.length > 0) {
+                    const sampledExt = sampleLineSupportPoints(externalLines, 500);
+                    internalPts = internalPts.concat(sampledExt);
+                }
+
                 const mesh = buildPolygonMesh(
                     perimeterPts.map(p  => [p.x, p.y, p.z || 0]),
                     internalPts.map(p   => [p.x, p.y, p.z || 0]),
                     nx_req, ny_req, Lz_val
                 );
-
                 if (!mesh.nodes.length || !mesh.edges.length) {
                     postMessage({ status: "error", message: "Polygon mesh generation failed — no valid triangles found inside the perimeter. Check that the perimeter is a valid simple polygon." });
                     return;
                 }
-
-                // Inject mesh into Python + solve
                 const meshJson    = JSON.stringify({
                     nodes:   mesh.nodes,
                     edges:   mesh.edges,
@@ -394,31 +359,28 @@ self.onmessage = async function(e) {
                 });
                 const payloadJson = JSON.stringify(payload);
                 const trianglesJson = JSON.stringify(mesh.triangles);
-
+                const lineSupportsJson = JSON.stringify(externalLines);
                 pyodide.globals.set("mesh_json_str",     meshJson);
                 pyodide.globals.set("payload_json_str",  payloadJson);
                 pyodide.globals.set("triangles_json_str", trianglesJson);
-
+                pyodide.globals.set("line_supports_json_str", lineSupportsJson);
                 const resultJson = await pyodide.runPythonAsync(`
 import json, numpy as np
 from core.domain_ff import FormFindingDomain3D
 from core.materials import FormFindingMaterialRegistry
 from core.solvers_ff import FormFindingSolverFactory
-
 mesh_data    = json.loads(mesh_json_str)
 payload      = json.loads(payload_json_str)
 triangles_in = json.loads(triangles_json_str)
-
+line_supports_in = json.loads(line_supports_json_str)
 # Resolve material
 mat_type = str(payload.get("material_type") or "membrane").lower()
 if "cable" in mat_type or "rope" in mat_type:
     mat_type = "cables"
 elif "fabric" in mat_type or "ptfe" in mat_type or "membrane" in mat_type:
     mat_type = "membrane"
-
 payload["material_type"] = mat_type
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
-
 # Build pre-wired domain (build_topology=False)
 domain = FormFindingDomain3D(
     xmin=mesh_data["xmin"], xmax=mesh_data["xmax"],
@@ -437,16 +399,19 @@ domain.Lx = mesh_data["Lx"]; domain.Ly = mesh_data["Ly"]
 domain.xmin = mesh_data["xmin"]; domain.xmax = mesh_data["xmax"]
 domain.ymin = mesh_data["ymin"]; domain.ymax = mesh_data["ymax"]
 domain.dx = mesh_data["dx"]; domain.dy = mesh_data["dy"]
-
+# Apply external line supports as continuous 3D restraints (snaps nearby mesh nodes)
+for ls in line_supports_in:
+    p1 = (float(ls.get("x1", 0)), float(ls.get("y1", 0)), float(ls.get("z1", 0)))
+    p2 = (float(ls.get("x2", 0)), float(ls.get("y2", 0)), float(ls.get("z2", 0)))
+    if hasattr(domain, "add_line_support_3d"):
+        domain.add_line_support_3d(p1, p2)
 # Prestress
 prestress_warp_N_mm = float(payload.get("prestress_warp_kn_m", 2.0))
 prestress_weft_N_mm = float(payload.get("prestress_weft_kn_m", 2.0))
 edge_cable_prestress_N = float(payload.get("edge_cable_prestress_kn", 20.0)) * 1000.0
 t_mm = max(float(payload.get("sec_fabric_t", 1.2)), 0.1)
 area_mm2 = t_mm * 1000.0
-
 gamma = mat_props.get("gamma_kn_m3", 25.0) if bool(payload.get("include_self_weight", True)) else 0.0
-
 solver = FormFindingSolverFactory.create(
     material_type          = mat_type,
     domain                 = domain,
@@ -459,11 +424,9 @@ solver = FormFindingSolverFactory.create(
     edge_cable_prestress_N = edge_cable_prestress_N,
     point_loads            = payload.get("loads", [])
 )
-
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations=int(payload.get("max_iterations", 20000)), rel_tol=1e-4
 )
-
 displacement_vecs  = equilibrium_nodes - np.copy(domain.nodes).astype(float)
 deflections_mm     = np.linalg.norm(displacement_vecs, axis=1)
 u_max              = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
@@ -477,7 +440,6 @@ for i, (u, v) in enumerate(domain.edges):
     node_degree[u] += 1.0; node_degree[v] += 1.0
 node_degree = np.maximum(node_degree, 1.0)
 nodal_stresses /= node_degree
-
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
@@ -488,7 +450,6 @@ for idx in fixed_indices:
         "Rx_kN": round(rx/1000, 3), "Ry_kN": round(ry/1000, 3), "Rz_kN": round(rz/1000, 3),
         "R_total_kN": round(float(np.linalg.norm([rx,ry,rz]))/1000, 3)
     })
-
 json.dumps({
     "nodes":          [[float(v) for v in row] for row in equilibrium_nodes.tolist()],
     "edges":          [[int(v)   for v in row] for row in domain.edges.tolist()],
@@ -516,7 +477,6 @@ json.dumps({
             }
             return;
         }
-
         // -----------------------------------------------------------------------
         // RECTANGULAR MODE (legacy — unchanged)
         // -----------------------------------------------------------------------
@@ -528,9 +488,7 @@ import numpy as np
 from core.domain_ff import FormFindingDomain3D
 from core.materials import FormFindingMaterialRegistry
 from core.solvers_ff import FormFindingSolverFactory
-
 payload = json.loads(payload_json)
-
 # Fallback Material Type Resolution
 mat_type = str(payload.get("material_type") or payload.get("material_grade") or "cables").lower()
 if "cable" in mat_type or "rope" in mat_type or "strand" in mat_type:
@@ -543,17 +501,14 @@ elif "timber" in mat_type or "gl" in mat_type or "c24" in mat_type:
     payload["material_type"] = "timber"
 elif "masonry" in mat_type or "mortar" in mat_type or "brick" in mat_type:
     payload["material_type"] = "masonry"
-
 mat_props = FormFindingMaterialRegistry.resolve_properties(payload)
 mat_type  = mat_props.get("material_type", "cables")
-
 Lx_val = float(payload.get("Lx", 6000))
 Ly_val = float(payload.get("Ly", 3000))
 Lz_val = float(payload.get("Lz", 1000))
 point_sups = payload.get("point_supports", [])
 line_sups  = payload.get("line_supports", [])
 sup_preset = payload.get("support_preset", "")
-
 # --- CRITICAL FIX: compute the TRUE bounding box from every declared support ---
 xs = [0.0, Lx_val]
 ys = [0.0, Ly_val]
@@ -567,7 +522,6 @@ for l_sup in line_sups:
     ys.append(float(l_sup.get("y2", 0)))
 xmin_val, xmax_val = min(xs), max(xs)
 ymin_val, ymax_val = min(ys), max(ys)
-
 forced_x = [float(pt.get("x", 0)) for pt in point_sups]
 forced_y = [float(pt.get("y", 0)) for pt in point_sups]
 for l_sup in line_sups:
@@ -575,11 +529,9 @@ for l_sup in line_sups:
     forced_x.append(float(l_sup.get("x2", 0)))
     forced_y.append(float(l_sup.get("y1", 0)))
     forced_y.append(float(l_sup.get("y2", 0)))
-
 _ny = int(payload.get("ny", 12))
 if mat_type in ("cables", "cable"):
     _ny = 1
-
 domain = FormFindingDomain3D(
     xmin=xmin_val,
     xmax=xmax_val,
@@ -593,7 +545,6 @@ domain = FormFindingDomain3D(
     geometry_preset="surface_grid",
     material_type=mat_type
 )
-
 # ------------------------------------------------------------------
 # CABLE SPECIAL CASE – force a pure 1-D polyline between the two
 # supports.  This completely overrides the surface_grid so that
@@ -609,20 +560,16 @@ if mat_type in ("cables", "cable") and len(point_sups) >= 2:
     else:
         if float(pA.get("y",0)) > float(pB.get("y",0)):
             pA, pB = pB, pA
-
     x1, y1, z1 = float(pA.get("x",0)), float(pA.get("y",0)), float(pA.get("z",0))
     x2, y2, z2 = float(pB.get("x",0)), float(pB.get("y",0)), float(pB.get("z",0))
     nx = max(int(payload.get("nx", 36)), 2)
-
     nodes = np.zeros((nx + 1, 3), dtype=float)
     for i in range(nx + 1):
         t = i / nx
         nodes[i, 0] = x1 + t * (x2 - x1)
         nodes[i, 1] = y1 + t * (y2 - y1)
         nodes[i, 2] = z1 + t * (z2 - z1)
-
     edges = np.array([[i, i + 1] for i in range(nx)], dtype=int)
-
     # overwrite domain geometry
     domain.nodes = nodes
     domain.edges = edges
@@ -632,7 +579,6 @@ if mat_type in ("cables", "cable") and len(point_sups) >= 2:
     # keep xmin/xmax etc. for any downstream code that reads them
     domain.xmin, domain.xmax = min(x1, x2), max(x1, x2)
     domain.ymin, domain.ymax = min(y1, y2), max(y1, y2)
-
 # Discrete Point Supports (only needed for non-cable cases now)
 seed_z_map = {}
 if mat_type not in ("cables", "cable"):
@@ -640,7 +586,6 @@ if mat_type not in ("cables", "cable"):
         px, py, pz = float(pt.get("x", 0)), float(pt.get("y", 0)), float(pt.get("z", 0))
         domain.add_point_support(px, py, pz)
         seed_z_map[(px, py)] = pz
-
     for l_sup in line_sups:
         p1 = (float(l_sup.get("x1", 0)), float(l_sup.get("y1", 0)), float(l_sup.get("z1", 0)))
         p2 = (float(l_sup.get("x2", 0)), float(l_sup.get("y2", 0)), float(l_sup.get("z2", 0)))
@@ -650,7 +595,6 @@ if mat_type not in ("cables", "cable"):
             seed_z_map[(p1[0], p1[1])] = p1[2]
         if (p2[0], p2[1]) not in seed_z_map:
             seed_z_map[(p2[0], p2[1])] = p2[2]
-
     # Fallback presets
     if len(domain.fixed_nodes) == 0 or sup_preset == "four_corners":
         domain.add_point_support(domain.xmin, domain.ymin, 0.0)
@@ -661,20 +605,16 @@ if mat_type not in ("cables", "cable"):
         if hasattr(domain, 'add_line_support_3d'):
             domain.add_line_support_3d((domain.xmin, domain.ymin, 0.0), (domain.xmin, domain.ymax, 0.0))
             domain.add_line_support_3d((domain.xmax, domain.ymin, 0.0), (domain.xmax, domain.ymax, 0.0))
-
 if len(domain.fixed_nodes) == 0:
     raise ValueError("No support nodes resolved. Add at least one point or line support.")
-
 # Seed interior elevations (skip for cables – already done by the polyline)
 if hasattr(domain, 'apply_idw_surface_interpolation') and mat_type not in ("cables", "cable"):
     domain.apply_idw_surface_interpolation(seed_z_map)
-
 # Material Cross-Section Area & Prestress Parsing
 prestress_warp_N_mm = 0.0
 prestress_weft_N_mm = 0.0
 edge_cable_prestress_N = 0.0
 prestress_N = 0.0
-
 if mat_type in ("cables", "cable"):
     d_mm     = max(float(payload.get("sec_cable_d", 24.0)), 1.0)
     area_mm2 = np.pi * (d_mm / 2.0) ** 2
@@ -696,10 +636,8 @@ else:
     b_mm     = max(float(payload.get("sec_b", 300.0)), 1.0)
     h_mm     = max(float(payload.get("sec_h", 300.0)), 1.0)
     area_mm2 = b_mm * h_mm
-
 include_sw = bool(payload.get("include_self_weight", True))
 gamma      = mat_props.get("gamma_kn_m3", 25.0) if include_sw else 0.0
-
 solver = FormFindingSolverFactory.create(
     material_type          = mat_type,
     domain                 = domain,
@@ -712,16 +650,13 @@ solver = FormFindingSolverFactory.create(
     edge_cable_prestress_N = edge_cable_prestress_N,
     point_loads            = payload.get("loads", [])
 )
-
 equilibrium_nodes, axial_forces, reactions, diagnostics = solver.solve_equilibrium(
     iterations = int(payload.get("max_iterations", 20000)),
     rel_tol    = 1e-4
 )
-
 displacement_vecs = equilibrium_nodes - np.copy(domain.nodes).astype(float)
 deflections_mm = np.linalg.norm(displacement_vecs, axis=1)
 u_max = float(np.max(deflections_mm)) if len(deflections_mm) > 0 else 0.0
-
 element_stresses_mpa = axial_forces / max(area_mm2, 1e-4)
 num_nodes = len(equilibrium_nodes)
 nodal_stresses_mpa = np.zeros(num_nodes, dtype=float)
@@ -734,10 +669,8 @@ for i, (u, v) in enumerate(domain.edges):
     node_degree[v] += 1.0
 node_degree = np.maximum(node_degree, 1.0)
 nodal_stresses_mpa /= node_degree
-
 sigma_max_tens = float(np.max(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
 sigma_max_comp = float(np.min(nodal_stresses_mpa)) if len(nodal_stresses_mpa) > 0 else 0.0
-
 fixed_indices = sorted(list(domain.fixed_nodes))
 reaction_data = []
 for idx in fixed_indices:
@@ -752,11 +685,9 @@ for idx in fixed_indices:
         "Rz_kN":      round(rz / 1000.0, 3),
         "R_total_kN": round(R_total / 1000.0, 3),
     })
-
 # --- CRITICAL FIX: report the ACTUAL solved grid resolution -----------------
 nx_actual_val = int(getattr(domain, "nx", payload.get("nx", 36)))
 ny_actual_val = int(getattr(domain, "ny", payload.get("ny", 12)))
-
 json.dumps({
     "nodes":          [[float(v) for v in row] for row in equilibrium_nodes.tolist()],
     "edges":          [[int(v)   for v in row] for row in np.asarray(domain.edges, dtype=int).tolist()],
