@@ -1425,32 +1425,9 @@
         var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
 
         if (isPolygon && pointSups.length >= 3) {
-            // Preview: flat outline of the perimeter at z = average support Z,
-            // plus a faint triangulated fill so the user sees the domain shape.
-            var avgZ = pointSups.reduce(function(s, p) { return s + (p.z || 0); }, 0) / pointSups.length;
-            var pts3D = pointSups.map(function(p) { return new THREE.Vector3(p.x, avgZ, p.y); });
-            pts3D.push(pts3D[0].clone());
-
-            var lineGeo = new THREE.BufferGeometry().setFromPoints(pts3D);
-            var outline = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 }));
-
-            var group = new THREE.Group();
-            group.add(outline);
-
-            // Faint filled surface via a shape (2D, lifted to avgZ).
-            var shape = new THREE.Shape();
-            shape.moveTo(pointSups[0].x, pointSups[0].y);
-            for (var k = 1; k < pointSups.length; k++) shape.lineTo(pointSups[k].x, pointSups[k].y);
-            shape.closePath();
-            var fillGeo = new THREE.ShapeGeometry(shape);
-            var fillMesh = new THREE.Mesh(fillGeo, new THREE.MeshStandardMaterial({ color: 0x88ccee, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-            // ShapeGeometry is in XY plane; rotate so it lies in the XZ (plan) plane at y=avgZ.
-            fillMesh.rotation.x = -Math.PI / 2;
-            fillMesh.position.y = avgZ;
-            group.add(fillMesh);
-
-            mesh = group;
-            scene.add(mesh);
+            // Polygon domain: no flat constant-Z outline and no blue hatch fill.
+            // The green 3D perimeter line is already drawn in updateDomainVisuals()
+            // at the actual support elevations — that is the only pre-solve preview needed.
             return;
         }
 
