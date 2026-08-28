@@ -5,19 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <!-- 1. SEO Primary Metadata -->
-    <title>3D Form Finding Engine | WebAssembly FEA — DBSW</title>
-    <meta name="description" content="Browser-native 3D structural form finding engine powered by Python and WebAssembly. Features specialized cable and membrane material logic.">
-    <meta name="keywords" content="Structural Form Finding, Cable Net Form Finding, Tensile Membrane, WebAssembly Finite Element Analysis, Structural Engineering, DBSW Engineering">
+    <title>3D SIMP Topology Optimisation Engine | WebAssembly FEA — DBSW</title>
+    <meta name="description" content="Browser-native 3D SIMP structural topology optimisation engine powered by Python and WebAssembly. Features Eurocode 2/3/5/6 material logic, non-linear continuum mechanics, and interactive 3D section cut-planes.">
+    <meta name="keywords" content="Structural Topology Optimisation, 3D SIMP FEA, WebAssembly Finite Element Analysis, Eurocode Structural Engineering, Low Carbon Structural Design, Strut and Tie Model Generator, DBSW Engineering">
     <meta name="author" content="Damian Brenlla / DBSW">
     <link rel="canonical" href="https://topology.dbsw.uk/" />
 
     <!-- 2. Open Graph / Social Audit Metadata -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="DBSW Engineering">
-    <meta property="og:title" content="DBSW 3D Form Finding Engine — Client-Side WASM FEA">
-    <meta property="og:description" content="Interactive first-principles 3D form finding running entirely in the browser via Pyodide/Wasm. Eurocode compliant design exploration.">
+    <meta property="og:title" content="DBSW 3D Topology Engine — Client-Side WASM FEA">
+    <meta property="og:description" content="Interactive first-principles 3D continuum mechanics & topology optimisation running entirely in the browser via Pyodide/Wasm. Eurocode compliant design exploration.">
     <meta property="og:url" content="https://topology.dbsw.uk/">
     <meta property="og:image" content="https://topology.dbsw.uk/assets/og-preview.jpg">
+
+    <!-- 3. Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "DBSW 3D SIMP Topology Engine",
+      "operatingSystem": "WebBrowser",
+      "applicationCategory": "EngineeringApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "GBP"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Damian Brenlla",
+        "url": "https://dbsw.uk"
+      },
+      "description": "Client-side WebAssembly solver for 3D structural SIMP topology optimisation, compliance minimisation, and Eurocode stress recovery."
+    }
+    </script>
 
     <style>
         * { box-sizing: border-box; }
@@ -29,18 +51,29 @@
             -webkit-font-smoothing: antialiased;
         }
         
+        /* DBSW Custom Minimalist Scrollbar Palette */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #ffffff; border-left: 1px solid #e5e5e5; }
         #sidebar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
         #sidebar::-webkit-scrollbar-thumb:hover { background: #333333; }
+        #sidebar::-webkit-scrollbar-button:single-button {
+            background-color: #ffffff; display: block; border-style: solid; height: 10px; width: 6px;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:decrement {
+            border-width: 0 3px 5px 3px; border-color: transparent transparent #000000 transparent;
+        }
+        #sidebar::-webkit-scrollbar-button:single-button:vertical:increment {
+            border-width: 5px 3px 0 3px; border-color: #000000 transparent transparent transparent;
+        }
 
         #sidebar {
             width: 420px; background: #ffffff; padding: 24px;
             border-right: 1px solid #e5e5e5; display: flex;
-            flex-direction: column; gap: 14px; overflow-y: auto; z-index: 10;
+            flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
         #viewport { flex: 1; position: relative; background: #ffffff; }
         
+        /* Brand Image Logo Styling */
         .brand-logo-img {
             height: 18px;
             width: auto;
@@ -52,7 +85,7 @@
         }
 
         .subtitle { font-size: 0.72rem; color: #666666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
-        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        .control-group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 0.75rem; color: #444444; font-weight: 500; letter-spacing: 0.2px; }
         input, select {
             background: #ffffff; border: 1px solid #cccccc; color: #000000;
@@ -71,10 +104,14 @@
             background: #555555; cursor: pointer; border-radius: 0px; transition: background 0.15s ease;
         }
         input[type="range"]::-webkit-slider-thumb:hover { background: #000000; }
+        input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; background: #555555; cursor: pointer; border-radius: 0px; border: none;
+        }
 
         .btn-primary {
             background: #000000; color: #ffffff; border: 1px solid #000000;
-            padding: 12px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            padding: 12px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px;
             text-transform: uppercase; cursor: pointer; transition: background 0.15s ease; margin-top: 4px;
         }
@@ -82,48 +119,43 @@
         .btn-primary:disabled { background: #999999; border-color: #999999; cursor: not-allowed; }
         .btn-stop {
             background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
-            padding: 10px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            padding: 10px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 0.80rem; font-weight: 700; letter-spacing: 0.5px;
-            text-transform: uppercase; cursor: pointer; display: none; margin-top: 4px;
+            text-transform: uppercase; cursor: pointer; transition: all 0.15s ease; display: none; margin-top: 4px;
         }
+        .btn-stop:hover { background: #cc0000; color: #ffffff; }
         .btn-secondary {
             background: #ffffff; color: #000000; border: 1px solid #000000;
-            padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            padding: 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
-            text-transform: uppercase; cursor: pointer;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
+        .btn-secondary:hover { background: #f5f5f5; }
+        .btn-secondary:disabled { color: #999999; border-color: #cccccc; cursor: not-allowed; }
         .btn-secondary-danger {
             background: #ffffff; color: #cc0000; border: 1px solid #cc0000;
-            padding: 8px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            padding: 8px; border-radius: 0px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
-            text-transform: uppercase; cursor: pointer;
+            text-transform: uppercase; cursor: pointer; transition: background 0.15s ease;
         }
+        .btn-secondary-danger:hover { background: #cc0000; color: #ffffff; }
         .load-header-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
         .load-header-row .btn-group { display: flex; gap: 6px; }
         #status { font-size: 0.78rem; color: #000000; font-weight: 500; word-break: break-word; padding: 8px; background: #f9f9f9; border-left: 2px solid #000000; white-space: pre-line; }
-        
-        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 8px 0 4px 0; }
-        .section-header { 
-            font-size: 0.78rem; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-            color: #000000; 
-            margin-top: 4px;
-            margin-bottom: 4px;
-        }
-        
+        hr { border: 0; border-top: 1px solid #e5e5e5; margin: 2px 0; }
+        .section-header { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #000000; }
         .checkbox-group { display: flex; gap: 12px; align-items: center; font-size: 0.78rem; }
         .checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-        input[type="checkbox"] { accent-color: #000000; cursor: pointer; }
+        input[type="checkbox"] { accent-color: #000000; }
         
+        /* Compact Data Tables */
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
         .data-table th { text-align: left; background: #f5f5f5; padding: 4px 6px; border: 1px solid #e5e5e5; font-weight: 600; }
         .data-table td { padding: 2px; border: 1px solid #e5e5e5; }
-        .data-table input { 
-            width: 100%; border: none; padding: 4px; font-size: 0.72rem; 
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; min-width: 0; 
-        }
+        .data-table input { width: 100%; border: none; padding: 4px; font-size: 0.72rem; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; min-width: 0; }
         .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
 
         #legend {
@@ -140,225 +172,200 @@
             background: linear-gradient(to top, hsl(240, 85%, 45%), hsl(180, 85%, 45%), hsl(120, 85%, 45%), hsl(60, 85%, 45%), hsl(0, 85%, 45%));
             border: 1px solid #999999;
         }
-        .legend-labels { 
-            display: flex; flex-direction: column; justify-content: space-between; height: 130px; 
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.70rem; color: #333333; 
-        }
+        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; height: 130px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 0.70rem; color: #333333; }
 
-        #reaction-tooltip {
-            position: absolute;
-            display: none;
-            pointer-events: none;
-            background: #ffffff;
-            color: #000000;
-            padding: 10px 12px;
-            border-radius: 0px;
-            font-size: 0.72rem;
-            line-height: 1.45;
-            z-index: 1000;
-            box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.15);
-            border: 1px solid #000000;
-            min-width: 150px;
-        }
-        #reaction-tooltip .tt-title {
-            font-weight: 700;
-            color: #000000;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            font-size: 0.68rem;
-            margin-bottom: 6px;
-            border-bottom: 1px solid #e5e5e5;
-            padding-bottom: 4px;
-        }
-
-        #intro-overlay, #app-modal-overlay {
+        #intro-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.55);
             display: flex; align-items: center; justify-content: center;
             z-index: 1000;
         }
-        #intro-modal, #app-modal {
+        #intro-modal {
             background: #ffffff; border: 1px solid #000000;
-            max-width: 480px; width: 90%; padding: 28px 28px 22px 28px;
+            max-width: 460px; width: 90%; padding: 28px 28px 22px 28px;
             box-shadow: 0px 8px 24px rgba(0,0,0,0.25);
         }
-        #intro-modal .subtitle, #app-modal .subtitle { margin-bottom: 16px; }
-        #intro-modal p, #app-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
+        #intro-modal .subtitle { margin-bottom: 16px; }
+        #intro-modal p { font-size: 0.82rem; line-height: 1.5; color: #222222; margin: 0 0 14px 0; }
         #intro-modal ul { margin: 0 0 16px 0; padding-left: 18px; }
-        #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 4px; }
+        #intro-modal li { font-size: 0.78rem; line-height: 1.55; color: #333333; margin-bottom: 3px; }
         #intro-modal .author-line {
             font-size: 0.72rem; color: #666666; letter-spacing: 0.3px;
             border-top: 1px solid #e5e5e5; padding-top: 12px; margin-bottom: 16px;
         }
         #intro-modal .author-line a { color: #000000; }
-
-        .span-builder-card {
-            background: #f9f9f9;
-            padding: 10px;
-            border: 1px solid #e5e5e5;
-            margin-bottom: 6px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .span-builder-fields {
-            display: flex;
-            gap: 8px;
-            width: 100%;
-        }
-        .span-builder-fields .control-subgroup {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            min-width: 0;
-        }
-        .span-builder-fields label {
-            font-size: 0.65rem;
-            color: #555555;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .span-builder-fields input {
-            width: 100%;
-            height: 28px;
-            padding: 4px 6px;
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
-<!-- Startup Intro Modal -->
 <div id="intro-overlay">
     <div id="intro-modal">
+        <!-- Logo Graphic Image -->
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
-        <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
+        <div class="subtitle">3D SIMP Topology Engine — Client-Side WASM</div>
 
         <p>
-            This tool generates 3D structural form-found geometries solved entirely
-            in your browser via WebAssembly — no data leaves your machine. Algorithm strategy
-            and morphological behavior adapt dynamically based on your chosen structural material.
+            This tool generates 3D structural topology-optimised geometry using the
+            SIMP (Solid Isotropic Material with Penalisation) method, solved entirely
+            in your browser via WebAssembly — no data leaves your machine.
         </p>
 
         <ul>
-            <li>Structural forms (Cables, Membranes)</li>
-            <li>Material-driven solver factory incorporating Force Density Method (FDM) and Dynamic Relaxation</li>
-            <li>Boundary restraints defined exclusively via discrete spatial point nodes and 3D vector line supports</li>
-            <li>Biaxial orthotropic prestress line tensions (kN/m) and boundary sleeve cable definitions for membrane elements</li>
-            <li>Optional self-weight inclusion and configurable external point load arrays</li>
-            <li>Real-time stress/displacement maps with numerical reaction vectors and interactive 3D section cut-planes</li>
-            <li>Direct .STL export of solved 3D network geometry</li>
+            <li>Six material classes (steel, concrete, timber, masonry, stone, custom isotropic)</li>
+            <li>Configurable domain geometry, FE mesh, supports and point/patch loads</li>
+            <li>Void keep-out and forced-solid passive regions to constrain the optimiser directly</li>
+            <li>Optional self-weight (dead load) inclusion</li>
+            <li>Stress (tension/compression) and displacement map visualisation with interactive section cut-planes</li>
+            <li>Direct .STL export of the optimised geometry</li>
         </ul>
 
         <p style="font-size: 0.72rem; color: #888888; margin-bottom: 0;">
-            This is a concept-stage design exploration tool, not a substitute for code-compliant structural verification of the final geometry.
+            This is a concept-stage design exploration tool, not a substitute for
+            code-compliant structural verification of the final geometry.
         </p>
 
         <div class="author-line" style="margin-top: 14px;">
             Author: Damian Brenlla — <a href="https://dbsw.uk" target="_blank" rel="noopener">dbsw.uk</a>
         </div>
 
-        <button class="btn-primary" style="margin-top: 0; width: 100%;" onclick="document.getElementById('intro-overlay').style.display='none';">
+        <button class="btn-primary" style="margin-top: 0;" onclick="document.getElementById('intro-overlay').style.display='none';">
             Enter Application
         </button>
     </div>
 </div>
 
-<!-- Custom Minimalist General Alert Modal -->
-<div id="app-modal-overlay" style="display: none;">
-    <div id="app-modal">
-        <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
-        <div class="subtitle" id="app_modal_subtitle">Notification</div>
-        <p id="app_modal_text">Notification message text goes here.</p>
-        <button class="btn-primary" style="margin-top: 8px; width: 100%;" onclick="closeAppModal()">Acknowledge</button>
-    </div>
-</div>
-
 <div id="sidebar">
     <div>
+        <!-- Logo Graphic Image -->
         <img src="assets/Logo.jpg" alt="DBSW Engineering" class="brand-logo-img">
-        <div class="subtitle">3D Form Finding Engine — Client-Side WASM</div>
+        <div class="subtitle">3D SIMP Topology Engine — Client-Side WASM</div>
     </div>
 
     <div class="control-group">
-        <label>Structural Form</label>
-        <select id="mat_type" onchange="onMaterialChange()">
-            <option value="cables">Cables</option>
-            <option value="membrane" selected>Membranes</option>
+        <label>Structural Material Classification</label>
+        <select id="mat_type" onchange="updateMaterialUI()">
+            <option value="concrete" selected>Reinforced Concrete — BS EN 1992-1-1 (EC2)</option>
+            <option value="steel">Structural Steel — BS EN 1993-1-1 (EC3)</option>
+            <option value="timber">Timber / Glulam — BS EN 1995-1-1 (EC5)</option>
+            <option value="masonry">Structural Masonry — BS EN 1996-1-1 (EC6)</option>
+            <option value="stone">Natural Stone Masonry — BS EN 1996-1-1 (EC6)</option>
+            <option value="generic">Custom / Generic Isotropic Material</option>
         </select>
     </div>
 
     <div id="mat_standard_div" class="control-group">
-        <label>Material Specification / Grade</label>
-        <select id="mat_grade" onchange="onGradeChange()"></select>
+        <label>Standard Material Grade</label>
+        <select id="mat_grade"></select>
     </div>
 
-    <!-- Custom Isotropic Properties Builder Card -->
-    <div id="mat_generic_div" class="span-builder-card" style="display: none;">
-        <label style="font-weight: 700; color: #000000; margin: 0;">Custom Isotropic Material Definition</label>
-        <div class="span-builder-fields">
-            <div class="control-subgroup"><label>Modulus E (MPa)</label><input type="number" id="custom_E" value="33000"></div>
-            <div class="control-subgroup"><label>Poisson's ν</label><input type="number" step="0.01" id="custom_nu" value="0.20"></div>
+    <div id="mat_masonry_div" style="display: none; flex-direction: column; gap: 6px;">
+        <div class="control-group">
+            <label>Masonry Unit / Stone Characteristic Strength (fb)</label>
+            <select id="masonry_unit_select" onchange="syncCustomFb()"></select>
+            <input type="number" id="masonry_unit_fb" value="20" placeholder="Custom fb (MPa)" style="margin-top:2px;">
         </div>
-        <div class="span-builder-fields">
-            <div class="control-subgroup"><label>Yield Strength fk (MPa)</label><input type="number" id="custom_fk" value="30"></div>
-            <div class="control-subgroup"><label>Density γ (kN/m³)</label><input type="number" step="0.1" id="custom_gamma" value="25.0"></div>
+        <div class="control-group">
+            <label>Mortar Strength Class (fm)</label>
+            <select id="mortar_select" onchange="syncCustomFm()"></select>
+            <input type="number" id="mortar_fm" value="6" placeholder="Custom fm (MPa)" style="margin-top:2px;">
         </div>
     </div>
 
-    <!-- Dynamic Section Geometry Inputs -->
-    <div id="sec_cable_div" class="control-group" style="display: none;">
-        <label>Cable Diameter d (mm)</label>
-        <input type="number" id="sec_cable_d" value="24.0">
+    <div id="mat_stone_extra_div" class="control-group" style="display: none;">
+        <label>Natural Stone Modulus of Elasticity E (MPa)</label>
+        <input type="number" id="stone_E" value="35000">
     </div>
 
-    <div id="sec_fabric_div" class="control-group">
-        <label>Membrane Thickness t (mm)</label>
-        <input type="number" id="sec_fabric_t" value="1.2" step="0.1">
+    <div id="mat_generic_div" style="display: none; flex-direction: column; gap: 6px;">
+        <div class="control-group">
+            <label>Young's Modulus E (MPa)</label>
+            <input type="number" id="custom_E" value="33000">
+        </div>
+        <div class="control-group">
+            <label>Poisson's Ratio ν</label>
+            <input type="number" step="0.01" id="custom_nu" value="0.20">
+        </div>
+        <div class="control-group">
+            <label>Characteristic Design Yield Strength fk (MPa)</label>
+            <input type="number" id="custom_fk" value="30">
+        </div>
+        <div class="control-group">
+            <label>Unit Weight γ (kN/m³) — 0 disables self-weight</label>
+            <input type="number" step="0.1" id="custom_gamma" value="25.0">
+        </div>
     </div>
 
     <div class="control-group">
-        <label id="mesh_div_label">FE Mesh Divisions nx, ny</label>
+        <label>Domain Geometry Lx, Ly, Lz (mm)</label>
         <div style="display: flex; gap: 6px;">
-            <input type="number" id="nx" value="36" style="width: 50%;" onchange="updateDomainVisuals();">
-            <div id="ny_input_container" style="width: 50%;">
-                <input type="number" id="ny" value="12" style="width: 100%;" onchange="updateDomainVisuals();">
-            </div>
+            <input type="number" id="Lx" value="6000" min="1" style="width: 33%;" onchange="validatePositiveInputs(); updateDomainVisuals(); setupCutPlaneSliders();">
+            <input type="number" id="Ly" value="300" min="1" style="width: 33%;" onchange="validatePositiveInputs(); updateDomainVisuals(); setupCutPlaneSliders();">
+            <input type="number" id="Lz" value="600" min="1" style="width: 33%;" onchange="validatePositiveInputs(); updateDomainVisuals(); setupCutPlaneSliders();">
         </div>
     </div>
 
     <div class="control-group">
-        <label id="max_iter_label" style="font-size: 0.7rem;">Max DR Iterations (equilibrium cap)</label>
-        <input type="number" id="max_iterations" value="20000" min="500" step="500" style="width: 100%;">
+        <label>FE Mesh Divisions nx, ny, nz</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" id="nx" value="36" min="1" style="width: 33%;" onchange="validatePositiveInputs();">
+            <input type="number" id="ny" value="9" min="1" style="width: 33%;" onchange="validatePositiveInputs();">
+            <input type="number" id="nz" value="12" min="1" style="width: 33%;" onchange="validatePositiveInputs();">
+        </div>
     </div>
 
     <hr>
     <div class="section-header">Boundary Restraints</div>
 
-    <!-- Domain Mode: Rectangular vs Polygon (membranes only) -->
-    <div id="domain_mode_container" class="control-group">
-        <label id="domain_mode_label">Domain Mode</label>
-        <select id="domain_mode" onchange="onDomainModeChange()">
-            <option value="rectangular">Rectangular Bounding Box</option>
-            <option value="polygon">Irregular Perimeter (Polygon)</option>
-        </select>
-        <button class="btn-secondary" style="margin-top: 4px; padding: 2px 6px; font-size: 0.68rem; width: 100%;" onclick="loadExampleForCurrentMode()">Load Example Shape for This Mode</button>
-    </div>
-
-    <!-- Polygon Helper Hint -->
-    <div id="polygon_hint" class="control-group" style="display: none;">
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
-            Perimeter supports below (table above) define the boundary.<br>
-            Enter them sequentially clockwise or anti-clockwise around the outline.<br>
-            These become both the domain and the external fixed supports.
-        </label>
-        <div id="polygon_validation_msg" style="font-size: 0.7rem; font-weight: 600; margin-top: 4px;"></div>
-    </div>
-
     <div class="control-group">
+        <label>Support Mode</label>
+        <select id="support_mode" onchange="toggleSupportMode()">
+            <option value="preset">Preset Configurations</option>
+            <option value="custom">Arbitrary Spatial Bounding Box</option>
+            <option value="points_only">Only User-Selected Discrete Points/Lines</option>
+        </select>
+    </div>
+
+    <div id="preset_supports_div" class="control-group">
+        <label>Support Presets</label>
+        <select id="support_preset" onchange="updateDomainVisuals()">
+            <option value="cantilever">Cantilever Wall (X = 0 mm, Fixed Face)</option>
+            <option value="four_corners">Four Corners</option>
+            <option value="all_edges">All Bottom Edges Supported (Slab on Perimeter)</option>
+        </select>
+    </div>
+
+    <div id="custom_supports_div" style="display: none; flex-direction: column; gap: 6px;">
+        <div class="control-group">
+            <label>Support Box X Bounds [Min, Max] (mm)</label>
+            <div style="display: flex; gap: 6px;">
+                <input type="number" id="sup_x_min" value="0" style="width: 50%;" oninput="updateDomainVisuals()">
+                <input type="number" id="sup_x_max" value="0" style="width: 50%;" oninput="updateDomainVisuals()">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Support Box Y Bounds [Min, Max] (mm)</label>
+            <div style="display: flex; gap: 6px;">
+                <input type="number" id="sup_y_min" value="0" style="width: 50%;" oninput="updateDomainVisuals()">
+                <input type="number" id="sup_y_max" value="300" style="width: 50%;" oninput="updateDomainVisuals()">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Support Box Z Bounds [Min, Max] (mm)</label>
+            <div style="display: flex; gap: 6px;">
+                <input type="number" id="sup_z_min" value="0" style="width: 50%;" oninput="updateDomainVisuals()">
+                <input type="number" id="sup_z_max" value="600" style="width: 50%;" oninput="updateDomainVisuals()">
+            </div>
+        </div>
+        <div class="checkbox-group">
+            <label><input type="checkbox" id="dof_x" checked> Restrain Ux</label>
+            <label><input type="checkbox" id="dof_y" checked> Restrain Uy</label>
+            <label><input type="checkbox" id="dof_z" checked> Restrain Uz</label>
+        </div>
+    </div>
+
+    <!-- Discrete Point Supports Generator Module -->
+    <div class="control-group" style="margin-top: 4px;">
         <div class="load-header-row">
             <label style="margin: 0;">Discrete Point Supports (mm / DOFs)</label>
             <div class="btn-group">
@@ -372,184 +379,159 @@
         </table>
     </div>
 
-    <!-- Internal Supports Container (polygon mode only) -->
-    <div id="internal_supports_container" class="control-group" style="display: none;">
+    <!-- Discrete Line Supports Generator Module (2 Points in 3D Space) -->
+    <div class="control-group" style="margin-top: 6px;">
         <div class="load-header-row">
-            <label style="margin: 0;">Internal Supports (mm)</label>
-            <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addInternalSupportRow()">+ Add Internal Support</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllInternalSupports()">Clear Internal</button>
-            </div>
-        </div>
-        <table class="data-table">
-            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
-            <tbody id="internal_support_table_body"></tbody>
-        </table>
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">Internal supports lift the membrane from inside (e.g. masts). They must lie inside the perimeter polygon.</label>
-    </div>
-
-    <!-- External / Discrete Line Supports (rectangular membrane mode) -->
-    <div id="line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
-        <div class="load-header-row">
-            <label style="margin: 0;">External Line Supports (2-Point Generator)</label>
+            <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
             <div class="btn-group">
                 <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLineSupportRow()">+ Add Line Support</button>
                 <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLineSupports()">Clear Line Supports</button>
             </div>
         </div>
         <table class="data-table">
-            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
+            <thead>
+                <tr>
+                    <th>X1</th><th>Y1</th><th>Z1</th>
+                    <th>X2</th><th>Y2</th><th>Z2</th>
+                    <th>DOFs</th><th></th>
+                </tr>
+            </thead>
             <tbody id="line_support_table_body"></tbody>
         </table>
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
-            Defines continuous nodal restraint chains along a 3D vector (e.g. supported edges, ridge beams).
-            Nodes falling on the segment are fixed. Keep clear of pure point-support coordinates when possible.
-        </label>
-    </div>
-
-    <!-- Internal Line Supports (polygon mode only — e.g. internal ridge / valley cables) -->
-    <div id="internal_line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
-        <div class="load-header-row">
-            <label style="margin: 0;">Internal Line Supports (2-Point Generator)</label>
-            <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addInternalLineSupportRow()">+ Add Internal Line</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllInternalLineSupports()">Clear Internal Lines</button>
-            </div>
-        </div>
-        <table class="data-table">
-            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
-            <tbody id="internal_line_support_table_body"></tbody>
-        </table>
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
-            Internal line supports fix a chain of nodes inside the perimeter (e.g. ridge cables, valley cables, internal beams).
-            Both endpoints and intermediate samples must lie inside the polygon.
-        </label>
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
+            With Support Mode set to "Only User-Selected Discrete Points/Lines"
+            above, these tables define the <em>only</em> boundary restraints. Line supports generate nodal restraint chains along the 3D vector. Make sure enough DOFs are locked across nodes to prevent rigid-body motion.
+        </p>
     </div>
 
     <hr>
-    <div class="section-header">Loading & Prestress Definition</div>
+    <div class="section-header">Loading Definition</div>
 
-    <!-- 1D Scalar Prestress (Cables) -->
-    <div id="prestress_container" class="control-group" style="display: none;">
-        <label>Initial Cable Prestress Force (N)</label>
-        <input type="number" id="prestress" value="5000">
-    </div>
-
-    <!-- 2D Orthotropic Membrane Prestress -->
-    <div id="membrane_prestress_card" class="span-builder-card">
-        <label style="font-weight: 700; color: #000000; margin: 0;">Orthotropic Membrane Biaxial Prestress</label>
-        <p style="font-size: 0.68rem; color: #666666; margin: 0; line-height: 1.3;">
-            In-plane line tension along orthogonal Warp (X) and Weft (Y) yarns.
-        </p>
-        <div class="span-builder-fields">
-            <div class="control-subgroup">
-                <label>Warp Prestress Tx (kN/m)</label>
-                <input type="number" id="prestress_warp_kn_m" value="2.0" step="0.1">
-            </div>
-            <div class="control-subgroup">
-                <label>Weft Prestress Ty (kN/m)</label>
-                <input type="number" id="prestress_weft_kn_m" value="2.0" step="0.1">
-            </div>
-        </div>
-        <div class="control-group" style="margin-top: 2px;">
-            <label style="font-size: 0.65rem; color: #555555;">Perimeter Edge Sleeve Cable Tension (kN)</label>
-            <input type="number" id="edge_cable_prestress_kn" value="20.0" step="1.0" style="height: 28px; padding: 4px 6px;">
-        </div>
-    </div>
-
-    <!-- Cable Span Point Load Builder -->
-    <div id="cable_span_load_builder" class="span-builder-card" style="display: none;">
-        <label style="font-weight: 700; color: #000000; margin: 0;">Cable Span Point Load Generator</label>
-        <p style="font-size: 0.68rem; color: #666666; margin: 0; line-height: 1.3;">
-            Position loads along the cable length from Start (0.0) to End (1.0). Forces in global X, Y, Z (kN).
-        </p>
-        <div class="span-builder-fields">
-            <div class="control-subgroup">
-                <label>Position Ratio (0.0 - 1.0)</label>
-                <input type="number" id="cable_load_ratio" value="0.50" min="0.0" max="1.0" step="0.05">
-            </div>
-            <div class="control-subgroup">
-                <label>Fx (kN)</label>
-                <input type="number" id="cable_load_fx" value="0" step="0.5">
-            </div>
-            <div class="control-subgroup">
-                <label>Fy (kN)</label>
-                <input type="number" id="cable_load_fy" value="0" step="0.5">
-            </div>
-            <div class="control-subgroup">
-                <label>Fz (kN)</label>
-                <input type="number" id="cable_load_fz" value="-12.5" step="0.5">
-            </div>
-        </div>
-        <div style="display: flex; gap: 6px; width: 100%;">
-            <button class="btn-secondary" style="flex: 1; height: 28px;" onclick="addCableSpanLoad()">+ ADD SPAN LOAD</button>
-            <button class="btn-secondary-danger" id="btn_clear_loads_cable" style="flex: 1; height: 28px;" onclick="clearAllLoads()">CLEAR ALL LOADS</button>
-        </div>
+    <div class="control-group">
+        <label>Load Presets</label>
+        <select id="load_preset" onchange="applyLoadPreset()">
+            <option value="top_udl">Top Surface Uniform Patch Load</option>
+            <option value="custom">Custom Point Load Array</option>
+            <option value="tip_center">Single Center Point Load (X = Lx/2)</option>
+            <option value="third_points">Third-Point Flexure Loads (X = Lx/3, 2Lx/3)</option>
+        </select>
     </div>
 
     <div id="point_loads_container" class="control-group">
         <div class="load-header-row">
             <label style="margin: 0;">Point Load Array (mm / kN)</label>
-            <div class="btn-group" id="point_loads_btn_group">
-                <button class="btn-secondary" id="btn_add_load" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
-                <button class="btn-secondary-danger" id="btn_clear_loads_membrane" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All Loads</button>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLoadRow()">+ Add Load</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLoads()">Clear All Loads</button>
             </div>
         </div>
         <table class="data-table">
             <thead><tr><th>X</th><th>Y</th><th>Z</th><th>Fx</th><th>Fy</th><th>Fz</th><th></th></tr></thead>
             <tbody id="load_table_body"></tbody>
         </table>
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 4px 0 0 0;">
+            An empty table means zero external load. If self-weight is also
+            switched off below, the solver correctly returns a flat,
+            zero-stress result — that's the expected physical answer for an
+            unloaded body, not a bug.
+        </p>
     </div>
 
     <hr>
-    <div class="checkbox-group">
-        <label><input type="checkbox" id="self_weight_toggle" checked> Include Self-Weight (Dead Load)</label>
+    <div class="section-header">Void / Passive Material Regions</div>
+    <div id="void_regions_container" class="control-group">
+        <div class="load-header-row">
+            <label style="margin: 0;">Keep-Out / Forced-Solid Boxes (mm)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addVoidRegionRow()">+ Add Region</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllVoidRegions()">Clear All</button>
+            </div>
+        </div>
+        
+        <!-- Redesigned Compact Grid Card Container -->
+        <div id="void_region_list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;"></div>
+
+        <p style="font-size: 0.68rem; color: #888888; line-height: 1.4; margin: 6px 0 0 0;">
+            "Void" forces elements inside the box to stay empty regardless of what the optimiser would otherwise choose — useful for service penetrations, ducts, or doorways. "Forced Solid" pins material in place instead — useful for bearing pads or fixing zones. Overlapping a region with a load/support point produces an invalid model, so keep regions clear of load/support coordinates.
+        </p>
+    </div>
+
+    <hr>
+    <div class="control-group">
+        <label>Volume Fraction & Max Iterations</label>
+        <div style="display: flex; gap: 6px;">
+            <input type="number" step="0.05" id="volfrac" value="0.90" min="0.05" max="1.00" style="width: 50%;">
+            <input type="number" id="iterations" value="20" min="1" style="width: 50%;">
+        </div>
+        <p style="font-size: 0.70rem; color: #888888; line-height: 1.45; margin: 4px 0 0 0;">
+            Volume fraction sets the target proportion of the domain kept as solid
+            material (0.90 = 90% by volume). Iterations sets how many SIMP
+            optimisation passes run — more iterations generally converge to a
+            cleaner, more resolved topology at the cost of longer solve time.
+        </p>
+    </div>
+    <div class="checkbox-group" style="margin-top: 2px;">
+        <label>
+            <input type="checkbox" id="self_weight_toggle" checked>
+            Include Self-Weight (Dead Load)
+        </label>
     </div>
 
     <hr>
     <div class="section-header">Visualization Render Mode</div>
     <div class="control-group">
         <select id="render_mode" onchange="toggleRenderModeUI(); reRenderMesh();">
-            <!-- Dynamically populated -->
+            <option value="ec3_stress">Stress Map (+Tension / -Compression)</option>
+            <option value="grey">Monochrome Studio Grey (50%)</option>
+            <option value="deflection">Displacement Map (Deflection mm)</option>
         </select>
     </div>
 
-    <!-- Cable Tension Color Map Slider -->
-    <div id="cable_tension_div" class="control-group" style="display: none;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.70rem; font-weight: bold; margin-bottom: 2px;">
-            <span>Tension Range Filter</span>
-            <span id="lbl_tension_range">0.01 - 100.0 kN</span>
-        </div>
-        <input type="range" id="tension_threshold_slider" min="0.01" max="100.0" step="0.5" value="100.0" oninput="onTensionSliderChange()">
-    </div>
-
-    <!-- Tensile Stress Slider -->
-    <div id="stress_thresholds_div" class="control-group" style="display: none;">
-        <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem;">Interactive Tensile Stress Palette Fader</label>
+    <!-- Analog Stress Limit Faders (Visible in ec3_stress mode) -->
+    <div id="stress_thresholds_div" class="control-group" style="margin-top: 4px; display: none;">
+        <label style="font-weight: 700; text-transform: uppercase; font-size: 0.70rem; letter-spacing: 0.5px;">
+            Interactive Stress Palette Faders
+        </label>
+        <p style="font-size: 0.68rem; color: #888888; margin: 0 0 4px 0; line-height: 1.3;">
+            Adjust limits between 0.01 MPa and calculated peaks. Elements outside range render in Studio Grey.
+        </p>
         <div style="display: flex; flex-direction: column; gap: 8px; background: #f9f9f9; padding: 8px; border: 1px solid #e5e5e5;">
-            <div id="comp_slider_group" style="display: none;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span><span id="lbl_comp_val" style="font-weight: bold;">-0.01 MPa</span></div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
+                    <span style="color: #0055cc; font-weight: 600;">Compression Limit (-MPa)</span>
+                    <span id="lbl_comp_val" style="font-weight: bold;">-0.01 MPa</span>
+                </div>
                 <input type="range" id="stress_comp_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
             <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.70rem;"><span style="color: #cc0000; font-weight: 600;">Tensile Stress Limit (+MPa)</span><span id="lbl_tens_val" style="font-weight: bold;">+1.00 MPa</span></div>
-                <input type="range" id="stress_tens_slider" min="0.01" max="10.0" step="0.05" value="5.0" oninput="onStressSliderChange()">
+                <div style="display: flex; justify-content: space-between; font-size: 0.70rem; margin-bottom: 2px;">
+                    <span style="color: #cc0000; font-weight: 600;">Tension Limit (+MPa)</span>
+                    <span id="lbl_tens_val" style="font-weight: bold;">+0.01 MPa</span>
+                </div>
+                <input type="range" id="stress_tens_slider" min="0.01" max="1" step="0.01" value="1" oninput="onStressSliderChange()">
             </div>
         </div>
     </div>
 
-    <!-- Cut Planes -->
-    <div id="cut_planes_container">
-        <hr>
-        <div class="section-header">Interactive 3D Section Cut-Planes</div>
-        <div class="control-group" style="margin-top: 8px;"><label>Cut Plane X Position</label><input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()"></div>
-        <div class="control-group" style="margin-top: 6px;"><label>Cut Plane Y Position</label><input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()"></div>
-        <div class="control-group" style="margin-top: 6px;"><label>Cut Plane Z Position</label><input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()"></div>
+    <hr>
+    <div class="section-header">Interactive 3D Section Cut-Planes</div>
+    <div class="control-group">
+        <label>Cut Plane X Position (Longitudinal Cut)</label>
+        <input type="range" id="cut_x" min="0" max="6000" step="10" value="6000" oninput="updateCutPlanes()">
+    </div>
+    <div class="control-group">
+        <label>Cut Plane Y Position (Cross-Section Cut)</label>
+        <input type="range" id="cut_y" min="0" max="300" step="5" value="300" oninput="updateCutPlanes()">
+    </div>
+    <div class="control-group">
+        <label>Cut Plane Z Position (Height Cut)</label>
+        <input type="range" id="cut_z" min="0" max="600" step="5" value="600" oninput="updateCutPlanes()">
     </div>
 
     <button id="btn-exec" class="btn-primary" onclick="startOptimisation()" disabled>Loading Wasm Engine…</button>
     <button id="btn-stop" class="btn-stop" onclick="stopOptimisation()">■ Stop / Reset Engine</button>
     
+    <!-- Results Actions Group: Hidden by default until solve completes -->
     <div id="results-actions-group" style="display: none; gap: 6px; margin-top: 4px;">
         <button id="btn-export" class="btn-secondary" style="flex: 1;" onclick="exportSTL()">Export .STL Geometry</button>
         <button id="btn-clear" class="btn-secondary-danger" style="flex: 1;" onclick="clearResults()">Clear Results</button>
@@ -565,342 +547,163 @@
             <div id="legend-bar"></div>
             <div class="legend-labels">
                 <span id="lbl-100">+Max</span>
-                <span id="lbl-075">+75%</span>
-                <span id="lbl-050">+50%</span>
-                <span id="lbl-025">+25%</span>
-                <span id="lbl-000">0.0</span>
+                <span id="lbl-075">+50%</span>
+                <span id="lbl-050">0.0</span>
+                <span id="lbl-025">-50%</span>
+                <span id="lbl-000">-Max</span>
             </div>
         </div>
     </div>
-    <div id="reaction-tooltip"></div>
 </div>
 
 <script>
     var scene, camera, renderer, controls, mesh;
-    var supportGizmos = [], forceArrows = [];
-    var reactionGroup = null, sagIndicatorGroup = null, originalCableGroup = null;
-    var axesScene, axesCamera, axesGroup;
-    var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
-    // CRITICAL FIX: actual solved grid resolution reported by the backend.
-    // domain_ff.py's forced-grid-line logic (np.union1d on support coordinates)
-    // can silently grow nx/ny beyond whatever the UI fields say, whenever a
-    // support coordinate doesn't land on the regular grid. reRenderMesh() MUST
-    // use these — not the raw #nx/#ny input values — to reconstruct triangle
-    // indices, or the mesh will fail to reach the outlying supports even
-    // though their nodes were solved correctly and exist in currentVertices.
-    var currentNxActual = null, currentNyActual = null;
-    // Backend-returned triangle connectivity (polygon/irregular domain mode).
-    // Null in rectangular mode, where reRenderMesh() rebuilds triangles from
-    // the (nx+1) x (ny+1) grid stride instead.
-    var currentTriangles = null;
-    var currentDomainMode = "rectangular";
-    var perimeterPreviewGroup = null;
-    var worker = null, engineReady = false;
-
-    var raycaster = new THREE.Raycaster();
-    var mouse = new THREE.Vector2();
-
-    var activeLx = 6000, activeLy = 3000, activeLz = 1000;
-    var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), activeLx);
-    var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), activeLy);
-    var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), activeLz);
-
-    var CABLE_GRADES = [
-        "Spiral Strand (1x19)", 
-        "Flexible Rope (7x19)", 
-        "Locked Coil Cable", 
-        "High-Tensile Wire (1860)", 
-        "Stainless Strand (AISI 316)",
-        "Aramid / Synthetic Fiber",
-        "Custom Isotropic Cable"
-    ];
+    var domainBox, supportBoxVisual;
+    var forceArrows = [];
+    var supportGizmos = [];
+    var voidRegionGizmos = [];
+    var currentVertices = [], currentFaces = [], currentStressesMPa = [], currentDeflectionsMM = [];
     
-    var MEMBRANE_GRADES = [
-        "PTFE Type II (Standard)", 
-        "PTFE Type I (Light)", 
-        "PTFE Type III (Medium)", 
-        "PTFE Type IV (Heavy)",
-        "PTFE Type V (Extreme)",
-        "ETFE Foil (0.25mm)",
-        "PVC / Polyester Type II",
-        "Custom Isotropic Membrane"
-    ];
+    // Explicit Asymmetric Stress Bounds Tracking
+    var currentSigmaMaxTens = 1.0;  // Peak Tensile Stress (+MPa)
+    var currentSigmaMaxComp = -1.0; // Peak Compressive Stress (-MPa, negative)
+    var currentUMax = 1.0, currentFk = 30.0;
+    var worker = null;
+    var engineReady = false;
 
-    function showAppModal(titleText, bodyText) {
-        document.getElementById('app_modal_subtitle').innerText = titleText || "Notification";
-        document.getElementById('app_modal_text').innerText = bodyText || "";
-        document.getElementById('app-modal-overlay').style.display = 'flex';
-    }
+    var clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 6000);
+    var clipPlaneY = new THREE.Plane(new THREE.Vector3(0, 0, -1), 300);
+    var clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, -1, 0), 600);
 
-    function closeAppModal() {
-        document.getElementById('app-modal-overlay').style.display = 'none';
-    }
+    // Minimalistic black/white 3D axis triad (screen-corner gizmo)
+    var axesScene, axesCamera, axesGroup;
 
-    function makeTextSprite(message, colorHex) {
-        colorHex = colorHex || '#cc0000';
-        var canvas = document.createElement('canvas');
-        canvas.width = 1024; canvas.height = 128;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = colorHex;
-        ctx.font = 'bold 42px "Helvetica Neue", Helvetica, Arial, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(message, 10, 64);
-        var texture = new THREE.CanvasTexture(canvas);
-        var spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
-        var sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(1200, 150, 1);
-        return sprite;
-    }
+    var STEEL_GRADES = ["S235", "S275", "S355", "S460"];
+    var CONCRETE_GRADES = ["C20/25", "C25/30", "C30/37", "C35/45", "C40/50", "C50/60"];
+    var TIMBER_GRADES = ["C16", "C24", "C30", "GL24h", "GL28h", "GL32h"];
 
-    // Stock default support layouts (membrane only). Used both at material
-    // init and when toggling Domain Mode, so a first-time user immediately sees
-    // an example of each shape. User-entered supports are never clobbered —
-    // these only auto-replace when the current rows still match a stock layout.
-    var STOCK_RECT_SUPPORTS = [
-        [0, 0, 1000, 'xyz'], [6000, 0, 0, 'xyz'], [6000, 3000, 1000, 'xyz'], [0, 3000, 0, 'xyz']
-    ];
-    var STOCK_POLYGON_SUPPORTS = [
-        // Irregular pentagon, entered anti-clockwise (in plan, X-Y).
-        [2000, 0, 1500, 'xyz'], [5800, 800, 0, 'xyz'], [5400, 4200, 1500, 'xyz'],
-        [2200, 4600, 0, 'xyz'], [0, 2300, 1800, 'xyz']
-    ];
-    var STOCK_POLYGON_INTERNAL = [
-        [3000, 2300, 2500, 'xyz']
-    ];
+    var MASONRY_UNITS = {
+        "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0,
+        "Dense Concrete Block (20 MPa)": 20.0, "Lightweight Block (7.3 MPa)": 7.3
+    };
+    var MORTAR_GRADES = {
+        "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0, "M2 (Lime / Weak)": 2.0
+    };
+    var STONE_UNITS = {
+        "Granite (150 MPa)": { fb: 150.0, E: 50000.0 }, "Limestone (80 MPa)": { fb: 80.0, E: 35000.0 },
+        "Sandstone (50 MPa)": { fb: 50.0, E: 20000.0 }, "Marble (120 MPa)": { fb: 120.0, E: 45000.0 }
+    };
 
-    function supportsMatchStock(stockArr) {
-        var rows = document.querySelectorAll('#support_table_body tr');
-        if (rows.length !== stockArr.length) return false;
-        for (var i = 0; i < rows.length; i++) {
-            var x = parseFloat(rows[i].querySelector('.sp-x').value);
-            var y = parseFloat(rows[i].querySelector('.sp-y').value);
-            var z = parseFloat(rows[i].querySelector('.sp-z').value);
-            if (Math.abs(x - stockArr[i][0]) > 0.01 || Math.abs(y - stockArr[i][1]) > 0.01 || Math.abs(z - stockArr[i][2]) > 0.01) return false;
-        }
-        return true;
-    }
-
-    function loadStockSupports(stockArr) {
-        clearAllSupports();
-        for (var i = 0; i < stockArr.length; i++) {
-            addSupportRow(stockArr[i][0], stockArr[i][1], stockArr[i][2], stockArr[i][3]);
-        }
-    }
-
-    function onMaterialChange() {
-        clearAllSupports();
-        clearAllLineSupports();
-        clearAllInternalSupports();
-        clearAllLoads();
-        clearResults();
-
-        var matType = document.getElementById('mat_type').value;
-
-        if (matType === 'cables') {
-            addSupportRow(0, 0, 0, 'xyz');
-            addSupportRow(6000, 0, 0, 'xyz');
-        } else if (matType === 'membrane') {
-            var domainMode = document.getElementById('domain_mode').value;
-            if (domainMode === 'polygon') {
-                loadStockSupports(STOCK_POLYGON_SUPPORTS);
-                addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
-            } else {
-                loadStockSupports(STOCK_RECT_SUPPORTS);
+    /* Strictly enforce absolute positive values on domain and mesh input fields */
+    function validatePositiveInputs() {
+        ['Lx', 'Ly', 'Lz', 'nx', 'ny', 'nz'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                var val = parseFloat(el.value);
+                if (isNaN(val) || val <= 0) {
+                    el.value = Math.abs(val) || (id.startsWith('n') ? 1 : 100);
+                } else {
+                    el.value = Math.abs(val);
+                }
             }
-        }
-
-        updateMaterialUI();
-        onDomainModeChange();
-        updateDomainVisuals();
+        });
     }
 
-    function onGradeChange() {
-        var grade = document.getElementById('mat_grade').value;
-        var isCustom = grade.toLowerCase().includes('custom');
-        document.getElementById('mat_generic_div').style.display = isCustom ? 'flex' : 'none';
+    function setVoidGizmosVisible(visible) {
+        voidRegionGizmos.forEach(function(g) { g.visible = visible; });
+    }
+
+    function setBoundaryGizmosVisible(visible) {
+        supportGizmos.forEach(function(g) { g.visible = visible; });
+        forceArrows.forEach(function(a) { a.visible = visible; });
     }
 
     function toggleRenderModeUI() {
         var mode = document.getElementById('render_mode').value;
-        var matType = document.getElementById('mat_type').value;
-        var legend = document.getElementById('legend');
-        var compGroup = document.getElementById('comp_slider_group');
-
-        document.getElementById('stress_thresholds_div').style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
-        document.getElementById('cable_tension_div').style.display = (mode === 'cable_tension' && matType === 'cables') ? 'flex' : 'none';
-
-        compGroup.style.display = (['cables', 'membrane'].includes(matType)) ? 'none' : 'block';
-
-        if (mode === 'cable_tension' && currentVertices.length > 0) {
-            legend.style.display = 'flex';
-            document.getElementById('legend-title').innerText = "Tension Force (kN)";
-            var maxVal = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-            document.getElementById('lbl-100').innerText = `${maxVal.toFixed(1)} kN`;
-            document.getElementById('lbl-075').innerText = `${(maxVal * 0.75).toFixed(1)} kN`;
-            document.getElementById('lbl-050').innerText = `${(maxVal * 0.50).toFixed(1)} kN`;
-            document.getElementById('lbl-025').innerText = `${(maxVal * 0.25).toFixed(1)} kN`;
-            document.getElementById('lbl-000').innerText = `0.01 kN`;
-
-        } else if (mode === 'ec3_stress' && currentVertices.length > 0) {
-            legend.style.display = 'flex';
-            document.getElementById('legend-title').innerText = "Tensile Stress (MPa)";
-            var maxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 5.0;
-            document.getElementById('lbl-100').innerText = `+${maxTens.toFixed(2)} MPa`;
-            document.getElementById('lbl-075').innerText = `+${(maxTens * 0.75).toFixed(2)} MPa`;
-            document.getElementById('lbl-050').innerText = `+${(maxTens * 0.50).toFixed(2)} MPa`;
-            document.getElementById('lbl-025').innerText = `+${(maxTens * 0.25).toFixed(2)} MPa`;
-            document.getElementById('lbl-000').innerText = `0.00 MPa`;
-
-        } else if (mode === 'deflection' && currentVertices.length > 0) {
-            legend.style.display = 'flex';
-            document.getElementById('legend-title').innerText = "Displacement (mm)";
-            var maxD = Math.max(...currentDeflectionsMM, 1e-3);
-            document.getElementById('lbl-100').innerText = `${maxD.toFixed(1)} mm`;
-            document.getElementById('lbl-075').innerText = `${(maxD * 0.75).toFixed(1)} mm`;
-            document.getElementById('lbl-050').innerText = `${(maxD * 0.50).toFixed(1)} mm`;
-            document.getElementById('lbl-025').innerText = `${(maxD * 0.25).toFixed(1)} mm`;
-            document.getElementById('lbl-000').innerText = `0.0 mm`;
-
-        } else {
-            legend.style.display = 'none';
-        }
+        var thresholdDiv = document.getElementById('stress_thresholds_div');
+        thresholdDiv.style.display = (mode === 'ec3_stress' && currentVertices.length > 0) ? 'flex' : 'none';
     }
 
     function onStressSliderChange() {
+        var compVal = parseFloat(document.getElementById('stress_comp_slider').value) || 0.01;
         var tensVal = parseFloat(document.getElementById('stress_tens_slider').value) || 0.01;
+        document.getElementById('lbl_comp_val').innerText = "-" + format2DP(compVal) + " MPa";
         document.getElementById('lbl_tens_val').innerText = "+" + format2DP(tensVal) + " MPa";
-        toggleRenderModeUI();
-        reRenderMesh();
-    }
-
-    function onTensionSliderChange() {
-        var val = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-        document.getElementById('lbl_tension_range').innerText = `0.01 - ${val.toFixed(1)} kN`;
-        toggleRenderModeUI();
         reRenderMesh();
     }
 
     function updateMaterialUI() {
         var matType = document.getElementById('mat_type').value;
         var stdDiv = document.getElementById('mat_standard_div');
-        var prestressContainer = document.getElementById('prestress_container');
-        var membranePrestressCard = document.getElementById('membrane_prestress_card');
-        var cableSpanBuilder = document.getElementById('cable_span_load_builder');
-        var lineSupportContainer = document.getElementById('line_supports_container');
-        var cutPlanesContainer = document.getElementById('cut_planes_container');
-        var renderSelect = document.getElementById('render_mode');
-        var meshLabel = document.getElementById('mesh_div_label');
-        var nyContainer = document.getElementById('ny_input_container');
+        var masDiv = document.getElementById('mat_masonry_div');
+        var stoneEDiv = document.getElementById('mat_stone_extra_div');
+        var genDiv = document.getElementById('mat_generic_div');
 
-        var currentMode = renderSelect.value;
-        renderSelect.innerHTML = '';
+        stdDiv.style.display = 'none'; masDiv.style.display = 'none';
+        stoneEDiv.style.display = 'none'; genDiv.style.display = 'none';
 
-        var domainModeContainer = document.getElementById('domain_mode_container');
-
-        if (matType === 'cables') {
-            lineSupportContainer.style.display = 'none';
-            cutPlanesContainer.style.display = 'none';
-            cableSpanBuilder.style.display = 'flex';
-            membranePrestressCard.style.display = 'none';
-            prestressContainer.style.display = 'flex';
-            meshLabel.innerText = "Cable Segments (nx)";
-            nyContainer.style.display = 'none';
-            if (domainModeContainer) domainModeContainer.style.display = 'none';
-            var polyHint = document.getElementById('polygon_hint');
-            if (polyHint) polyHint.style.display = 'none';
-            var internalSup = document.getElementById('internal_supports_container');
-            if (internalSup) internalSup.style.display = 'none';
-            var intLineEl = document.getElementById('internal_line_supports_container');
-            if (intLineEl) intLineEl.style.display = 'none';
-            // Cables always use a simple 1-D span; force rectangular domain for the payload path.
-            var domainSelect = document.getElementById('domain_mode');
-            if (domainSelect) domainSelect.value = 'rectangular';
-
-            var opt1 = document.createElement('option'); opt1.value = "grey"; opt1.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt1);
-            var opt2 = document.createElement('option'); opt2.value = "cable_sag"; opt2.innerText = "Maximum Sag Drop-Line Indicator"; renderSelect.appendChild(opt2);
-            var opt3 = document.createElement('option'); opt3.value = "cable_tension"; opt3.innerText = "Tension Color Map (kN)"; renderSelect.appendChild(opt3);
-
-            renderSelect.value = ["grey", "cable_sag", "cable_tension"].includes(currentMode) ? currentMode : "cable_sag";
-
-        } else if (matType === 'membrane') {
-            // External line supports shown only in rectangular mode (onDomainModeChange also enforces this)
-            var domainSelectM = document.getElementById('domain_mode');
-            var isPolyM = domainSelectM && domainSelectM.value === 'polygon';
-            lineSupportContainer.style.display = isPolyM ? 'none' : 'block';
-            var intLineElM = document.getElementById('internal_line_supports_container');
-            if (intLineElM) intLineElM.style.display = isPolyM ? 'block' : 'none';
-            cutPlanesContainer.style.display = 'block';
-            cableSpanBuilder.style.display = 'none';
-            membranePrestressCard.style.display = 'flex';
-            prestressContainer.style.display = 'none';
-            meshLabel.innerText = "FE Mesh Divisions nx, ny";
-            nyContainer.style.display = 'block';
-            if (domainModeContainer) domainModeContainer.style.display = '';
-
-            var opt1 = document.createElement('option'); opt1.value = "ec3_stress"; opt1.innerText = "Stress Map (Tension)"; renderSelect.appendChild(opt1);
-            var opt2 = document.createElement('option'); opt2.value = "grey"; opt2.innerText = "Monochrome Studio Grey (50%)"; renderSelect.appendChild(opt2);
-            var opt3 = document.createElement('option'); opt3.value = "deflection"; opt3.innerText = "Displacement Map (Deflection mm)"; renderSelect.appendChild(opt3);
-
-            renderSelect.value = ["ec3_stress", "grey", "deflection"].includes(currentMode) ? currentMode : "ec3_stress";
+        if (matType === 'steel' || matType === 'concrete' || matType === 'timber') {
+            stdDiv.style.display = 'flex';
+            var gradeSelect = document.getElementById('mat_grade');
+            gradeSelect.innerHTML = '';
+            var list = (matType === 'concrete') ? CONCRETE_GRADES : ((matType === 'steel') ? STEEL_GRADES : TIMBER_GRADES);
+            list.forEach(function(g) {
+                var opt = document.createElement('option');
+                opt.value = g; opt.innerText = g;
+                gradeSelect.appendChild(opt);
+            });
+            gradeSelect.value = (matType === 'concrete') ? 'C30/37' : ((matType === 'steel') ? 'S355' : 'C24');
+        } else if (matType === 'masonry' || matType === 'stone') {
+            masDiv.style.display = 'flex';
+            var uSelect = document.getElementById('masonry_unit_select');
+            var mSelect = document.getElementById('mortar_select');
+            uSelect.innerHTML = ''; mSelect.innerHTML = '';
+            var units = (matType === 'masonry') ? MASONRY_UNITS : STONE_UNITS;
+            for (var key in units) {
+                var opt = document.createElement('option'); opt.value = key; opt.innerText = key;
+                uSelect.appendChild(opt);
+            }
+            for (var mkey in MORTAR_GRADES) {
+                var mopt = document.createElement('option'); mopt.value = mkey; mopt.innerText = mkey;
+                mSelect.appendChild(mopt);
+            }
+            syncCustomFb(); syncCustomFm();
+            if (matType === 'stone') stoneEDiv.style.display = 'flex';
+        } else if (matType === 'generic') {
+            genDiv.style.display = 'flex';
         }
-
-        document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
-        document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
-
-        // Cables: hide manual Add Load; clear lives beside Add Span Load.
-        // Table remains visible but read-only (loads only via span generator).
-        // Membranes: restore manual Add Load + Clear in the point-load header.
-        var btnAddLoad = document.getElementById('btn_add_load');
-        var btnClearMem = document.getElementById('btn_clear_loads_membrane');
-        var pointLoadsBtnGroup = document.getElementById('point_loads_btn_group');
-        if (matType === 'cables') {
-            if (btnAddLoad) btnAddLoad.style.display = 'none';
-            if (btnClearMem) btnClearMem.style.display = 'none';
-            if (pointLoadsBtnGroup) pointLoadsBtnGroup.style.display = 'none';
-        } else {
-            if (btnAddLoad) btnAddLoad.style.display = '';
-            if (btnClearMem) btnClearMem.style.display = '';
-            if (pointLoadsBtnGroup) pointLoadsBtnGroup.style.display = '';
-        }
-        setPointLoadTableEditable(matType !== 'cables');
-
-        stdDiv.style.display = 'flex';
-        var gradeSelect = document.getElementById('mat_grade');
-        gradeSelect.innerHTML = '';
-        var list = (matType === 'cables') ? CABLE_GRADES : MEMBRANE_GRADES;
-        list.forEach(function(g) { var opt = document.createElement('option'); opt.value = g; opt.innerText = g; gradeSelect.appendChild(opt); });
-
-        onGradeChange();
-        toggleRenderModeUI();
     }
 
-    function setPointLoadTableEditable(editable) {
-        var rows = document.querySelectorAll('#load_table_body tr');
-        rows.forEach(function(tr) {
-            var inputs = tr.querySelectorAll('input');
-            inputs.forEach(function(inp) {
-                if (editable) {
-                    inp.removeAttribute('readonly');
-                    inp.style.background = '';
-                    inp.style.cursor = '';
-                } else {
-                    inp.setAttribute('readonly', 'readonly');
-                    inp.style.background = '#f5f5f5';
-                    inp.style.cursor = 'default';
-                }
-            });
-            // Delete (×) always visible so individual span loads can be removed,
-            // same as point-support rows. Values stay read-only for cables.
-            var delBtn = tr.querySelector('.btn-del');
-            if (delBtn) delBtn.style.display = '';
-        });
+    function syncCustomFb() {
+        var matType = document.getElementById('mat_type').value;
+        var key = document.getElementById('masonry_unit_select').value;
+        if (matType === 'masonry') {
+            document.getElementById('masonry_unit_fb').value = MASONRY_UNITS[key] || 20.0;
+        } else if (matType === 'stone') {
+            var data = STONE_UNITS[key];
+            if (data) {
+                document.getElementById('masonry_unit_fb').value = data.fb;
+                document.getElementById('stone_E').value = data.E;
+            }
+        }
+    }
+
+    function syncCustomFm() {
+        var key = document.getElementById('mortar_select').value;
+        document.getElementById('mortar_fm').value = MORTAR_GRADES[key] || 6.0;
     }
 
     function setupCutPlaneSliders() {
-        document.getElementById('cut_x').max = activeLx; document.getElementById('cut_x').value = activeLx;
-        document.getElementById('cut_y').max = activeLy; document.getElementById('cut_y').value = activeLy;
-        document.getElementById('cut_z').max = activeLz; document.getElementById('cut_z').value = activeLz;
+        validatePositiveInputs();
+        var Lx = Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000;
+        var Ly = Math.abs(parseFloat(document.getElementById('Ly').value)) || 300;
+        var Lz = Math.abs(parseFloat(document.getElementById('Lz').value)) || 600;
+        var sliderX = document.getElementById('cut_x');
+        var sliderY = document.getElementById('cut_y');
+        var sliderZ = document.getElementById('cut_z');
+        sliderX.max = Lx; sliderX.value = Lx;
+        sliderY.max = Ly; sliderY.value = Ly;
+        sliderZ.max = Lz; sliderZ.value = Lz;
         updateCutPlanes();
     }
 
@@ -926,133 +729,85 @@
 
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.65));
         var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
         keyLight.position.set(5000, 8000, 4000);
         scene.add(keyLight);
+        var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+        fillLight.position.set(-3000, -2000, -2000);
+        scene.add(fillLight);
 
         // Large finite grid (acts effectively infinite for typical domain sizes)
         var grid = new THREE.GridHelper(1000000, 1000, 0x000000, 0xe0e0e0);
         grid.position.y = -1;
         scene.add(grid);
 
-        reactionGroup = new THREE.Group();
-        sagIndicatorGroup = new THREE.Group();
-        originalCableGroup = new THREE.Group();
-        scene.add(reactionGroup);
-        scene.add(sagIndicatorGroup);
-        scene.add(originalCableGroup);
-
+        // --- Minimalistic black/white axis triad (bottom-left corner) ---
         axesScene = new THREE.Scene();
         axesCamera = new THREE.OrthographicCamera(-2.0, 2.0, 2.0, -2.0, 0.1, 10);
-        axesCamera.position.set(0, 0, 5); axesCamera.lookAt(0, 0, 0);
-        axesGroup = new THREE.Group(); axesScene.add(axesGroup);
+        axesCamera.position.set(0, 0, 5);
+        axesCamera.lookAt(0, 0, 0);
 
-        var axisLen = 1.2, axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-        function addAxisLine(to) { axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), to]), axisMat)); }
-        addAxisLine(new THREE.Vector3(axisLen, 0, 0)); addAxisLine(new THREE.Vector3(0, axisLen, 0)); addAxisLine(new THREE.Vector3(0, 0, axisLen));
+        axesGroup = new THREE.Group();
+        axesScene.add(axesGroup);
+
+        var axisLen = 1.2;
+        var axisMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+        function addAxisLine(to) {
+            var geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0), to
+            ]);
+            axesGroup.add(new THREE.Line(geo, axisMat));
+        }
+        addAxisLine(new THREE.Vector3(axisLen, 0, 0)); // X
+        addAxisLine(new THREE.Vector3(0, axisLen, 0)); // Z (up)
+        addAxisLine(new THREE.Vector3(0, 0, axisLen)); // Y
 
         function makeAxisLabel(text) {
-            var c = document.createElement('canvas'); c.width = 128; c.height = 128;
-            var ctx = c.getContext('2d'); ctx.fillStyle = '#000000'; ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 64, 68);
-            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
-            sprite.scale.set(0.55, 0.55, 1); return sprite;
+            var canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 68);
+            var tex = new THREE.CanvasTexture(canvas);
+            tex.needsUpdate = true;
+            var mat = new THREE.SpriteMaterial({
+                map: tex,
+                transparent: true,
+                depthTest: false,
+                depthWrite: false
+            });
+            var sprite = new THREE.Sprite(mat);
+            sprite.scale.set(0.55, 0.55, 1);
+            return sprite;
         }
-        var lx = makeAxisLabel('X'); lx.position.set(axisLen + 0.35, 0, 0); axesGroup.add(lx);
-        var lz = makeAxisLabel('Z'); lz.position.set(0, axisLen + 0.35, 0); axesGroup.add(lz);
-        var ly = makeAxisLabel('Y'); ly.position.set(0, 0, axisLen + 0.35); axesGroup.add(ly);
+
+        var lblX = makeAxisLabel('X');
+        lblX.position.set(axisLen + 0.35, 0, 0);
+        axesGroup.add(lblX);
+
+        var lblZ = makeAxisLabel('Z');
+        lblZ.position.set(0, axisLen + 0.35, 0);
+        axesGroup.add(lblZ);
+
+        var lblY = makeAxisLabel('Y');
+        lblY.position.set(0, 0, axisLen + 0.35);
+        axesGroup.add(lblY);
 
         window.addEventListener('resize', onWindowResize);
-        container.addEventListener('mousemove', onViewportMouseMove);
-
         updateMaterialUI();
 
-        addSupportRow(0, 0, 1000, 'xyz');
-        addSupportRow(6000, 0, 0, 'xyz');
-        addSupportRow(6000, 3000, 1000, 'xyz');
-        addSupportRow(0, 3000, 0, 'xyz');
-        
+        applyLoadPreset();
         setupCutPlaneSliders();
         animate();
-        updateDomainVisuals();
-    }
-
-    function onViewportMouseMove(event) {
-        var container = document.getElementById('viewport');
-        var rect = container.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
-
-        var tooltip = document.getElementById('reaction-tooltip');
-
-        if (!reactionGroup || reactionGroup.children.length === 0) {
-            tooltip.style.display = 'none';
-            return;
-        }
-
-        raycaster.setFromCamera(mouse, camera);
-        var intersects = raycaster.intersectObjects(reactionGroup.children, true);
-
-        if (intersects.length > 0) {
-            var obj = intersects[0].object;
-            while (obj && !obj.userData.reactionData && obj.parent) {
-                obj = obj.parent;
-            }
-
-            if (obj && obj.userData.reactionData) {
-                var d = obj.userData.reactionData;
-                tooltip.style.display = 'block';
-                tooltip.style.left = (event.clientX - rect.left + 15) + 'px';
-                tooltip.style.top = (event.clientY - rect.top + 15) + 'px';
-
-                tooltip.innerHTML = `
-                    <div class="tt-title">${d.type || "Reaction Vector"}</div>
-                    <div><b>R<sub>x</sub>:</b> ${d.Rx.toFixed(2)} kN</div>
-                    <div><b>R<sub>y</sub>:</b> ${d.Ry.toFixed(2)} kN</div>
-                    <div><b>R<sub>z</sub>:</b> ${d.Rz.toFixed(2)} kN</div>
-                    <div style="border-top: 1px solid #e5e5e5; margin-top: 4px; padding-top: 3px;"><b>R<sub>total</sub>:</b> ${d.Rtotal.toFixed(2)} kN</div>
-                `;
-                return;
-            }
-        }
-        tooltip.style.display = 'none';
-    }
-
-    function addCableSpanLoad() {
-        var ratio = parseFloat(document.getElementById('cable_load_ratio').value) || 0.50;
-        var fx = parseFloat(document.getElementById('cable_load_fx').value);
-        var fy = parseFloat(document.getElementById('cable_load_fy').value);
-        var fz = parseFloat(document.getElementById('cable_load_fz').value);
-        if (isNaN(fx)) fx = 0.0;
-        if (isNaN(fy)) fy = 0.0;
-        if (isNaN(fz)) fz = -12.5;
-        ratio = Math.max(0.0, Math.min(1.0, ratio));
-
-        var pointSups = getPointSupportArrayData();
-        if (pointSups.length < 2) {
-            showAppModal("Cable Load Error", "Two support nodes are required before adding a span load.");
-            return;
-        }
-
-        // Always order supports so that p1 is the “start” (lower X, or lower parameter)
-        var pA = pointSups[0];
-        var pB = pointSups[1];
-        var orderByX = Math.abs(pB.x - pA.x) > Math.abs(pB.y - pA.y);
-        var p1, p2;
-        if (orderByX) {
-            p1 = (pA.x <= pB.x) ? pA : pB;
-            p2 = (pA.x <= pB.x) ? pB : pA;
-        } else {
-            p1 = (pA.y <= pB.y) ? pA : pB;
-            p2 = (pA.y <= pB.y) ? pB : pA;
-        }
-
-        var targetX = Math.round(p1.x + ratio * (p2.x - p1.x));
-        var targetY = Math.round(p1.y + ratio * (p2.y - p1.y));
-        var targetZ = Math.round(p1.z + ratio * (p2.z - p1.z));
-
-        addLoadRow(targetX, targetY, targetZ, fx, fy, fz);
         updateDomainVisuals();
     }
 
@@ -1063,14 +818,21 @@
 
         if (axesGroup && axesScene && axesCamera) {
             axesGroup.quaternion.copy(camera.quaternion).invert();
-            var size = 110, margin = 16, container = document.getElementById('viewport');
-            renderer.autoClear = false; renderer.clearDepth();
+
+            var size = 110;
+            var margin = 16;
+            var container = document.getElementById('viewport');
+            var w = container.clientWidth;
+            var h = container.clientHeight;
+
+            renderer.autoClear = false;
+            renderer.clearDepth();
             renderer.setScissorTest(true);
             renderer.setScissor(margin, margin, size, size);
             renderer.setViewport(margin, margin, size, size);
             renderer.render(axesScene, axesCamera);
             renderer.setScissorTest(false);
-            renderer.setViewport(0, 0, container.clientWidth, container.clientHeight);
+            renderer.setViewport(0, 0, w, h);
             renderer.autoClear = true;
         }
     }
@@ -1082,1400 +844,771 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
-    function addSupportRow(x, y, z, dofs) {
-        var matType = document.getElementById('mat_type').value;
-        var currentCount = document.querySelectorAll('#support_table_body tr').length;
-        
-        if (matType === 'cables' && currentCount >= 2) {
-            showAppModal("Boundary Constraint Limit", "Cable structures are restricted to a maximum of 2 boundary supports.");
-            return;
-        }
-
-        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
-        var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
-        document.getElementById('support_table_body').appendChild(tr);
+    function toggleSupportMode() {
+        var mode = document.getElementById('support_mode').value;
+        document.getElementById('preset_supports_div').style.display = (mode === 'preset') ? 'flex' : 'none';
+        document.getElementById('custom_supports_div').style.display = (mode === 'custom') ? 'flex' : 'none';
         updateDomainVisuals();
     }
 
+    function addSupportRow(x, y, z, dofs) {
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 150 : y;
+        z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
+        var tbody = document.getElementById('support_table_body');
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tbody.appendChild(tr);
+        updateDomainVisuals();
+    }
+
+    /* Add Discrete Line Support Row Generator */
     function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
-        var existingSups = getLineSupportArrayData();
-        
-        if (existingSups.length === 1 && y1 === undefined) {
-            x1 = 0; y1 = activeLy; z1 = 0;
-            x2 = activeLx; y2 = activeLy; z2 = 0;
-        } else {
-            x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
-            x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
-        }
+        var Lx = Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000;
+        x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
+        x2 = (x2 === undefined) ? Lx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
         dofs = (dofs === undefined) ? 'xyz' : dofs;
 
+        var tbody = document.getElementById('line_support_table_body');
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
-        document.getElementById('line_support_table_body').appendChild(tr);
+        tr.innerHTML =
+            '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tbody.appendChild(tr);
         updateDomainVisuals();
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        // Sensible defaults for cables: place at mid-span of current supports
-        var matType = document.getElementById('mat_type').value;
-        if (x === undefined && matType === 'cables') {
-            var pointSups = getPointSupportArrayData();
-            if (pointSups.length >= 2) {
-                var pA = pointSups[0], pB = pointSups[1];
-                x = Math.round((pA.x + pB.x) / 2);
-                y = Math.round((pA.y + pB.y) / 2);
-                z = Math.round((pA.z + pB.z) / 2);
-            }
-        }
-        x = (x === undefined) ? 3000 : x;
-        y = (y === undefined) ? 0 : y;
-        z = (z === undefined) ? 0 : z;
-        Fx = (Fx === undefined) ? 0 : Fx;
-        Fy = (Fy === undefined) ? 0 : Fy;
-        Fz = (Fz === undefined) ? -12.5 : Fz;
-
-        // Cables: values read-only (loads only via span generator), but × delete stays available.
-        var isCable = (matType === 'cables');
-        var roAttr = isCable ? ' readonly style="background:#f5f5f5;cursor:default;"' : ' oninput="updateDomainVisuals()"';
-
-        var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="ld-x" value="' + x + '"' + roAttr + '></td>' +
-                       '<td><input type="number" class="ld-y" value="' + y + '"' + roAttr + '></td>' +
-                       '<td><input type="number" class="ld-z" value="' + z + '"' + roAttr + '></td>' +
-                       '<td><input type="number" class="ld-fx" value="' + Fx + '"' + roAttr + '></td>' +
-                       '<td><input type="number" class="ld-fy" value="' + Fy + '"' + roAttr + '></td>' +
-                       '<td><input type="number" class="ld-fz" value="' + Fz + '"' + roAttr + '></td>' +
-                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
-        document.getElementById('load_table_body').appendChild(tr);
-        updateDomainVisuals();
-    }
-
-    function deleteRow(btn) { btn.parentNode.parentNode.remove(); updateDomainVisuals(); }
-    function clearAllSupports() { document.getElementById('support_table_body').innerHTML = ''; updateDomainVisuals(); }
-    function clearAllLineSupports() { document.getElementById('line_support_table_body').innerHTML = ''; updateDomainVisuals(); }
-    function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
-
-    // -----------------------------------------------------------------------
-    // Internal Supports (polygon mode — interior masts/pins)
-    // -----------------------------------------------------------------------
-    function addInternalSupportRow(x, y, z, dofs) {
-        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 1000 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
-        var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="isp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="isp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="number" class="isp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><input type="text" class="isp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
-                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
-        document.getElementById('internal_support_table_body').appendChild(tr);
-        updateDomainVisuals();
-    }
-    function clearAllInternalSupports() { document.getElementById('internal_support_table_body').innerHTML = ''; updateDomainVisuals(); }
-
-    // -----------------------------------------------------------------------
-    // Internal Line Supports (polygon mode — ridge / valley / internal beams)
-    // -----------------------------------------------------------------------
-    function addInternalLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
-        x1 = (x1 === undefined) ? Math.round(activeLx * 0.25) : x1;
-        y1 = (y1 === undefined) ? Math.round(activeLy * 0.5) : y1;
-        z1 = (z1 === undefined) ? 500 : z1;
-        x2 = (x2 === undefined) ? Math.round(activeLx * 0.75) : x2;
-        y2 = (y2 === undefined) ? Math.round(activeLy * 0.5) : y2;
-        z2 = (z2 === undefined) ? 500 : z2;
-        dofs = (dofs === undefined) ? 'xyz' : dofs;
-
+        x = (x === undefined) ? 1200 : x; y = (y === undefined) ? 150 : y; z = (z === undefined) ? 600 : z;
+        Fx = (Fx === undefined) ? 0 : Fx; Fy = (Fy === undefined) ? 0 : Fy; Fz = (Fz === undefined) ? -12.5 : Fz;
+        var tbody = document.getElementById('load_table_body');
         var tr = document.createElement('tr');
         tr.innerHTML =
-            '<td><input type="number" class="ilsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="ilsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="ilsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="ilsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="ilsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="ilsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="text" class="ilsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fx" value="' + Fx + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fy" value="' + Fy + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ld-fz" value="' + Fz + '" oninput="updateDomainVisuals()"></td>' +
             '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
-        document.getElementById('internal_line_support_table_body').appendChild(tr);
+        tbody.appendChild(tr);
         updateDomainVisuals();
     }
-    function clearAllInternalLineSupports() {
-        document.getElementById('internal_line_support_table_body').innerHTML = '';
+
+    function deleteRow(btn) {
+        var row = btn.parentNode.parentNode;
+        row.parentNode.removeChild(row);
         updateDomainVisuals();
     }
-    function getInternalLineSupportArrayData() {
-        var lines = [];
-        document.querySelectorAll('#internal_line_support_table_body tr').forEach(function(r) {
-            lines.push({
-                x1: parseFloat(r.querySelector('.ilsp-x1').value) || 0,
-                y1: parseFloat(r.querySelector('.ilsp-y1').value) || 0,
-                z1: parseFloat(r.querySelector('.ilsp-z1').value) || 0,
-                x2: parseFloat(r.querySelector('.ilsp-x2').value) || 0,
-                y2: parseFloat(r.querySelector('.ilsp-y2').value) || 0,
-                z2: parseFloat(r.querySelector('.ilsp-z2').value) || 0,
-                dofs: (r.querySelector('.ilsp-dofs').value || 'xyz').toLowerCase()
+
+    function clearAllSupports() {
+        var tbody = document.getElementById('support_table_body');
+        tbody.innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function clearAllLineSupports() {
+        var tbody = document.getElementById('line_support_table_body');
+        tbody.innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function clearAllLoads() {
+        var tbody = document.getElementById('load_table_body');
+        tbody.innerHTML = '';
+        document.getElementById('load_preset').value = 'custom';
+        updateDomainVisuals();
+    }
+
+    /* Redesigned Card-Based Void Region Management Functions */
+    function addVoidRegionRow(xMin, xMax, yMin, yMax, zMin, zMax, regionType) {
+        var Lx = Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000;
+        var Ly = Math.abs(parseFloat(document.getElementById('Ly').value)) || 300;
+        var Lz = Math.abs(parseFloat(document.getElementById('Lz').value)) || 600;
+
+        xMin = (xMin === undefined) ? Math.round(Lx * 0.4) : xMin;
+        xMax = (xMax === undefined) ? Math.round(Lx * 0.6) : xMax;
+        yMin = (yMin === undefined) ? 0 : yMin;
+        yMax = (yMax === undefined) ? Ly : yMax;
+        zMin = (zMin === undefined) ? 0 : zMin;
+        zMax = (zMax === undefined) ? Math.round(Lz * 0.3) : zMax;
+        regionType = (regionType === undefined) ? 'void' : regionType;
+
+        var container = document.getElementById('void_region_list');
+        var card = document.createElement('div');
+        card.className = 'void-region-card';
+        card.style.cssText = 'background: #f9f9f9; border: 1px solid #e5e5e5; padding: 8px; display: flex; flex-direction: column; gap: 6px; position: relative;';
+
+        card.innerHTML = 
+            '<div style="display: flex; justify-content: space-between; align-items: center;">' +
+                '<select class="vr-type" onchange="updateDomainVisuals()" style="font-size: 0.72rem; font-weight: bold; padding: 2px 4px; width: 130px;">' +
+                    '<option value="void"' + (regionType === 'void' ? ' selected' : '') + '>Void (Keep-Out)</option>' +
+                    '<option value="solid"' + (regionType === 'solid' ? ' selected' : '') + '>Forced Solid</option>' +
+                '</select>' +
+                '<button class="btn-del" onclick="deleteVoidCard(this)" style="font-size: 0.85rem; padding: 0 4px;">×</button>' +
+            '</div>' +
+            '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">X [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-xmin" value="' + xMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-xmax" value="' + xMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Y [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-ymin" value="' + yMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-ymax" value="' + yMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+                '<div><label style="font-size: 0.62rem; color: #666; display:block;">Z [Min, Max]</label>' +
+                    '<div style="display: flex; gap: 2px;">' +
+                        '<input type="number" class="vr-zmin" value="' + zMin + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                        '<input type="number" class="vr-zmax" value="' + zMax + '" oninput="updateDomainVisuals()" style="width: 50%; font-size: 0.72rem; padding: 2px 4px; min-width: 0;">' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        container.appendChild(card);
+        updateDomainVisuals();
+    }
+
+    function deleteVoidCard(btn) {
+        var card = btn.closest('.void-region-card');
+        if (card) card.parentNode.removeChild(card);
+        updateDomainVisuals();
+    }
+
+    function clearAllVoidRegions() {
+        var container = document.getElementById('void_region_list');
+        container.innerHTML = '';
+        updateDomainVisuals();
+    }
+
+    function getVoidRegionArrayData() {
+        var cards = document.querySelectorAll('#void_region_list .void-region-card');
+        var regions = [];
+        cards.forEach(function(c) {
+            regions.push({
+                x_min: parseFloat(c.querySelector('.vr-xmin').value) || 0,
+                x_max: parseFloat(c.querySelector('.vr-xmax').value) || 0,
+                y_min: parseFloat(c.querySelector('.vr-ymin').value) || 0,
+                y_max: parseFloat(c.querySelector('.vr-ymax').value) || 0,
+                z_min: parseFloat(c.querySelector('.vr-zmin').value) || 0,
+                z_max: parseFloat(c.querySelector('.vr-zmax').value) || 0,
+                region_type: c.querySelector('.vr-type').value || 'void'
             });
         });
-        return lines;
+        return regions;
     }
 
-    function getInternalSupportArrayData() {
-        var supports = [];
-        document.querySelectorAll('#internal_support_table_body tr').forEach(function(r) {
-            supports.push({ x: parseFloat(r.querySelector('.isp-x').value) || 0, y: parseFloat(r.querySelector('.isp-y').value) || 0, z: parseFloat(r.querySelector('.isp-z').value) || 0, dofs: (r.querySelector('.isp-dofs').value || 'xyz').toLowerCase() });
-        });
-        return supports;
-    }
+    function applyLoadPreset() {
+        var preset = document.getElementById('load_preset').value;
+        var Lx = Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000;
+        var Ly = Math.abs(parseFloat(document.getElementById('Ly').value)) || 300;
+        var Lz = Math.abs(parseFloat(document.getElementById('Lz').value)) || 600;
+        var tbody = document.getElementById('load_table_body');
 
-    // -----------------------------------------------------------------------
-    // Domain Mode (Rectangular / Polygon)
-    // -----------------------------------------------------------------------
-    function onDomainModeChange() {
-        var mode = document.getElementById('domain_mode').value;
-        var matType = document.getElementById('mat_type').value;
-        var isPolygon = (mode === 'polygon' && matType !== 'cables');
-
-        // Auto-swap the example support layout ONLY when the current rows
-        // are still an untouched app default (or the table is empty). A user's
-        // edited supports are preserved across mode toggles. Use the
-        // "Load Example Shape" button to force a reset at any time.
-        if (matType === 'membrane') {
-            var rows = document.querySelectorAll('#support_table_body tr');
-            var isEmpty = (rows.length === 0);
-            if (isPolygon) {
-                var internalEmpty = (document.querySelectorAll('#internal_support_table_body tr').length === 0);
-                if (isEmpty || supportsMatchStock(STOCK_RECT_SUPPORTS)) {
-                    loadStockSupports(STOCK_POLYGON_SUPPORTS);
-                    if (internalEmpty) addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
-                }
-            } else {
-                if (isEmpty || supportsMatchStock(STOCK_POLYGON_SUPPORTS)) {
-                    loadStockSupports(STOCK_RECT_SUPPORTS);
-                    clearAllInternalSupports();
+        if (preset === 'top_udl') {
+            tbody.innerHTML = '';
+            var num_x = 4, num_y = 2;
+            var load_per_point = -100.0 / (num_x * num_y);
+            for (var ix = 1; ix <= num_x; ix++) {
+                for (var iy = 1; iy <= num_y; iy++) {
+                    addLoadRow((ix / (num_x + 1)) * Lx, (iy / (num_y + 1)) * Ly, Lz, 0, 0, load_per_point);
                 }
             }
-        }
-
-        document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
-        document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
-        var matType = document.getElementById('mat_type').value;
-        // External line supports: rectangular membrane only
-        document.getElementById('line_supports_container').style.display =
-            (!isPolygon && matType === 'membrane') ? 'block' : 'none';
-        // Internal line supports: polygon membrane only
-        var intLineEl = document.getElementById('internal_line_supports_container');
-        if (intLineEl) intLineEl.style.display = (isPolygon && matType === 'membrane') ? 'block' : 'none';
-
-        updateDomainVisuals();
-    }
-
-    function loadExampleForCurrentMode() {
-        var mode = document.getElementById('domain_mode').value;
-        var matType = document.getElementById('mat_type').value;
-        if (matType === 'cables') { clearResults(); return; } // point supports are domain-agnostic
-        clearResults();
-        if (mode === 'polygon') {
-            loadStockSupports(STOCK_POLYGON_SUPPORTS);
-            clearAllInternalSupports();
-            clearAllInternalLineSupports();
-            clearAllLineSupports();
-            addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
-        } else {
-            loadStockSupports(STOCK_RECT_SUPPORTS);
-            clearAllInternalSupports();
-            clearAllInternalLineSupports();
-            clearAllLineSupports();
+        } else if (preset === 'tip_center') {
+            tbody.innerHTML = '';
+            addLoadRow(Lx / 2.0, Ly / 2.0, Lz, 0, 0, -100);
+        } else if (preset === 'third_points') {
+            tbody.innerHTML = '';
+            addLoadRow(Lx / 3.0, Ly / 2.0, Lz, 0, 0, -50);
+            addLoadRow((2 * Lx) / 3.0, Ly / 2.0, Lz, 0, 0, -50);
         }
         updateDomainVisuals();
     }
 
     function getLoadArrayData() {
+        var rows = document.querySelectorAll('#load_table_body tr');
         var loads = [];
-        document.querySelectorAll('#load_table_body tr').forEach(function(r) {
-            loads.push({ x: parseFloat(r.querySelector('.ld-x').value) || 0, y: parseFloat(r.querySelector('.ld-y').value) || 0, z: parseFloat(r.querySelector('.ld-z').value) || 0, Fx: parseFloat(r.querySelector('.ld-fx').value) || 0, Fy: parseFloat(r.querySelector('.ld-fy').value) || 0, Fz: parseFloat(r.querySelector('.ld-fz').value) || 0 });
+        rows.forEach(function(r) {
+            loads.push({
+                x: parseFloat(r.querySelector('.ld-x').value) || 0,
+                y: parseFloat(r.querySelector('.ld-y').value) || 0,
+                z: parseFloat(r.querySelector('.ld-z').value) || 0,
+                Fx: parseFloat(r.querySelector('.ld-fx').value) || 0,
+                Fy: parseFloat(r.querySelector('.ld-fy').value) || 0,
+                Fz: parseFloat(r.querySelector('.ld-fz').value) || 0
+            });
         });
         return loads;
     }
 
     function getPointSupportArrayData() {
+        var rows = document.querySelectorAll('#support_table_body tr');
         var supports = [];
-        document.querySelectorAll('#support_table_body tr').forEach(function(r) {
-            supports.push({ x: parseFloat(r.querySelector('.sp-x').value) || 0, y: parseFloat(r.querySelector('.sp-y').value) || 0, z: parseFloat(r.querySelector('.sp-z').value) || 0, dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase() });
+        rows.forEach(function(r) {
+            supports.push({
+                x: parseFloat(r.querySelector('.sp-x').value) || 0,
+                y: parseFloat(r.querySelector('.sp-y').value) || 0,
+                z: parseFloat(r.querySelector('.sp-z').value) || 0,
+                dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase()
+            });
         });
         return supports;
     }
 
+    /* Extract Line Support Table Data */
     function getLineSupportArrayData() {
+        var rows = document.querySelectorAll('#line_support_table_body tr');
         var lineSupports = [];
-        document.querySelectorAll('#line_support_table_body tr').forEach(function(r) {
-            lineSupports.push({ x1: parseFloat(r.querySelector('.lsp-x1').value) || 0, y1: parseFloat(r.querySelector('.lsp-y1').value) || 0, z1: parseFloat(r.querySelector('.lsp-z1').value) || 0, x2: parseFloat(r.querySelector('.lsp-x2').value) || 0, y2: parseFloat(r.querySelector('.lsp-y2').value) || 0, z2: parseFloat(r.querySelector('.lsp-z2').value) || 0, dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase() });
+        rows.forEach(function(r) {
+            lineSupports.push({
+                x1: parseFloat(r.querySelector('.lsp-x1').value) || 0,
+                y1: parseFloat(r.querySelector('.lsp-y1').value) || 0,
+                z1: parseFloat(r.querySelector('.lsp-z1').value) || 0,
+                x2: parseFloat(r.querySelector('.lsp-x2').value) || 0,
+                y2: parseFloat(r.querySelector('.lsp-y2').value) || 0,
+                z2: parseFloat(r.querySelector('.lsp-z2').value) || 0,
+                dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase()
+            });
         });
         return lineSupports;
     }
 
-    function calculateBoundingBox() {
-        var pts = [];
-        getPointSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
-        getInternalSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
-        getLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
-        getInternalLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
-        getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
-        if (pts.length === 0) return { Lx: 6000, Ly: 3000, Lz: 1000 };
-        return { Lx: Math.max(...pts.map(p => p[0]), 1000), Ly: Math.max(...pts.map(p => p[1]), 1000), Lz: Math.max(...pts.map(p => p[2]), 1000) };
-    }
-
-    // -----------------------------------------------------------------------
-    // Client-side polygon validation (instant feedback, mirrors worker).
-    // -----------------------------------------------------------------------
-    function segmentsIntersect2D(ax, ay, bx, by, cx, cy, dx, dy) {
-        var d1 = ((dx - cx) * (ay - cy)) - ((dy - cy) * (ax - cx));
-        var d2 = ((dx - cx) * (by - cy)) - ((dy - cy) * (bx - cx));
-        var d3 = ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
-        var d4 = ((bx - ax) * (dy - ay)) - ((by - ay) * (dx - ax));
-        return (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)));
-    }
-
-    function polygonSignedArea2D(pts) {
-        var a = 0;
-        for (var i = 0; i < pts.length; i++) {
-            var j = (i + 1) % pts.length;
-            a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
-        }
-        return a / 2;
-    }
-
-    function polygonIsSimple2D(pts) {
-        var n = pts.length;
-        if (n < 4) return true;
-        for (var i = 0; i < n; i++) {
-            var j = (i + 1) % n;
-            for (var k = i + 1; k < n; k++) {
-                var l = (k + 1) % n;
-                if (i === k || i === l || j === k || j === l) continue;
-                if (segmentsIntersect2D(pts[i][0], pts[i][1], pts[j][0], pts[j][1], pts[k][0], pts[k][1], pts[l][0], pts[l][1])) return false;
-            }
-        }
-        return true;
-    }
-
-    function validatePolygonPerimeter() {
-        var msgEl = document.getElementById('polygon_validation_msg');
-        if (!msgEl) return;
-        var sups = getPointSupportArrayData();
-        var isPolygon = (document.getElementById('domain_mode').value === 'polygon' &&
-                         document.getElementById('mat_type').value !== 'cables');
-        if (!isPolygon) { msgEl.innerHTML = ''; return; }
-
-        var pts = sups.map(function(s) { return [s.x, s.y]; });
-        var n = pts.length;
-        if (n < 3) {
-            msgEl.style.color = '#c0392b';
-            msgEl.innerHTML = 'Need at least 3 perimeter points (have ' + n + ').';
-            return;
-        }
-
-        var area = polygonSignedArea2D(pts);
-        if (Math.abs(area) < 1.0) {
-            msgEl.style.color = '#c0392b';
-            msgEl.innerHTML = 'Degenerate polygon (zero area) — points are colinear or repeated.';
-            return;
-        }
-
-        if (!polygonIsSimple2D(pts)) {
-            msgEl.style.color = '#c0392b';
-            msgEl.innerHTML = 'Self-intersecting perimeter — enter points clockwise or anti-clockwise in order.';
-            return;
-        }
-
-        var orientation = (area > 0) ? 'anti-clockwise (CCW)' : 'clockwise (CW)';
-        var absArea = Math.round(Math.abs(area));
-        var ok = true;
-
-        // also check internal supports are inside the polygon
-        var internalSups = getInternalSupportArrayData();
-        if (internalSups.length > 0) {
-            // ray-cast point-in-polygon
-            var outside = internalSups.filter(function(s) {
-                var inside = false;
-                for (var i = 0, j = n - 1; i < n; j = i++) {
-                    if (((pts[i][1] > s.y) !== (pts[j][1] > s.y)) && (s.x < (pts[j][0] - pts[i][0]) * (s.y - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0])) inside = !inside;
-                }
-                return !inside;
-            });
-            if (outside.length > 0) {
-                ok = false;
-                msgEl.style.color = '#c0392b';
-                msgEl.innerHTML = 'Internal support' + (outside.length > 1 ? 's' : '') + ' outside the perimeter (' + outside.length + ' point' + (outside.length > 1 ? 's' : '') + ') — move them inside the shape.';
-                return;
-            }
-        }
-
-        if (ok) {
-            msgEl.style.color = '#27ae60';
-            msgEl.innerHTML = 'Valid polygon: ' + n + ' perimeter points, ' + orientation + '.  Area: ' + absArea.toLocaleString() + ' mm²';
-        }
-    }
-
     function updateDomainVisuals() {
-        var matType = document.getElementById('mat_type').value;
-        var bounds = calculateBoundingBox();
-        activeLx = bounds.Lx; activeLy = bounds.Ly; activeLz = bounds.Lz;
+        validatePositiveInputs();
+        var Lx = Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000;
+        var Ly = Math.abs(parseFloat(document.getElementById('Ly').value)) || 300;
+        var Lz = Math.abs(parseFloat(document.getElementById('Lz').value)) || 600;
+        var nz = Math.abs(parseInt(document.getElementById('nz').value)) || 12;
 
-        supportGizmos.forEach(function(g) { scene.remove(g); }); supportGizmos = [];
-        forceArrows.forEach(function(a) { scene.remove(a); }); forceArrows = [];
+        if (domainBox) scene.remove(domainBox);
+        var boxGeo = new THREE.BoxGeometry(Lx, Lz, Ly);
+        var edges = new THREE.EdgesGeometry(boxGeo);
+        domainBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, linewidth: 1 }));
+        domainBox.position.set(Lx / 2.0, Lz / 2.0, Ly / 2.0);
+        scene.add(domainBox);
 
+        supportGizmos.forEach(function(g) { scene.remove(g); });
+        supportGizmos = [];
+
+        var dz = Lz / nz;
+        var size = Math.min(180.0, Math.max(80.0, dz * 1.5));
+        
+        var supMode = document.getElementById('support_mode').value;
         var pinMat = new THREE.MeshStandardMaterial({ color: 0x00aa55, roughness: 0.3 });
-        var intMat = new THREE.MeshStandardMaterial({ color: 0x0077cc, roughness: 0.3 });
-        var ptPinGeo = new THREE.ConeGeometry(100, 150, 4);
+        var rollerMat = new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.3 });
 
-        var isPolygon = (document.getElementById('domain_mode').value === 'polygon' && matType !== 'cables');
+        if (supMode === 'preset') {
+            var preset = document.getElementById('support_preset').value;
+            
+            if (preset === 'cantilever') {
+                var wallGeo = new THREE.BoxGeometry(size * 0.4, Lz, Ly);
+                var wallMesh = new THREE.Mesh(wallGeo, pinMat);
+                wallMesh.position.set(-size * 0.2, Lz / 2.0, Ly / 2.0);
+                scene.add(wallMesh);
+                supportGizmos.push(wallMesh);
 
-        getPointSupportArrayData().forEach(function(ps) {
-            var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
-            ptMesh.position.set(ps.x, ps.z - 75, ps.y);
-            scene.add(ptMesh); supportGizmos.push(ptMesh);
-        });
-
-        // Internal supports — different color (blue) when in polygon mode
-        if (isPolygon) {
-            getInternalSupportArrayData().forEach(function(is) {
-                var ptMesh = new THREE.Mesh(ptPinGeo, intMat);
-                ptMesh.position.set(is.x, is.z - 75, is.y);
-                scene.add(ptMesh); supportGizmos.push(ptMesh);
-            });
-        }
-
-        // Polygon perimeter outline preview
-        if (perimeterPreviewGroup) { scene.remove(perimeterPreviewGroup); perimeterPreviewGroup = null; }
-        if (isPolygon && getPointSupportArrayData().length >= 3) {
-            var pts2D = getPointSupportArrayData().map(function(p) { return new THREE.Vector3(p.x, p.z, p.y); });
-            pts2D.push(pts2D[0].clone());
-            var lineGeo = new THREE.BufferGeometry().setFromPoints(pts2D);
-            var lineMat = new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 });
-            var perimeterLine = new THREE.Line(lineGeo, lineMat);
-            perimeterPreviewGroup = new THREE.Group();
-            perimeterPreviewGroup.add(perimeterLine);
-            scene.add(perimeterPreviewGroup);
-        }
-
-        getLineSupportArrayData().forEach(function(ls) {
-            var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
-            var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
-            if (len > 1e-3) {
-                var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, len, 12), pinMat);
-                cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
-                cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
-                scene.add(cylMesh); supportGizmos.push(cylMesh);
-            }
-        });
-
-        // Internal line supports (polygon mode) — blue to distinguish from external green pins
-        var intLineMat = new THREE.MeshStandardMaterial({ color: 0x2255ee, roughness: 0.3 });
-        getInternalLineSupportArrayData().forEach(function(ls) {
-            var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
-            var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
-            if (len > 1e-3) {
-                var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, len, 12), intLineMat);
-                cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
-                cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
-                scene.add(cylMesh); supportGizmos.push(cylMesh);
-            }
-        });
-
-        getLoadArrayData().forEach(function(ld) {
-            var dir = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
-            var mag = dir.length();
-            if (mag > 1e-3) {
-                dir.normalize();
-                var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
-                var maxArrowLen = Math.min(activeLx, activeLy, activeLz) * 0.20;
-                var arrowLen = Math.min(Math.max(mag * 15, 150), maxArrowLen);
-                
-                var arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, arrowLen * 0.25, arrowLen * 0.12);
-                scene.add(arrow); forceArrows.push(arrow);
-            }
-        });
-
-        if (!currentVertices.length) {
-            drawInitialPreviewMesh();
-        }
-
-        validatePolygonPerimeter();
-        setupCutPlaneSliders();
-    }
-
-    function drawInitialPreviewMesh() {
-        var matType = document.getElementById('mat_type').value;
-        var pointSups = getPointSupportArrayData();
-
-        if (mesh) scene.remove(mesh);
-
-        var domainMode = document.getElementById('domain_mode').value;
-        var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
-
-        if (isPolygon && pointSups.length >= 3) {
-            // Preview: flat outline of the perimeter at z = average support Z,
-            // plus a faint triangulated fill so the user sees the domain shape.
-            var avgZ = pointSups.reduce(function(s, p) { return s + (p.z || 0); }, 0) / pointSups.length;
-            var pts3D = pointSups.map(function(p) { return new THREE.Vector3(p.x, avgZ, p.y); });
-            pts3D.push(pts3D[0].clone());
-
-            var lineGeo = new THREE.BufferGeometry().setFromPoints(pts3D);
-            var outline = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 }));
-
-            var group = new THREE.Group();
-            group.add(outline);
-
-            // Faint filled surface via a shape (2D, lifted to avgZ).
-            var shape = new THREE.Shape();
-            shape.moveTo(pointSups[0].x, pointSups[0].y);
-            for (var k = 1; k < pointSups.length; k++) shape.lineTo(pointSups[k].x, pointSups[k].y);
-            shape.closePath();
-            var fillGeo = new THREE.ShapeGeometry(shape);
-            var fillMesh = new THREE.Mesh(fillGeo, new THREE.MeshStandardMaterial({ color: 0x88ccee, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-            // ShapeGeometry is in XY plane; rotate so it lies in the XZ (plan) plane at y=avgZ.
-            fillMesh.rotation.x = -Math.PI / 2;
-            fillMesh.position.y = avgZ;
-            group.add(fillMesh);
-
-            mesh = group;
-            scene.add(mesh);
-            return;
-        }
-
-        if (matType === 'cables') {
-            var p1 = pointSups.length > 0 ? pointSups[0] : {x: 0, y: 0, z: 0};
-            var p2 = pointSups.length > 1 ? pointSups[1] : {x: activeLx, y: 0, z: 0};
-            var nx = parseInt(document.getElementById('nx').value) || 36;
-
-            var positions = [];
-            for (var i = 0; i < nx; i++) {
-                var t1 = i / nx; var t2 = (i + 1) / nx;
-                var x1 = p1.x + t1 * (p2.x - p1.x); var y1 = p1.y + t1 * (p2.y - p1.y); var z1 = p1.z + t1 * (p2.z - p1.z);
-                var x2 = p1.x + t2 * (p2.x - p1.x); var y2 = p1.y + t2 * (p2.y - p1.y); var z2 = p1.z + t2 * (p2.z - p1.z);
-                positions.push(x1, z1, y1, x2, z2, y2);
-            }
-
-            var geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
-            scene.add(mesh);
-            return;
-        }
-
-        var nx = parseInt(document.getElementById('nx').value) || 36;
-        var ny = parseInt(document.getElementById('ny').value) || 12;
-
-        var z00 = 0.0, z10 = 0.0, z01 = 0.0, z11 = 0.0;
-        pointSups.forEach(ps => {
-            if (ps.x <= activeLx * 0.25 && ps.y <= activeLy * 0.25) z00 = ps.z;
-            if (ps.x >= activeLx * 0.75 && ps.y <= activeLy * 0.25) z10 = ps.z;
-            if (ps.x <= activeLx * 0.25 && ps.y >= activeLy * 0.75) z01 = ps.z;
-            if (ps.x >= activeLx * 0.75 && ps.y >= activeLy * 0.75) z11 = ps.z;
-        });
-
-        var previewNodes = [], previewEdges = [];
-        var xLin = Array.from({length: nx + 1}, (_, i) => (i / nx) * activeLx);
-        var yLin = Array.from({length: ny + 1}, (_, j) => (j / ny) * activeLy);
-
-        var gridMap = {};
-        var idx = 0;
-        for (var i = 0; i <= nx; i++) {
-            var xi = i / nx;
-            for (var j = 0; j <= ny; j++) {
-                var eta = j / ny;
-                var z_interp = (1.0 - xi) * (1.0 - eta) * z00 + xi * (1.0 - eta) * z10 + (1.0 - xi) * eta * z01 + xi * eta * z11;
-                previewNodes.push([xLin[i], z_interp, yLin[j]]);
-                gridMap[`${i},${j}`] = idx++;
-            }
-        }
-
-        for (var i = 0; i <= nx; i++) {
-            for (var j = 0; j <= ny; j++) {
-                var curr = gridMap[`${i},${j}`];
-                if (i < nx) previewEdges.push([curr, gridMap[`${i+1},${j}`]]);
-                if (j < ny) previewEdges.push([curr, gridMap[`${i},${j+1}`]]);
-            }
-        }
-
-        var positions = [];
-        previewEdges.forEach(function(edge) {
-            var p1 = previewNodes[edge[0]], p2 = previewNodes[edge[1]];
-            positions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
-        });
-
-        var geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 }));
-        scene.add(mesh);
-    }
-
-    function displayReactions(reactions) {
-        while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
-        if (!reactions || !reactions.length) return;
-
-        var lineSups = getLineSupportArrayData();
-
-        if (lineSups.length > 0) {
-            lineSups.forEach(ls => {
-                var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
-                var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
-                var midPos = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-
-                var totalRx = 0.0, totalRy = 0.0, totalRz = 0.0;
-                reactions.forEach(r => {
-                    var rPos = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
-                    if (rPos.distanceTo(p1) <= activeLx * 1.5 || rPos.distanceTo(p2) <= activeLx * 1.5) {
-                        totalRx += r.Rx_kN;
-                        totalRy += r.Ry_kN;
-                        totalRz += r.Rz_kN;
-                    }
+            } else if (preset === 'four_corners') {
+                var cornerGeo = new THREE.ConeGeometry(size * 0.5, size, 4);
+                var corners = [[0, 0], [Lx, 0], [0, Ly], [Lx, Ly]];
+                corners.forEach(function(pt) {
+                    var cMesh = new THREE.Mesh(cornerGeo, pinMat);
+                    cMesh.position.set(pt[0], -size * 0.5, pt[1]);
+                    scene.add(cMesh);
+                    supportGizmos.push(cMesh);
                 });
 
-                var dir = new THREE.Vector3(totalRx, totalRz, totalRy);
-                var mag = dir.length();
+            } else if (preset === 'all_edges') {
+                var edgeT = Math.max(size * 0.2, Math.min(Lx, Ly) * 0.02);
+                var edgeH = size * 0.3;
+                var edgeGeoX = new THREE.BoxGeometry(Lx, edgeH, edgeT);
+                var edgeGeoY = new THREE.BoxGeometry(edgeT, edgeH, Ly);
 
-                if (mag > 1e-3) {
-                    dir.normalize();
-                    var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
-                    var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, 140, 70);
-                    
-                    arrow.userData.reactionData = { type: "Line Support Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
-                    
-                    reactionGroup.add(arrow);
+                var edgeFront = new THREE.Mesh(edgeGeoX, pinMat);
+                edgeFront.position.set(Lx / 2.0, -edgeH * 0.5, edgeT / 2.0);
+                scene.add(edgeFront); supportGizmos.push(edgeFront);
 
-                    var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
-                    var sprite = makeTextSprite(labelText, '#00aa55');
-                    sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
-                    sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
-                    reactionGroup.add(sprite);
-                }
-            });
-            return;
+                var edgeBack = new THREE.Mesh(edgeGeoX, pinMat);
+                edgeBack.position.set(Lx / 2.0, -edgeH * 0.5, Ly - edgeT / 2.0);
+                scene.add(edgeBack); supportGizmos.push(edgeBack);
+
+                var edgeLeft = new THREE.Mesh(edgeGeoY, pinMat);
+                edgeLeft.position.set(edgeT / 2.0, -edgeH * 0.5, Ly / 2.0);
+                scene.add(edgeLeft); supportGizmos.push(edgeLeft);
+
+                var edgeRight = new THREE.Mesh(edgeGeoY, pinMat);
+                edgeRight.position.set(Lx - edgeT / 2.0, -edgeH * 0.5, Ly / 2.0);
+                scene.add(edgeRight); supportGizmos.push(edgeRight);
+            }
         }
 
-        reactions.forEach(r => {
-            const origin = new THREE.Vector3(r.pos[0], r.pos[2], r.pos[1]);
-            const dir = new THREE.Vector3(r.Rx_kN, r.Rz_kN, r.Ry_kN);
-            const mag = dir.length();
+        if (supportBoxVisual) scene.remove(supportBoxVisual);
+        if (supMode === 'custom') {
+            var xMin = parseFloat(document.getElementById('sup_x_min').value) || 0;
+            var xMax = parseFloat(document.getElementById('sup_x_max').value) || 0;
+            var yMin = parseFloat(document.getElementById('sup_y_min').value) || 0;
+            var yMax = parseFloat(document.getElementById('sup_y_max').value) || 0;
+            var zMin = parseFloat(document.getElementById('sup_z_min').value) || 0;
+            var zMax = parseFloat(document.getElementById('sup_z_max').value) || 0;
+            
+            var dx = Math.max(xMax - xMin, size * 0.5), dy = Math.max(yMax - yMin, size * 0.5), dz_box = Math.max(zMax - zMin, size * 0.5);
+            var supGeo = new THREE.BoxGeometry(dx, dz_box, dy);
+            var supMesh = new THREE.Mesh(supGeo, pinMat);
+            supMesh.position.set(xMin + dx / 2.0, zMin + dz_box / 2.0, yMin + dy / 2.0);
+            scene.add(supMesh);
+            supportGizmos.push(supMesh);
+        }
 
-            if (mag > 1e-3) {
-                dir.normalize();
-                const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
-                const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, 140, 70);
-                
-                arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
-                
-                reactionGroup.add(arrow);
-
-                const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
-                const sprite = makeTextSprite(labelText, '#00aa55');
-                sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
-                sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
-                reactionGroup.add(sprite);
-            }
-        });
-    }
-
-    function renderCableSagIndicator() {
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
-        if (!currentVertices.length) return;
-
+        // Render Discrete Point Supports
         var pointSups = getPointSupportArrayData();
-        var p1 = pointSups.length > 0 ? new THREE.Vector3(pointSups[0].x, pointSups[0].z, pointSups[0].y) : new THREE.Vector3(0, 0, 0);
-        var p2 = pointSups.length > 1 ? new THREE.Vector3(pointSups[1].x, pointSups[1].z, pointSups[1].y) : new THREE.Vector3(activeLx, 0, 0);
+        var ptPinGeo = new THREE.ConeGeometry(size * 0.4, size * 0.7, 4);
+        var ptRollerGeo = new THREE.CylinderGeometry(size * 0.2, size * 0.2, size * 0.7, 16);
 
-        var chordVec = new THREE.Vector3().subVectors(p2, p1);
-        var chordLenSq = chordVec.lengthSq();
+        pointSups.forEach(function(ps) {
+            var isPin = ps.dofs.includes('x') && ps.dofs.includes('y') && ps.dofs.includes('z');
+            var ptMesh;
 
-        var maxSagMM = -1.0;
-        var maxSagNodePos = null;
-        var chordProjPos = null;
+            if (isPin) {
+                ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
+                ptMesh.position.set(ps.x, ps.z - size * 0.35, ps.y);
+            } else {
+                ptMesh = new THREE.Mesh(ptRollerGeo, rollerMat);
+                ptMesh.rotation.x = Math.PI / 2;
+                ptMesh.position.set(ps.x, ps.z - size * 0.2, ps.y);
+            }
 
-        currentVertices.forEach(function(v) {
-            var nodePos = new THREE.Vector3(v[0], v[2], v[1]);
-            var vVec = new THREE.Vector3().subVectors(nodePos, p1);
-            
-            var t = chordLenSq > 1e-6 ? vVec.dot(chordVec) / chordLenSq : 0.0;
-            t = Math.max(0.0, Math.min(1.0, t));
-            
-            var projOnChord = new THREE.Vector3().copy(p1).add(chordVec.clone().multiplyScalar(t));
-            var sagDistance = nodePos.distanceTo(projOnChord);
+            scene.add(ptMesh);
+            supportGizmos.push(ptMesh);
+        });
 
-            if (sagDistance > maxSagMM) {
-                maxSagMM = sagDistance;
-                maxSagNodePos = nodePos;
-                chordProjPos = projOnChord;
+        /* Render Discrete 3D Line Support Gizmos */
+        var lineSups = getLineSupportArrayData();
+        lineSups.forEach(function(ls) {
+            var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1);
+            var p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
+            var lineVec = new THREE.Vector3().subVectors(p2, p1);
+            var len = lineVec.length();
+
+            if (len > 1e-3) {
+                var isPin = ls.dofs.includes('x') && ls.dofs.includes('y') && ls.dofs.includes('z');
+                var mat = isPin ? pinMat : rollerMat;
+                
+                var cylGeo = new THREE.CylinderGeometry(size * 0.15, size * 0.15, len, 12);
+                var cylMesh = new THREE.Mesh(cylGeo, mat);
+                
+                var mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                cylMesh.position.copy(mid);
+                
+                var axis = new THREE.Vector3(0, 1, 0);
+                cylMesh.quaternion.setFromUnitVectors(axis, lineVec.clone().normalize());
+                
+                scene.add(cylMesh);
+                supportGizmos.push(cylMesh);
             }
         });
 
-        if (maxSagNodePos && chordProjPos && maxSagMM > 1e-3) {
-            var lineGeo = new THREE.BufferGeometry().setFromPoints([chordProjPos, maxSagNodePos]);
-            var lineMat = new THREE.LineDashedMaterial({ color: 0x00aa55, dashSize: 40, gapSize: 20, linewidth: 2 });
-            var dropLine = new THREE.Line(lineGeo, lineMat);
-            dropLine.computeLineDistances();
-            sagIndicatorGroup.add(dropLine);
+        forceArrows.forEach(function(a) { scene.remove(a); });
+        forceArrows = [];
+        getLoadArrayData().forEach(function(ld) {
+            var dirVector = new THREE.Vector3(ld.Fx, ld.Fz, ld.Fy);
+            var forceMag = dirVector.length();
+            if (forceMag > 1e-3) {
+                dirVector.normalize();
+                var origin = new THREE.Vector3(ld.x, ld.z, ld.y);
+                var arrowLength = Math.min(Math.max(forceMag * 1.2, size), size * 2.5);
+                var arrow = new THREE.ArrowHelper(dirVector, origin, arrowLength, 0xcc0000, arrowLength * 0.25, arrowLength * 0.12);
+                scene.add(arrow);
+                forceArrows.push(arrow);
+            }
+        });
 
-            var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
-            var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-            sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
-            sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
-            sagIndicatorGroup.add(sprite);
-        }
+        voidRegionGizmos.forEach(function(g) { scene.remove(g); });
+        voidRegionGizmos = [];
+        var voidFillMat = new THREE.MeshStandardMaterial({
+            color: 0xff9900, roughness: 0.6, transparent: true, opacity: 0.28,
+            side: THREE.DoubleSide, depthWrite: false
+        });
+        var solidFillMat = new THREE.MeshStandardMaterial({
+            color: 0x2255ee, roughness: 0.6, transparent: true, opacity: 0.28,
+            side: THREE.DoubleSide, depthWrite: false
+        });
+        getVoidRegionArrayData().forEach(function(vr) {
+            var dx = Math.max(vr.x_max - vr.x_min, 1.0);
+            var dy = Math.max(vr.y_max - vr.y_min, 1.0);
+            var dz_box = Math.max(vr.z_max - vr.z_min, 1.0);
+            var regGeo = new THREE.BoxGeometry(dx, dz_box, dy);
+            var fillMat = (vr.region_type === 'solid') ? solidFillMat : voidFillMat;
+            var regMesh = new THREE.Mesh(regGeo, fillMat);
+            regMesh.position.set(vr.x_min + dx / 2.0, vr.z_min + dz_box / 2.0, vr.y_min + dy / 2.0);
+            scene.add(regMesh);
+            voidRegionGizmos.push(regMesh);
+
+            var regEdges = new THREE.EdgesGeometry(regGeo);
+            var edgeColor = (vr.region_type === 'solid') ? 0x2255ee : 0xcc6600;
+            var regWire = new THREE.LineSegments(regEdges, new THREE.LineBasicMaterial({ color: edgeColor }));
+            regWire.position.copy(regMesh.position);
+            scene.add(regWire);
+            voidRegionGizmos.push(regWire);
+        });
+
+        setVoidGizmosVisible(true);
+        setBoundaryGizmosVisible(true);
     }
 
     function initWasmEngine() {
-        worker = new Worker('worker_ff.js?cb=' + Date.now());
+        worker = new Worker('solver_worker.js?cb=' + Date.now());
         worker.onmessage = handleWorkerMessage;
         worker.postMessage({ action: 'init' });
     }
 
     function handleWorkerMessage(e) {
-        var data = e.data, status = document.getElementById('status'), btnExec = document.getElementById('btn-exec'), btnStop = document.getElementById('btn-stop'), actionsGroup = document.getElementById('results-actions-group');
+        var data = e.data;
+        var status = document.getElementById('status');
+        var btnExec = document.getElementById('btn-exec');
+        var btnStop = document.getElementById('btn-stop');
+        var actionsGroup = document.getElementById('results-actions-group');
 
-        if (data.status === 'log') { status.innerText = data.message; }
-        else if (data.status === 'ready') {
-            engineReady = true; status.innerText = "Wasm Engine Ready. Define problem parameters.";
-            btnExec.disabled = false; btnExec.innerText = "Execute Form Finding";
+        if (data.status === 'log') {
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = data.message;
+
+        } else if (data.status === 'ready') {
+            engineReady = true;
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Wasm Engine Ready. Define problem parameters.";
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Optimisation";
+
+        } else if (data.status === 'running') {
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            var phase = data.phase || "Solving";
+            var iterTxt = (data.total_iter ? (" — Iteration " + data.current_iter + " / " + data.total_iter) : "");
+            var speedTxt = data.last_iter_ms ? (" (" + data.last_iter_ms + " ms/iter)") : "";
+            status.innerText = phase + iterTxt + speedTxt;
+
         } else if (data.status === 'completed') {
-            btnExec.disabled = false; btnExec.innerText = "Execute Form Finding";
-            btnStop.style.display = 'none'; actionsGroup.style.display = 'flex';
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Optimisation";
+            btnStop.style.display = 'none';
+            actionsGroup.style.display = 'flex';
 
-            currentVertices = data.data.nodes; currentFaces = data.data.edges;
-            currentTriangles = (data.data.triangles != null && data.data.triangles.length > 0) ? data.data.triangles : null;
-            currentDomainMode = data.data.domain_mode || "rectangular";
-            currentForcesN = data.data.axial_forces || [];
-            currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
+            currentVertices = data.data.vertices;
+            currentFaces = data.data.faces;
+            currentStressesMPa = data.data.stresses_mpa;
+            currentDeflectionsMM = data.data.deflections_mm || [];
+            
+            currentSigmaMaxTens = data.data.sigma_max_tens != null ? data.data.sigma_max_tens : Math.max(0.0, ...currentStressesMPa);
+            currentSigmaMaxComp = data.data.sigma_max_comp != null ? data.data.sigma_max_comp : Math.min(0.0, ...currentStressesMPa);
+            currentUMax = data.data.u_max;
+            currentFk = data.data.f_k || 30.0;
 
-            // CRITICAL FIX: capture the ACTUAL solved grid resolution reported
-            // by the worker. Forced grid lines at support coordinates can grow
-            // nx/ny beyond the UI's requested values, and reRenderMesh() must
-            // rebuild triangle indices against the real stride, not the stale
-            // UI input values, or outlying supports get silently dropped from
-            // every triangle even though their nodes exist and solved fine.
-            currentNxActual = (typeof data.data.nx_actual === 'number') ? data.data.nx_actual : null;
-            currentNyActual = (typeof data.data.ny_actual === 'number') ? data.data.ny_actual : null;
+            var compSlider = document.getElementById('stress_comp_slider');
+            var tensSlider = document.getElementById('stress_tens_slider');
 
-            if (currentForcesN.length) {
-                var maxForceKN = Math.max(...currentForcesN.map(f => Math.abs(f))) / 1000.0;
-                var tensionSlider = document.getElementById('tension_threshold_slider');
-                tensionSlider.max = Math.max(maxForceKN, 1.0).toFixed(1);
-                tensionSlider.value = tensionSlider.max;
-                document.getElementById('lbl_tension_range').innerText = `0.01 - ${tensionSlider.max} kN`;
-            }
+            var maxCompAbs = Math.ceil(Math.abs(currentSigmaMaxComp) * 100) / 100;
+            compSlider.max = maxCompAbs > 0.01 ? maxCompAbs : 0.01;
+            compSlider.value = compSlider.max;
 
-            var diag = data.data.diagnostics || {};
-            var convText;
-            // Cables use Force Density Method (linear solve) — not iterative DR.
-            // Prefer FDM-specific fields so we never report "undefined" residuals.
-            if (diag.system_solved_linearly || (diag.method && String(diag.method).indexOf('Force Density') >= 0)) {
-                var slack = (typeof diag.slack_cables === 'number') ? diag.slack_cables : 0;
-                convText = `[FDM linear solve OK` + (slack > 0 ? `; slack members: ${slack}` : '') + `]`;
-            } else if (diag.converged) {
-                convText = `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]`;
-            } else if (diag.settled) {
-                convText = `[Settled: residual plateaued (Iters: ${diag.iterations_run}, Res: ${diag.best_relative_residual})]`;
-            } else if (typeof diag.iterations_run === 'number') {
-                convText = `[Equilibrium not reached (hit iteration cap at ${diag.iterations_run}, best Res: ${diag.best_relative_residual})]`;
-            } else {
-                convText = `[Solve finished]`;
-            }
+            var maxTensRounded = Math.ceil(currentSigmaMaxTens * 100) / 100;
+            tensSlider.max = maxTensRounded > 0.01 ? maxTensRounded : 0.01;
+            tensSlider.value = tensSlider.max;
 
-            status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
+            onStressSliderChange();
+
+            status.style.color = "#000000";
+            status.style.borderLeftColor = "#000000";
+            status.innerText = "Optimisation complete in " + (data.data.solve_time_s || "?") + "s [" +
+                (data.data.material_name || "") + "]. Rendering...";
+            toggleRenderModeUI();
             reRenderMesh();
-            displayReactions(data.data.reactions || []);
+
         } else if (data.status === 'error') {
-            btnExec.disabled = false; btnExec.innerText = "Execute Form Finding";
-            btnStop.style.display = 'none'; status.innerText = "Solver Error: " + data.message;
+            btnExec.disabled = false;
+            btnExec.innerText = "Execute Optimisation";
+            btnStop.style.display = 'none';
+            status.style.color = "#cc0000";
+            status.style.borderLeftColor = "#cc0000";
+            status.innerText = "Solver Error: " + data.message;
         }
     }
 
     function startOptimisation() {
         if (!engineReady) return;
-        document.getElementById('status').innerText = "Dispatching FE solver to Wasm worker...";
+        validatePositiveInputs();
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Dispatching FE solver to Wasm worker...";
+
         document.getElementById('btn-exec').disabled = true;
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('results-actions-group').style.display = 'none';
 
-        var matType = document.getElementById('mat_type').value;
-        var gradeVal = document.getElementById('mat_grade') ? document.getElementById('mat_grade').value : '';
-        var isCustomGrade = gradeVal.toLowerCase().includes('custom');
+        var dofs = '';
+        if (document.getElementById('dof_x').checked) dofs += 'x';
+        if (document.getElementById('dof_y').checked) dofs += 'y';
+        if (document.getElementById('dof_z').checked) dofs += 'z';
 
-        var bounds = calculateBoundingBox();
         var payload = {
-            material_type: isCustomGrade ? "generic" : matType,
-            material_grade: gradeVal,
-            sec_cable_d: parseFloat(document.getElementById('sec_cable_d').value) || 24.0,
-            sec_fabric_t: parseFloat(document.getElementById('sec_fabric_t').value) || 1.2,
-            
+            material_type: document.getElementById('mat_type').value,
+            material_grade: document.getElementById('mat_grade').value,
+            masonry_unit_fb: parseFloat(document.getElementById('masonry_unit_fb').value) || 20.0,
+            mortar_fm: parseFloat(document.getElementById('mortar_fm').value) || 6.0,
+            stone_E: parseFloat(document.getElementById('stone_E').value) || 35000.0,
             custom_E: parseFloat(document.getElementById('custom_E').value) || 33000.0,
             custom_nu: parseFloat(document.getElementById('custom_nu').value) || 0.20,
             custom_fk: parseFloat(document.getElementById('custom_fk').value) || 30.0,
             custom_gamma_kn_m3: parseFloat(document.getElementById('custom_gamma').value) || 25.0,
-
-            prestress: (matType === 'cables') ? parseFloat(document.getElementById('prestress').value) || 0.0 : 0.0,
-            prestress_warp_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_warp_kn_m').value) || 2.0 : 0.0,
-            prestress_weft_kn_m: (matType === 'membrane') ? parseFloat(document.getElementById('prestress_weft_kn_m').value) || 2.0 : 0.0,
-            edge_cable_prestress_kn: (matType === 'membrane') ? parseFloat(document.getElementById('edge_cable_prestress_kn').value) || 20.0 : 0.0,
-
-            Lx: bounds.Lx, Ly: bounds.Ly, Lz: bounds.Lz,
-            nx: parseInt(document.getElementById('nx').value),
-            ny: (matType === 'cables') ? 1 : parseInt(document.getElementById('ny').value),
-            max_iterations: Math.max(500, parseInt(document.getElementById('max_iterations').value) || 20000),
-            point_supports: getPointSupportArrayData(), line_supports: getLineSupportArrayData(),
-            loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
+            Lx: Math.abs(parseFloat(document.getElementById('Lx').value)) || 6000,
+            Ly: Math.abs(parseFloat(document.getElementById('Ly').value)) || 300,
+            Lz: Math.abs(parseFloat(document.getElementById('Lz').value)) || 600,
+            nx: Math.abs(parseInt(document.getElementById('nx').value)) || 36,
+            ny: Math.abs(parseInt(document.getElementById('ny').value)) || 9,
+            nz: Math.abs(parseInt(document.getElementById('nz').value)) || 12,
+            volfrac: parseFloat(document.getElementById('volfrac').value),
+            support_mode: document.getElementById('support_mode').value,
+            support_preset: document.getElementById('support_preset').value,
+            sup_x_min: parseFloat(document.getElementById('sup_x_min').value),
+            sup_x_max: parseFloat(document.getElementById('sup_x_max').value),
+            sup_y_min: parseFloat(document.getElementById('sup_y_min').value),
+            sup_y_max: parseFloat(document.getElementById('sup_y_max').value),
+            sup_z_min: parseFloat(document.getElementById('sup_z_min').value),
+            sup_z_max: parseFloat(document.getElementById('sup_z_max').value),
+            sup_dofs: dofs,
+            point_supports: getPointSupportArrayData(),
+            line_supports: getLineSupportArrayData(),
+            load_preset: document.getElementById('load_preset').value,
+            loads: getLoadArrayData(),
+            void_regions: getVoidRegionArrayData(),
+            iterations: Math.abs(parseInt(document.getElementById('iterations').value)) || 20,
+            include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
-        // Domain Mode: irregular polygon defined by ordered perimeter supports,
-        // plus optional internal supports (masts/pins) inside the perimeter.
-        var domainMode = document.getElementById('domain_mode').value;
-        var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
-        payload.domain_mode = isPolygon ? "polygon" : "rectangular";
-
-        if (isPolygon) {
-            payload.perimeter_supports = getPointSupportArrayData();
-            payload.internal_supports = getInternalSupportArrayData();
-            // Sample internal line supports into discrete fixed points the worker understands
-            payload.internal_line_supports = getInternalLineSupportArrayData();
-            // Expand internal lines into sampled points and merge with internal point supports
-            var expandedInternal = payload.internal_supports.slice();
-            getInternalLineSupportArrayData().forEach(function(ls) {
-                var nSamples = Math.max(4, Math.round(Math.hypot(ls.x2 - ls.x1, ls.y2 - ls.y1, ls.z2 - ls.z1) / 500));
-                for (var si = 0; si <= nSamples; si++) {
-                    var t = si / nSamples;
-                    expandedInternal.push({
-                        x: ls.x1 + t * (ls.x2 - ls.x1),
-                        y: ls.y1 + t * (ls.y2 - ls.y1),
-                        z: ls.z1 + t * (ls.z2 - ls.z1),
-                        dofs: ls.dofs || 'xyz'
-                    });
-                }
-            });
-            payload.internal_supports = expandedInternal;
-            // In polygon mode, rectangular point/line tables are not the domain definition
-            payload.point_supports = [];
-            payload.line_supports = [];
-
-            // Client-side guard: at least 3 perimeter points required.
-            if (payload.perimeter_supports.length < 3) {
-                document.getElementById('btn-exec').disabled = false;
-                document.getElementById('btn-stop').style.display = 'none';
-                document.getElementById('status').innerText = "Polygon mode requires at least 3 ordered perimeter support points (entered clockwise or anti-clockwise).";
-                return;
-            }
-        }
-
-        worker.postMessage({ action: 'form_find', payload: payload });
+        worker.postMessage({ action: 'solve', payload: payload });
     }
 
     function stopOptimisation() {
+        var status = document.getElementById('status');
+        status.style.color = "#cc0000";
+        status.style.borderLeftColor = "#cc0000";
+        status.innerText = "Terminating and reloading Wasm engine...";
+
         document.getElementById('btn-stop').style.display = 'none';
         document.getElementById('btn-exec').disabled = true;
-        engineReady = false; if (worker) worker.terminate(); initWasmEngine();
+        document.getElementById('btn-exec').innerText = "Loading Wasm Engine…";
+        document.getElementById('results-actions-group').style.display = 'none';
+        engineReady = false;
+
+        if (worker) worker.terminate();
+        initWasmEngine();
     }
 
     function clearResults() {
-        currentVertices = []; currentFaces = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
-        currentTriangles = null; currentDomainMode = "rectangular";
-        currentNxActual = null; currentNyActual = null;
-        if (mesh) { scene.remove(mesh); mesh = null; }
-        while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
-        if (originalCableGroup) {
-            while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
+        currentVertices = [];
+        currentFaces = [];
+        currentStressesMPa = [];
+        currentDeflectionsMM = [];
+
+        if (mesh) {
+            scene.remove(mesh);
+            mesh = null;
         }
+
         document.getElementById('legend').style.display = 'none';
         document.getElementById('results-actions-group').style.display = 'none';
+        document.getElementById('stress_thresholds_div').style.display = 'none';
+
+        var status = document.getElementById('status');
+        status.style.color = "#000000";
+        status.style.borderLeftColor = "#000000";
+        status.innerText = "Results cleared. Ready to define parameters.";
+
         updateDomainVisuals();
     }
 
-    /** Grey reference of the undeformed cable chord (supports only). Shown only after a solve. */
-    function renderOriginalCableReference() {
-        if (!originalCableGroup) return;
-        while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
-
-        var matType = document.getElementById('mat_type').value;
-        if (matType !== 'cables' || !currentVertices.length) return;
-
-        var pointSups = getPointSupportArrayData();
-        if (pointSups.length < 2) return;
-
-        var pA = pointSups[0], pB = pointSups[1];
-        // Match Three.js scene mapping used elsewhere: (X, Z, Y)
-        var p1 = new THREE.Vector3(pA.x, pA.z, pA.y);
-        var p2 = new THREE.Vector3(pB.x, pB.z, pB.y);
-
-        var nx = parseInt(document.getElementById('nx').value) || 36;
-        nx = Math.max(nx, 2);
-        var positions = [];
-        for (var i = 0; i < nx; i++) {
-            var t1 = i / nx, t2 = (i + 1) / nx;
-            positions.push(
-                p1.x + t1 * (p2.x - p1.x), p1.y + t1 * (p2.y - p1.y), p1.z + t1 * (p2.z - p1.z),
-                p1.x + t2 * (p2.x - p1.x), p1.y + t2 * (p2.y - p1.y), p1.z + t2 * (p2.z - p1.z)
-            );
-        }
-        var geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        var line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-            color: 0xaaaaaa, transparent: true, opacity: 0.85, depthTest: false
-        }));
-        originalCableGroup.add(line);
+    function format2DP(val) {
+        return Number(val).toFixed(2);
     }
 
-    function format2DP(val) { return Number(val).toFixed(2); }
+    function formatMPa(val) {
+        return format2DP(val) + " MPa";
+    }
+
+    function formatMM(val) {
+        return format2DP(val) + " mm";
+    }
+
+    function updateLegendLabels(isDeflectionMode) {
+        var legendTitle = document.getElementById('legend-title');
+        if (isDeflectionMode) {
+            legendTitle.innerText = "Displacement Map (mm)";
+            document.getElementById('lbl-100').innerText = formatMM(currentUMax) + " (Max Uz)";
+            document.getElementById('lbl-075').innerText = formatMM(currentUMax * 0.75);
+            document.getElementById('lbl-050').innerText = formatMM(currentUMax * 0.50);
+            document.getElementById('lbl-025').innerText = formatMM(currentUMax * 0.25);
+            document.getElementById('lbl-000').innerText = "0.00 mm";
+        } else {
+            var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
+            var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
+
+            legendTitle.innerText = "Stress Map (MPa)";
+            document.getElementById('lbl-100').innerText = "+" + formatMPa(activeMaxTens);
+            document.getElementById('lbl-075').innerText = "+" + formatMPa(activeMaxTens * 0.50);
+            document.getElementById('lbl-050').innerText = "0.00 MPa";
+            document.getElementById('lbl-025').innerText = formatMPa(activeMaxComp * 0.50);
+            document.getElementById('lbl-000').innerText = formatMPa(activeMaxComp);
+        }
+    }
 
     function reRenderMesh() {
+        var legend = document.getElementById('legend');
+        var mode = document.getElementById('render_mode').value;
+        var isDeflectionMode = (mode === 'deflection');
+
         if (!currentVertices.length || !currentFaces.length) return;
-        if (mesh) scene.remove(mesh);
-        while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
 
-        var renderMode = document.getElementById('render_mode').value;
-        var matType = document.getElementById('mat_type').value;
+        setVoidGizmosVisible(false);
+        setBoundaryGizmosVisible(true);
 
-        if (renderMode === 'cable_sag' && matType === 'cables') {
-            renderCableSagIndicator();
-        }
-
-        var maxTensionFilterKN = parseFloat(document.getElementById('tension_threshold_slider').value) || 100.0;
-        var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || 1.0;
-
-        if (matType === 'cables') {
-            renderOriginalCableReference();
-
-            var cableGroup = new THREE.Group();
-            var d = parseFloat(document.getElementById('sec_cable_d').value) || 24.0;
-            var radius = Math.max(d / 2.0, 10.0);
-
-            currentFaces.forEach(function(edge, idx) {
-                var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][2], currentVertices[edge[0]][1]);
-                var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][2], currentVertices[edge[1]][1]);
-                
-                var curve = new THREE.LineCurve3(p1, p2);
-                var tubeGeo = new THREE.TubeGeometry(curve, 1, radius, 8, false);
-
-                var matColor = new THREE.Color(0x333333);
-                if (renderMode === 'cable_tension' && currentForcesN.length) {
-                    var forceKN = Math.abs(currentForcesN[idx]) / 1000.0;
-                    var norm = Math.min(forceKN / maxTensionFilterKN, 1.0);
-                    matColor.setHSL((1.0 - norm) * 0.66, 1.0, 0.45);
-                }
-
-                var tubeMat = new THREE.MeshStandardMaterial({
-                    color: matColor, roughness: 0.35, metalness: 0.40,
-                    clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
-                });
-
-                cableGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
-            });
-
-            mesh = cableGroup;
-            scene.add(mesh);
-            toggleRenderModeUI();
-            return;
-        }
-
-        // Membranes / other: never show the cable original reference
-        if (originalCableGroup) {
-            while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
-        }
-
-        // CRITICAL FIX: reconstruct triangle indices using the ACTUAL solved
-        // grid resolution (reported by the backend as nx_actual / ny_actual),
-        // not the raw UI input values. domain_ff.py's forced-grid-line logic
-        // (np.union1d on every support X/Y coordinate) can silently grow the
-        // real grid past whatever nx/ny the user typed in, whenever a support
-        // doesn't land exactly on the regular spacing. If this function used
-        // the stale UI values instead, the (nx+1)x(ny+1) stride assumed below
-        // would be wrong, and indices would silently reference the wrong
-        // nodes — leaving nodes near irregular/outlying supports completely
-        // unreferenced by any triangle (they exist in currentVertices, which
-        // is why the support pins still draw correctly, but no face reaches
-        // them). Fall back to the UI values only if the backend didn't report
-        // actual values (e.g. an older worker_ff.js).
-        var nx = (currentNxActual !== null) ? currentNxActual : (parseInt(document.getElementById('nx').value) || 36);
-        var ny = (currentNyActual !== null) ? currentNyActual : (parseInt(document.getElementById('ny').value) || 12);
-
-        var surfaceGeo = new THREE.BufferGeometry();
-        var positions = [], colors = [], indices = [];
-
-        currentVertices.forEach(function(v, idx) {
-            positions.push(v[0], v[2], v[1]);
-
-            var c = new THREE.Color(0x808080);
-            if (renderMode === 'ec3_stress' && currentStressesMPa.length) {
-                var s = currentStressesMPa[idx] || 0.0;
-                if (s <= activeMaxTens) {
-                    var norm = Math.min(Math.max(s / activeMaxTens, 0.0), 1.0);
-                    c.setHSL((1.0 - norm) * 0.33, 0.85, 0.45);
-                }
-            } else if (renderMode === 'deflection' && currentDeflectionsMM.length) {
-                var d = currentDeflectionsMM[idx] || 0.0;
-                var maxD = Math.max(...currentDeflectionsMM, 1e-3);
-                var norm = Math.min(Math.max(d / maxD, 0.0), 1.0);
-                c.setHSL((1.0 - norm) * 0.66, 0.85, 0.45);
-            }
-            colors.push(c.r, c.g, c.b);
-        });
-
-        // If the backend returned explicit triangle connectivity (polygon /
-        // irregular domain mode), use it directly. Otherwise rebuild triangle
-        // indices from the (nx+1)x(ny+1) rectangular grid stride (legacy mode).
-        if (currentTriangles && currentTriangles.length) {
-            currentTriangles.forEach(function(tri) {
-                indices.push(tri[0], tri[1], tri[2]);
-            });
+        if (mode === 'ec3_stress' || mode === 'deflection') {
+            updateLegendLabels(isDeflectionMode);
+            legend.style.display = 'flex';
         } else {
-            for (var i = 0; i < nx; i++) {
-                for (var j = 0; j < ny; j++) {
-                    var row1 = i * (ny + 1);
-                    var row2 = (i + 1) * (ny + 1);
-
-                    var a = row1 + j, b = row2 + j, c = row2 + j + 1, d = row1 + j + 1;
-                    indices.push(a, b, d);
-                    indices.push(b, c, d);
-                }
-            }
+            legend.style.display = 'none';
         }
 
-        surfaceGeo.setIndex(indices);
-        surfaceGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        surfaceGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        surfaceGeo.computeVertexNormals();
+        if (mesh) scene.remove(mesh);
 
-        var matOptions = {
-            roughness: 0.40, metalness: 0.10, side: THREE.DoubleSide,
-            clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+        var geometry = new THREE.BufferGeometry();
+        var positions = [];
+        var colors = [];
+
+        var activeMaxComp = -Math.abs(parseFloat(document.getElementById('stress_comp_slider').value) || Math.abs(currentSigmaMaxComp));
+        var activeMaxTens = parseFloat(document.getElementById('stress_tens_slider').value) || currentSigmaMaxTens;
+
+        var colorScaleSignedAsymmetric = function(val, maxTens, minComp) {
+            if (val > maxTens || val < minComp) {
+                return new THREE.Color(0x808080);
+            }
+            var h;
+            if (val >= 0) {
+                var normTens = (maxTens > 1e-6) ? Math.min(val / maxTens, 1.0) : 0.0;
+                h = (1.0 - normTens) * 120.0 / 360.0;
+            } else {
+                var normComp = (Math.abs(minComp) > 1e-6) ? Math.min(Math.abs(val / minComp), 1.0) : 0.0;
+                h = (120.0 + normComp * 120.0) / 360.0;
+            }
+            var c = new THREE.Color(); 
+            c.setHSL(h, 0.85, 0.45); 
+            return c;
         };
 
-        if (['ec3_stress', 'deflection'].includes(renderMode)) {
-            matOptions.vertexColors = true;
-            mesh = new THREE.Mesh(surfaceGeo, new THREE.MeshStandardMaterial(matOptions));
+        var colorScaleUnsigned = function(val, maxVal) {
+            var norm = (maxVal > 1e-6) ? Math.min(Math.max(val / maxVal, 0.0), 1.0) : 0.0;
+            var h = (1.0 - norm) * 240.0 / 360.0;
+            var c = new THREE.Color(); 
+            c.setHSL(h, 0.85, 0.45); 
+            return c;
+        };
+
+        var activeFieldArray = isDeflectionMode ? currentDeflectionsMM : currentStressesMPa;
+        var hasFieldData = activeFieldArray && activeFieldArray.length === currentVertices.length;
+
+        currentFaces.forEach(function(f) {
+            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
+            positions.push(p1[0], p1[2], p1[1]);
+            positions.push(p2[0], p2[2], p2[1]);
+            positions.push(p3[0], p3[2], p3[1]);
+
+            if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
+                var s1 = activeFieldArray[f[0]] || 0.0, s2 = activeFieldArray[f[1]] || 0.0, s3 = activeFieldArray[f[2]] || 0.0;
+                var c1, c2, c3;
+                
+                if (isDeflectionMode) {
+                    c1 = colorScaleUnsigned(s1, currentUMax);
+                    c2 = colorScaleUnsigned(s2, currentUMax);
+                    c3 = colorScaleUnsigned(s3, currentUMax);
+                } else {
+                    c1 = colorScaleSignedAsymmetric(s1, activeMaxTens, activeMaxComp);
+                    c2 = colorScaleSignedAsymmetric(s2, activeMaxTens, activeMaxComp);
+                    c3 = colorScaleSignedAsymmetric(s3, activeMaxTens, activeMaxComp);
+                }
+                
+                colors.push(c1.r, c1.g, c1.b); 
+                colors.push(c2.r, c2.g, c2.b); 
+                colors.push(c3.r, c3.g, c3.b);
+            }
+        });
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+        var material;
+        if (hasFieldData && (mode === 'ec3_stress' || mode === 'deflection')) {
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+            material = new THREE.MeshStandardMaterial({
+                vertexColors: true, roughness: 0.40, metalness: 0.10, side: THREE.DoubleSide,
+                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+            });
         } else {
-            matOptions.color = 0xdddddd;
-            mesh = new THREE.Mesh(surfaceGeo, new THREE.MeshStandardMaterial(matOptions));
+            geometry.computeVertexNormals();
+            material = new THREE.MeshStandardMaterial({
+                color: 0x808080, roughness: 0.50, metalness: 0.10, side: THREE.DoubleSide,
+                clippingPlanes: [clipPlaneX, clipPlaneY, clipPlaneZ], clipShadows: true
+            });
         }
 
+        mesh = new THREE.Mesh(geometry, material);
         scene.add(mesh);
-        toggleRenderModeUI();
     }
 
     function exportSTL() {
-        if (!currentVertices.length || (!currentFaces.length && !currentTriangles)) {
-            showAppModal("Export Error", "No solved form-found geometry available for STL export.");
+        if (!currentVertices.length || !currentFaces.length) {
+            alert("No solved topology geometry available for export.");
             return;
         }
+        var stl = "solid DBSW_Optimised_Mesh\n";
+        currentFaces.forEach(function(f) {
+            var p1 = currentVertices[f[0]], p2 = currentVertices[f[1]], p3 = currentVertices[f[2]];
 
-        var stl = "solid DBSW_FormFound_Mesh\n";
-        var r = 15.0;
+            var ux = p2[0]-p1[0], uy = p2[1]-p1[1], uz = p2[2]-p1[2];
+            var vx = p3[0]-p1[0], vy = p3[1]-p1[1], vz = p3[2]-p1[2];
+            var nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+            var nlen = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1.0;
+            nx /= nlen; ny /= nlen; nz /= nlen;
 
-        // When the backend returned explicit triangles (polygon / irregular
-        // domain mode), export those facets directly as a watertight surface.
-        if (currentTriangles && currentTriangles.length) {
-            currentTriangles.forEach(function(tri) {
-                var pa = currentVertices[tri[0]];
-                var pb = currentVertices[tri[1]];
-                var pc = currentVertices[tri[2]];
-                var va = new THREE.Vector3(pa[0], pa[1], pa[2]);
-                var vb = new THREE.Vector3(pb[0], pb[1], pb[2]);
-                var vc = new THREE.Vector3(pc[0], pc[1], pc[2]);
-                var norm = new THREE.Vector3().crossVectors(
-                    new THREE.Vector3().subVectors(vb, va),
-                    new THREE.Vector3().subVectors(vc, va)
-                ).normalize();
-                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
-                stl += `      vertex ${va.x} ${va.y} ${va.z}\n      vertex ${vb.x} ${vb.y} ${vb.z}\n      vertex ${vc.x} ${vc.y} ${vc.z}\n    endloop\n  endfacet\n`;
-            });
-            stl += "endsolid DBSW_FormFound_Mesh\n";
-            var blobT = new Blob([stl], { type: 'text/plain' });
-            var linkT = document.createElement('a');
-            linkT.download = 'DBSW_FormFound_Mesh.stl';
-            linkT.href = URL.createObjectURL(blobT);
-            document.body.appendChild(linkT); linkT.click(); document.body.removeChild(linkT);
-            URL.revokeObjectURL(linkT.href);
-            showAppModal("Export Complete", "Surface mesh exported as STL (" + currentTriangles.length + " facets).");
-            return;
-        }
-
-        currentFaces.forEach(function(edge) {
-            var p1 = new THREE.Vector3(currentVertices[edge[0]][0], currentVertices[edge[0]][1], currentVertices[edge[0]][2]);
-            var p2 = new THREE.Vector3(currentVertices[edge[1]][0], currentVertices[edge[1]][1], currentVertices[edge[1]][2]);
-
-            var dir = new THREE.Vector3().subVectors(p2, p1);
-            var len = dir.length();
-            if (len < 1e-3) return;
-
-            var axis = dir.clone().normalize();
-            var perp1 = new THREE.Vector3(0, 1, 0);
-            if (Math.abs(axis.y) > 0.9) perp1.set(1, 0, 0);
-            var uVec = new THREE.Vector3().crossVectors(axis, perp1).normalize().multiplyScalar(r);
-            var vVec = new THREE.Vector3().crossVectors(axis, uVec).normalize().multiplyScalar(r);
-
-            var v1 = p1.clone().add(uVec), v2 = p1.clone().add(vVec), v3 = p1.clone().sub(uVec), v4 = p1.clone().sub(vVec);
-            var v5 = p2.clone().add(uVec), v6 = p2.clone().add(vVec), v7 = p2.clone().sub(uVec), v8 = p2.clone().sub(vVec);
-
-            var quadToTri = function(a, b, c, d) {
-                var norm = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
-                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
-                stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${b.x} ${b.y} ${b.z}\n      vertex ${c.x} ${c.y} ${c.z}\n    endloop\n  endfacet\n`;
-                stl += `  facet normal ${norm.x} ${norm.y} ${norm.z}\n    outer loop\n`;
-                stl += `      vertex ${a.x} ${a.y} ${a.z}\n      vertex ${c.x} ${c.y} ${c.z}\n      vertex ${d.x} ${d.y} ${d.z}\n    endloop\n  endfacet\n`;
-            };
-
-            quadToTri(v1, v2, v6, v5);
-            quadToTri(v2, v3, v7, v6);
-            quadToTri(v3, v4, v8, v7);
-            quadToTri(v4, v1, v5, v8);
+            stl += "  facet normal " + nx + " " + ny + " " + nz + "\n    outer loop\n";
+            stl += "      vertex " + p1[0] + " " + p1[1] + " " + p1[2] + "\n";
+            stl += "      vertex " + p2[0] + " " + p2[1] + " " + p2[2] + "\n";
+            stl += "      vertex " + p3[0] + " " + p3[1] + " " + p3[2] + "\n";
+            stl += "    endloop\n  endfacet\n";
         });
-
-        stl += "endsolid DBSW_FormFound_Mesh\n";
+        stl += "endsolid DBSW_Optimised_Mesh\n";
         var blob = new Blob([stl], { type: 'text/plain' });
         var link = document.createElement('a');
-        link.download = 'DBSW_FormFound_Mesh.stl';
         link.href = URL.createObjectURL(blob);
+        link.download = 'DBSW_Topology_Mesh.stl';
         link.click();
     }
 
     initThree();
-    onDomainModeChange();
     initWasmEngine();
 </script>
-<script data-pplx-inline-edit>
-(function () {
-  if (window === window.top) return;
 
-  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
-  const MAX_FONT_BYTES = 500 * 1024;
-  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
-  let scrollForwarding = false;
-  let scrollRaf = 0;
-  let trustedTopOrigin = null;
-
-  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
-  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
-  // across multiple labels.
-  function matchesAllowedOrigin(origin) {
-    if (!origin) return false;
-    for (const entry of allowedParentOrigins) {
-      if (!entry.includes("*")) {
-        if (entry === origin) return true;
-        continue;
-      }
-      const pattern = new RegExp(
-        "^" +
-          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
-          "$",
-      );
-      if (pattern.test(origin)) return true;
-    }
-    return false;
-  }
-
-  // Trust decision: when the sender is same-origin-visible (event.origin is a
-  // real origin like https://www.perplexity.ai) we trust event.origin directly.
-  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
-  // broker's stamped `parentOrigin` to identify the top window. The fallback
-  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
-  // on the response path (see postToTrustedTop) to ensure replies can't be
-  // delivered to anyone but the actual top window of that claimed origin.
-  function getTrustedParentOrigin(event) {
-    const forwardedParentOrigin =
-      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
-    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
-    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
-  }
-
-  // All responses go to window.top with targetOrigin = the allowlisted origin.
-  // An attacker that iframes us inside their own null-origin broker can claim
-  // any parentOrigin they like, but the browser will drop the reply whenever
-  // the real top's origin doesn't match — so the screenshot never leaves.
-  function postToTrustedTop(message) {
-    if (!trustedTopOrigin) return;
-    try {
-      window.top.postMessage(message, trustedTopOrigin);
-    } catch (_error) {}
-  }
-
-  function inlineAll(original, clone) {
-    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
-
-    try {
-      const computedStyle = getComputedStyle(original);
-      // cssText on a computed style is the serialized declaration in modern
-      // Chromium/Safari — a single read beats enumerating ~400 longhand
-      // properties. Firefox returns "" here, so we fall back on empty.
-      const serialized = computedStyle.cssText;
-      if (serialized) {
-        clone.style.cssText = serialized;
-      } else {
-        const parts = new Array(computedStyle.length);
-        for (let index = 0; index < computedStyle.length; index += 1) {
-          const property = computedStyle[index];
-          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
-        }
-        clone.style.cssText = parts.join("");
-      }
-    } catch (_error) {}
-
-    const originalChildren = original.children;
-    const clonedChildren = clone.children;
-    for (
-      let index = 0;
-      index < originalChildren.length && index < clonedChildren.length;
-      index += 1
-    ) {
-      inlineAll(originalChildren[index], clonedChildren[index]);
-    }
-  }
-
-  function extractFontUrl(srcValue) {
-    const matches = [
-      ...srcValue.matchAll(
-        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
-      ),
-    ];
-    if (matches.length === 0) return null;
-    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
-    if (woff2) return woff2[1];
-    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
-    if (woff) return woff[1];
-    return matches[0][1];
-  }
-
-  // Cache resolved font URL -> data URI across captures. Fonts on a page
-  // essentially never change, and a batch run emits multiple captures back to
-  // back — without this we'd refetch + re-base64 every time.
-  const fontDataUriCache = new Map();
-  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
-
-  async function fetchAsDataUri(url) {
-    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
-    let dataUri = null;
-    try {
-      const response = await fetch(url, { mode: "cors", credentials: "omit" });
-      if (response.ok) {
-        const blob = await response.blob();
-        if (blob.size <= MAX_FONT_BYTES) {
-          dataUri = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () =>
-              resolve(typeof reader.result === "string" ? reader.result : null);
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(blob);
-          });
-        }
-      }
-    } catch (_error) {
-      dataUri = null;
-    }
-    fontDataUriCache.set(url, dataUri);
-    return dataUri;
-  }
-
-  function collectFontFaceRuleTexts() {
-    const rules = [];
-    for (const sheet of document.styleSheets) {
-      let cssRules;
-      try {
-        cssRules = sheet.cssRules;
-      } catch (_error) {
-        continue;
-      }
-      if (!cssRules) continue;
-      for (const rule of cssRules) {
-        const cssText = rule.cssText || "";
-        if (cssText.startsWith("@font-face")) rules.push(cssText);
-      }
-    }
-    return rules;
-  }
-
-  async function buildInlinedFontCss() {
-    const ruleTexts = collectFontFaceRuleTexts();
-    if (ruleTexts.length === 0) return null;
-
-    const resolved = ruleTexts.map((cssText) => {
-      if (!SRC_DECLARATION_RE.test(cssText)) return null;
-      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
-      if (!srcMatch) return null;
-      const url = extractFontUrl(srcMatch[1]);
-      if (!url) return null;
-      try {
-        return { cssText, url: new URL(url, document.baseURI).href };
-      } catch (_error) {
-        return null;
-      }
-    });
-
-    const dataUris = await Promise.all(
-      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
-    );
-
-    const inlined = [];
-    let totalBytes = 0;
-    for (let index = 0; index < resolved.length; index += 1) {
-      const entry = resolved[index];
-      const dataUri = dataUris[index];
-      if (!entry || !dataUri) continue;
-      const approxBytes = dataUri.length * 0.75;
-      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
-      totalBytes += approxBytes;
-      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
-    }
-    return inlined.length > 0 ? inlined.join("\n") : null;
-  }
-
-  function stripExternal(clone) {
-    const images = clone.querySelectorAll("img");
-    for (let index = 0; index < images.length; index += 1) {
-      const src = images[index].getAttribute("src");
-      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
-    }
-
-    const elements = clone.querySelectorAll("*");
-    for (let index = 0; index < elements.length; index += 1) {
-      const style = elements[index].style.cssText;
-      if (style && style.includes("url(")) {
-        elements[index].style.cssText = style.replace(
-          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
-          "none",
-        );
-      }
-    }
-  }
-
-  function emitScroll() {
-    scrollRaf = 0;
-    if (!scrollForwarding) return;
-    postToTrustedTop({
-      type: "INLINE_EDIT_SCROLL",
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-    });
-  }
-
-  window.addEventListener(
-    "scroll",
-    function () {
-      if (!scrollForwarding || scrollRaf) return;
-      scrollRaf = requestAnimationFrame(emitScroll);
-    },
-    { passive: true, capture: true },
-  );
-
-  async function handleCaptureRequest(event) {
-    const requestId = event.data.requestId;
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    function postResult(dataUrl) {
-      postToTrustedTop({
-        type: "INLINE_EDIT_SCREENSHOT_RESULT",
-        requestId,
-        dataUrl,
-        scrollX,
-        scrollY,
-      });
-    }
-
-    try {
-      // Wait for any pending web fonts to resolve so both inline metrics and
-      // the @font-face inlining below see the same loaded faces.
-      if (document.fonts && document.fonts.ready) {
-        try {
-          await document.fonts.ready;
-        } catch (_error) {}
-      }
-
-      const clone = document.documentElement.cloneNode(true);
-      inlineAll(document.documentElement, clone);
-
-      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
-      for (let index = 0; index < removedNodes.length; index += 1) {
-        removedNodes[index].remove();
-      }
-
-      stripExternal(clone);
-
-      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
-      // can resolve them — external font URLs aren't fetched during
-      // foreignObject rendering, which would otherwise force a fallback face
-      // and change text metrics.
-      const inlinedFontCss = await buildInlinedFontCss();
-      if (inlinedFontCss) {
-        const styleEl = document.createElement("style");
-        styleEl.textContent = inlinedFontCss;
-        const head = clone.querySelector("head");
-        if (head) head.appendChild(styleEl);
-        else clone.insertBefore(styleEl, clone.firstChild);
-      }
-
-      const html = new XMLSerializer().serializeToString(clone);
-      const svg =
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
-        '<foreignObject width="100%" height="100%">' +
-        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
-        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
-        html +
-        "</div></div></foreignObject></svg>";
-      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-      const image = new Image();
-      image.onload = function () {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(image, 0, 0);
-        postResult(canvas.toDataURL("image/png"));
-      };
-      image.onerror = function () {
-        postResult(null);
-      };
-      image.src = svgUrl;
-    } catch (_error) {
-      postResult(null);
-    }
-  }
-
-  window.addEventListener("message", function (event) {
-    if (!event.data) return;
-    // Only accept messages from the direct parent frame. Blocks sibling /
-    // unrelated-window postMessage senders that could otherwise reach us.
-    if (event.source !== window.parent) return;
-
-    const trustedParentOrigin = getTrustedParentOrigin(event);
-    if (!trustedParentOrigin) return;
-    trustedTopOrigin = trustedParentOrigin;
-
-    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
-      scrollForwarding = true;
-      emitScroll();
-      return;
-    }
-
-    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
-      scrollForwarding = false;
-      if (scrollRaf) cancelAnimationFrame(scrollRaf);
-      scrollRaf = 0;
-      return;
-    }
-
-    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
-
-    handleCaptureRequest(event);
-  });
-})();
-
-
-</script></body>
+</body>
 </html>
