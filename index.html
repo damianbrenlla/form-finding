@@ -358,43 +358,49 @@
         <div id="polygon_validation_msg" style="font-size: 0.7rem; font-weight: 600; margin-top: 4px;"></div>
     </div>
 
-    <!-- Unified Point Supports: each row is External (boundary/perimeter) or Internal (mast/pin) -->
     <div class="control-group">
         <div class="load-header-row">
-            <label style="margin: 0;">Point Supports (mm / DOFs)</label>
+            <label style="margin: 0;">Discrete Point Supports (mm / DOFs)</label>
             <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addSupportRow()">+ Add Point</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllSupports()">Clear All</button>
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addSupportRow()">+ Add Support Node</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllSupports()">Clear Point Supports</button>
             </div>
         </div>
         <table class="data-table">
-            <thead><tr><th>Type</th><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="support_table_body"></tbody>
         </table>
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
-            <strong>External</strong> = boundary / perimeter support.
-            <strong>Internal</strong> = mast, pin or interior fixed node (must lie inside the domain / polygon).
-            In Polygon mode, External points define the ordered perimeter (CW or CCW).
-        </label>
     </div>
 
-    <!-- Unified Line Supports: each row is External or Internal -->
-    <div id="line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
+    <!-- Internal Supports Container (polygon mode only) -->
+    <div id="internal_supports_container" class="control-group" style="display: none;">
         <div class="load-header-row">
-            <label style="margin: 0;">Line Supports (2-Point Generator)</label>
+            <label style="margin: 0;">Internal Supports (mm)</label>
             <div class="btn-group">
-                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLineSupportRow()">+ Add Line</button>
-                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLineSupports()">Clear All</button>
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addInternalSupportRow()">+ Add Internal Support</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllInternalSupports()">Clear Internal</button>
             </div>
         </div>
         <table class="data-table">
-            <thead><tr><th>Type</th><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
+            <thead><tr><th>X</th><th>Y</th><th>Z</th><th>DOFs</th><th></th></tr></thead>
+            <tbody id="internal_support_table_body"></tbody>
+        </table>
+        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">Internal supports lift the membrane from inside (e.g. masts). They must lie inside the perimeter polygon.</label>
+    </div>
+
+    <!-- Line Supports Container (hidden — disabled for membranes and cables) -->
+    <div id="line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
+        <div class="load-header-row">
+            <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLineSupportRow()">+ Add Line Support</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLineSupports()">Clear Line Supports</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="line_support_table_body"></tbody>
         </table>
-        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
-            <strong>External</strong> = edge / boundary line restraint.
-            <strong>Internal</strong> = ridge, valley or interior beam (nodes along the segment are fixed).
-        </label>
     </div>
 
     <hr>
@@ -780,6 +786,8 @@
             if (domainModeContainer) domainModeContainer.style.display = 'none';
             var polyHint = document.getElementById('polygon_hint');
             if (polyHint) polyHint.style.display = 'none';
+            var internalSup = document.getElementById('internal_supports_container');
+            if (internalSup) internalSup.style.display = 'none';
             // Cables always use a simple 1-D span; force rectangular domain for the payload path.
             var domainSelect = document.getElementById('domain_mode');
             if (domainSelect) domainSelect.value = 'rectangular';
@@ -791,7 +799,7 @@
             renderSelect.value = ["grey", "cable_sag", "cable_tension"].includes(currentMode) ? currentMode : "cable_sag";
 
         } else if (matType === 'membrane') {
-            lineSupportContainer.style.display = 'block';
+            lineSupportContainer.style.display = 'none';
             cutPlanesContainer.style.display = 'block';
             cableSpanBuilder.style.display = 'none';
             membranePrestressCard.style.display = 'flex';
@@ -1044,7 +1052,7 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
-    function addSupportRow(x, y, z, dofs, supportType) {
+    function addSupportRow(x, y, z, dofs) {
         var matType = document.getElementById('mat_type').value;
         var currentCount = document.querySelectorAll('#support_table_body tr').length;
         
@@ -1053,26 +1061,18 @@
             return;
         }
 
-        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z;
-        dofs = (dofs === undefined) ? 'xyz' : dofs;
-        supportType = (supportType === undefined) ? 'external' : supportType;
-
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td><select class="sp-type" onchange="updateDomainVisuals()" style="font-size:0.68rem;padding:2px;width:100%;">' +
-                '<option value="external"' + (supportType === 'external' ? ' selected' : '') + '>External</option>' +
-                '<option value="internal"' + (supportType === 'internal' ? ' selected' : '') + '>Internal</option>' +
-            '</select></td>' +
-            '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('support_table_body').appendChild(tr);
         updateDomainVisuals();
     }
 
-    function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs, supportType) {
+    function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
         var existingSups = getLineSupportArrayData();
         
         if (existingSups.length === 1 && y1 === undefined) {
@@ -1083,22 +1083,16 @@
             x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
         }
         dofs = (dofs === undefined) ? 'xyz' : dofs;
-        supportType = (supportType === undefined) ? 'external' : supportType;
 
         var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td><select class="lsp-type" onchange="updateDomainVisuals()" style="font-size:0.68rem;padding:2px;width:100%;">' +
-                '<option value="external"' + (supportType === 'external' ? ' selected' : '') + '>External</option>' +
-                '<option value="internal"' + (supportType === 'internal' ? ' selected' : '') + '>Internal</option>' +
-            '</select></td>' +
-            '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
-            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        tr.innerHTML = '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('line_support_table_body').appendChild(tr);
         updateDomainVisuals();
     }
@@ -1143,28 +1137,28 @@
     function clearAllLineSupports() { document.getElementById('line_support_table_body').innerHTML = ''; updateDomainVisuals(); }
     function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
 
-    // Back-compat: internal point = unified table with type=internal
+    // -----------------------------------------------------------------------
+    // Internal Supports (polygon mode — interior masts/pins)
+    // -----------------------------------------------------------------------
     function addInternalSupportRow(x, y, z, dofs) {
-        addSupportRow(x, y, z, dofs, 'internal');
-    }
-    function clearAllInternalSupports() {
-        document.querySelectorAll('#support_table_body tr').forEach(function(r) {
-            var t = r.querySelector('.sp-type');
-            if (t && t.value === 'internal') r.parentNode.removeChild(r);
-        });
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 1000 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="number" class="isp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="text" class="isp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        document.getElementById('internal_support_table_body').appendChild(tr);
         updateDomainVisuals();
     }
+    function clearAllInternalSupports() { document.getElementById('internal_support_table_body').innerHTML = ''; updateDomainVisuals(); }
+
     function getInternalSupportArrayData() {
-        return getPointSupportArrayData().filter(function(p) { return p.support_type === 'internal'; });
-    }
-    function getExternalPointSupportArrayData() {
-        return getPointSupportArrayData().filter(function(p) { return p.support_type !== 'internal'; });
-    }
-    function getExternalLineSupportArrayData() {
-        return getLineSupportArrayData().filter(function(l) { return l.support_type !== 'internal'; });
-    }
-    function getInternalLineSupportArrayData() {
-        return getLineSupportArrayData().filter(function(l) { return l.support_type === 'internal'; });
+        var supports = [];
+        document.querySelectorAll('#internal_support_table_body tr').forEach(function(r) {
+            supports.push({ x: parseFloat(r.querySelector('.isp-x').value) || 0, y: parseFloat(r.querySelector('.isp-y').value) || 0, z: parseFloat(r.querySelector('.isp-z').value) || 0, dofs: (r.querySelector('.isp-dofs').value || 'xyz').toLowerCase() });
+        });
+        return supports;
     }
 
     // -----------------------------------------------------------------------
@@ -1183,7 +1177,7 @@
             var rows = document.querySelectorAll('#support_table_body tr');
             var isEmpty = (rows.length === 0);
             if (isPolygon) {
-                var internalEmpty = (getInternalSupportArrayData().length === 0);
+                var internalEmpty = (document.querySelectorAll('#internal_support_table_body tr').length === 0);
                 if (isEmpty || supportsMatchStock(STOCK_RECT_SUPPORTS)) {
                     loadStockSupports(STOCK_POLYGON_SUPPORTS);
                     if (internalEmpty) addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
@@ -1197,10 +1191,9 @@
         }
 
         document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
-        // Unified tables: line supports available for membranes in both domain modes
-        var matType = document.getElementById('mat_type').value;
-        document.getElementById('line_supports_container').style.display =
-            (matType === 'membrane') ? 'block' : 'none';
+        document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
+        // Line supports UI is disabled for all structural forms (hidden for membranes and cables).
+        document.getElementById('line_supports_container').style.display = 'none';
 
         updateDomainVisuals();
     }
@@ -1232,14 +1225,7 @@
     function getPointSupportArrayData() {
         var supports = [];
         document.querySelectorAll('#support_table_body tr').forEach(function(r) {
-            var typeEl = r.querySelector('.sp-type');
-            supports.push({
-                x: parseFloat(r.querySelector('.sp-x').value) || 0,
-                y: parseFloat(r.querySelector('.sp-y').value) || 0,
-                z: parseFloat(r.querySelector('.sp-z').value) || 0,
-                dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase(),
-                support_type: (typeEl ? typeEl.value : 'external')
-            });
+            supports.push({ x: parseFloat(r.querySelector('.sp-x').value) || 0, y: parseFloat(r.querySelector('.sp-y').value) || 0, z: parseFloat(r.querySelector('.sp-z').value) || 0, dofs: (r.querySelector('.sp-dofs').value || 'xyz').toLowerCase() });
         });
         return supports;
     }
@@ -1247,17 +1233,7 @@
     function getLineSupportArrayData() {
         var lineSupports = [];
         document.querySelectorAll('#line_support_table_body tr').forEach(function(r) {
-            var typeEl = r.querySelector('.lsp-type');
-            lineSupports.push({
-                x1: parseFloat(r.querySelector('.lsp-x1').value) || 0,
-                y1: parseFloat(r.querySelector('.lsp-y1').value) || 0,
-                z1: parseFloat(r.querySelector('.lsp-z1').value) || 0,
-                x2: parseFloat(r.querySelector('.lsp-x2').value) || 0,
-                y2: parseFloat(r.querySelector('.lsp-y2').value) || 0,
-                z2: parseFloat(r.querySelector('.lsp-z2').value) || 0,
-                dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase(),
-                support_type: (typeEl ? typeEl.value : 'external')
-            });
+            lineSupports.push({ x1: parseFloat(r.querySelector('.lsp-x1').value) || 0, y1: parseFloat(r.querySelector('.lsp-y1').value) || 0, z1: parseFloat(r.querySelector('.lsp-z1').value) || 0, x2: parseFloat(r.querySelector('.lsp-x2').value) || 0, y2: parseFloat(r.querySelector('.lsp-y2').value) || 0, z2: parseFloat(r.querySelector('.lsp-z2').value) || 0, dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase() });
         });
         return lineSupports;
     }
@@ -1309,7 +1285,7 @@
     function validatePolygonPerimeter() {
         var msgEl = document.getElementById('polygon_validation_msg');
         if (!msgEl) return;
-        var sups = getExternalPointSupportArrayData();
+        var sups = getPointSupportArrayData();
         var isPolygon = (document.getElementById('domain_mode').value === 'polygon' &&
                          document.getElementById('mat_type').value !== 'cables');
         if (!isPolygon) { msgEl.innerHTML = ''; return; }
@@ -1378,19 +1354,25 @@
 
         var isPolygon = (document.getElementById('domain_mode').value === 'polygon' && matType !== 'cables');
 
-        // Point supports — green = external, blue = internal
         getPointSupportArrayData().forEach(function(ps) {
-            var mat = (ps.support_type === 'internal') ? intMat : pinMat;
-            var ptMesh = new THREE.Mesh(ptPinGeo, mat);
+            var ptMesh = new THREE.Mesh(ptPinGeo, pinMat);
             ptMesh.position.set(ps.x, ps.z - 75, ps.y);
             scene.add(ptMesh); supportGizmos.push(ptMesh);
         });
 
-        // Polygon perimeter outline from EXTERNAL points only
+        // Internal supports — different color (blue) when in polygon mode
+        if (isPolygon) {
+            getInternalSupportArrayData().forEach(function(is) {
+                var ptMesh = new THREE.Mesh(ptPinGeo, intMat);
+                ptMesh.position.set(is.x, is.z - 75, is.y);
+                scene.add(ptMesh); supportGizmos.push(ptMesh);
+            });
+        }
+
+        // Polygon perimeter outline preview
         if (perimeterPreviewGroup) { scene.remove(perimeterPreviewGroup); perimeterPreviewGroup = null; }
-        var externalPts = getExternalPointSupportArrayData();
-        if (isPolygon && externalPts.length >= 3) {
-            var pts2D = externalPts.map(function(p) { return new THREE.Vector3(p.x, p.z, p.y); });
+        if (isPolygon && getPointSupportArrayData().length >= 3) {
+            var pts2D = getPointSupportArrayData().map(function(p) { return new THREE.Vector3(p.x, p.z, p.y); });
             pts2D.push(pts2D[0].clone());
             var lineGeo = new THREE.BufferGeometry().setFromPoints(pts2D);
             var lineMat = new THREE.LineBasicMaterial({ color: 0x00aa55, linewidth: 2 });
@@ -1400,13 +1382,11 @@
             scene.add(perimeterPreviewGroup);
         }
 
-        // Line supports — green = external, blue = internal
         getLineSupportArrayData().forEach(function(ls) {
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
             var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
             if (len > 1e-3) {
-                var mat = (ls.support_type === 'internal') ? intMat : pinMat;
-                var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, len, 12), mat);
+                var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, len, 12), pinMat);
                 cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
                 cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
                 scene.add(cylMesh); supportGizmos.push(cylMesh);
@@ -1753,54 +1733,31 @@
             nx: parseInt(document.getElementById('nx').value),
             ny: (matType === 'cables') ? 1 : parseInt(document.getElementById('ny').value),
             max_iterations: Math.max(500, parseInt(document.getElementById('max_iterations').value) || 20000),
-            point_supports: getExternalPointSupportArrayData(),
-            line_supports: getExternalLineSupportArrayData(),
-            loads: getLoadArrayData(),
-            include_self_weight: document.getElementById('self_weight_toggle').checked
+            point_supports: getPointSupportArrayData(), line_supports: getLineSupportArrayData(),
+            loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
-        // Domain Mode: irregular polygon defined by ordered EXTERNAL perimeter supports,
-        // plus optional INTERNAL point/line supports inside the perimeter.
+        // Domain Mode: irregular polygon defined by ordered perimeter supports,
+        // plus optional internal supports (masts/pins) inside the perimeter.
         var domainMode = document.getElementById('domain_mode').value;
         var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
         payload.domain_mode = isPolygon ? "polygon" : "rectangular";
 
-        // Expand internal line supports into sampled fixed points (both modes)
-        var expandedInternal = getInternalSupportArrayData().slice();
-        getInternalLineSupportArrayData().forEach(function(ls) {
-            var nSamples = Math.max(4, Math.round(Math.hypot(ls.x2 - ls.x1, ls.y2 - ls.y1, ls.z2 - ls.z1) / 500));
-            for (var si = 0; si <= nSamples; si++) {
-                var t = si / nSamples;
-                expandedInternal.push({
-                    x: ls.x1 + t * (ls.x2 - ls.x1),
-                    y: ls.y1 + t * (ls.y2 - ls.y1),
-                    z: ls.z1 + t * (ls.z2 - ls.z1),
-                    dofs: ls.dofs || 'xyz'
-                });
-            }
-        });
-
         if (isPolygon) {
-            payload.perimeter_supports = getExternalPointSupportArrayData();
-            payload.internal_supports = expandedInternal;
-            payload.internal_line_supports = getInternalLineSupportArrayData();
-            // Also allow external lines as additional boundary restraints (sampled into perimeter fixed set)
-            // Rectangular point/line tables are not the domain definition in polygon mode
+            payload.perimeter_supports = getPointSupportArrayData();
+            payload.internal_supports = getInternalSupportArrayData();
+            // In polygon mode, point_supports and line_supports are not used
+            // by the worker — strip them to avoid confusion.
             payload.point_supports = [];
-            // Keep external line_supports for worker rectangular path; for polygon they are extra fixed chains
-            payload.line_supports = getExternalLineSupportArrayData();
+            payload.line_supports = [];
 
+            // Client-side guard: at least 3 perimeter points required.
             if (payload.perimeter_supports.length < 3) {
                 document.getElementById('btn-exec').disabled = false;
                 document.getElementById('btn-stop').style.display = 'none';
-                document.getElementById('status').innerText = "Polygon mode requires at least 3 ordered EXTERNAL perimeter support points (entered clockwise or anti-clockwise).";
+                document.getElementById('status').innerText = "Polygon mode requires at least 3 ordered perimeter support points (entered clockwise or anti-clockwise).";
                 return;
             }
-        } else {
-            // Rectangular: external points/lines + internal points/lines (as extra fixed nodes)
-            payload.point_supports = getExternalPointSupportArrayData().concat(expandedInternal);
-            payload.line_supports = getExternalLineSupportArrayData();
-            // Internal lines already expanded into point_supports via expandedInternal
         }
 
         worker.postMessage({ action: 'form_find', payload: payload });
