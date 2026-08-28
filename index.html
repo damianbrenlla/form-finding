@@ -388,10 +388,10 @@
         <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">Internal supports lift the membrane from inside (e.g. masts). They must lie inside the perimeter polygon.</label>
     </div>
 
-    <!-- Line Supports Container (hidden — disabled for membranes and cables) -->
+    <!-- External / Discrete Line Supports (rectangular membrane mode) -->
     <div id="line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
         <div class="load-header-row">
-            <label style="margin: 0;">Discrete Line Supports (2-Point Generator)</label>
+            <label style="margin: 0;">External Line Supports (2-Point Generator)</label>
             <div class="btn-group">
                 <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addLineSupportRow()">+ Add Line Support</button>
                 <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllLineSupports()">Clear Line Supports</button>
@@ -401,6 +401,29 @@
             <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
             <tbody id="line_support_table_body"></tbody>
         </table>
+        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
+            Defines continuous nodal restraint chains along a 3D vector (e.g. supported edges, ridge beams).
+            Nodes falling on the segment are fixed. Keep clear of pure point-support coordinates when possible.
+        </label>
+    </div>
+
+    <!-- Internal Line Supports (polygon mode only — e.g. internal ridge / valley cables) -->
+    <div id="internal_line_supports_container" class="control-group" style="margin-top: 4px; display: none;">
+        <div class="load-header-row">
+            <label style="margin: 0;">Internal Line Supports (2-Point Generator)</label>
+            <div class="btn-group">
+                <button class="btn-secondary" style="padding: 2px 6px; font-size: 0.68rem;" onclick="addInternalLineSupportRow()">+ Add Internal Line</button>
+                <button class="btn-secondary-danger" style="padding: 2px 6px; font-size: 0.68rem;" onclick="clearAllInternalLineSupports()">Clear Internal Lines</button>
+            </div>
+        </div>
+        <table class="data-table">
+            <thead><tr><th>X1</th><th>Y1</th><th>Z1</th><th>X2</th><th>Y2</th><th>Z2</th><th>DOFs</th><th></th></tr></thead>
+            <tbody id="internal_line_support_table_body"></tbody>
+        </table>
+        <label style="font-size: 0.65rem; color: #888888; line-height: 1.4;">
+            Internal line supports fix a chain of nodes inside the perimeter (e.g. ridge cables, valley cables, internal beams).
+            Both endpoints and intermediate samples must lie inside the polygon.
+        </label>
     </div>
 
     <hr>
@@ -788,6 +811,8 @@
             if (polyHint) polyHint.style.display = 'none';
             var internalSup = document.getElementById('internal_supports_container');
             if (internalSup) internalSup.style.display = 'none';
+            var intLineEl = document.getElementById('internal_line_supports_container');
+            if (intLineEl) intLineEl.style.display = 'none';
             // Cables always use a simple 1-D span; force rectangular domain for the payload path.
             var domainSelect = document.getElementById('domain_mode');
             if (domainSelect) domainSelect.value = 'rectangular';
@@ -799,7 +824,12 @@
             renderSelect.value = ["grey", "cable_sag", "cable_tension"].includes(currentMode) ? currentMode : "cable_sag";
 
         } else if (matType === 'membrane') {
-            lineSupportContainer.style.display = 'none';
+            // External line supports shown only in rectangular mode (onDomainModeChange also enforces this)
+            var domainSelectM = document.getElementById('domain_mode');
+            var isPolyM = domainSelectM && domainSelectM.value === 'polygon';
+            lineSupportContainer.style.display = isPolyM ? 'none' : 'block';
+            var intLineElM = document.getElementById('internal_line_supports_container');
+            if (intLineElM) intLineElM.style.display = isPolyM ? 'block' : 'none';
             cutPlanesContainer.style.display = 'block';
             cableSpanBuilder.style.display = 'none';
             membranePrestressCard.style.display = 'flex';
@@ -1153,6 +1183,51 @@
     }
     function clearAllInternalSupports() { document.getElementById('internal_support_table_body').innerHTML = ''; updateDomainVisuals(); }
 
+    // -----------------------------------------------------------------------
+    // Internal Line Supports (polygon mode — ridge / valley / internal beams)
+    // -----------------------------------------------------------------------
+    function addInternalLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
+        x1 = (x1 === undefined) ? Math.round(activeLx * 0.25) : x1;
+        y1 = (y1 === undefined) ? Math.round(activeLy * 0.5) : y1;
+        z1 = (z1 === undefined) ? 500 : z1;
+        x2 = (x2 === undefined) ? Math.round(activeLx * 0.75) : x2;
+        y2 = (y2 === undefined) ? Math.round(activeLy * 0.5) : y2;
+        z2 = (z2 === undefined) ? 500 : z2;
+        dofs = (dofs === undefined) ? 'xyz' : dofs;
+
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><input type="number" class="ilsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ilsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ilsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ilsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ilsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="number" class="ilsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><input type="text" class="ilsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
+            '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
+        document.getElementById('internal_line_support_table_body').appendChild(tr);
+        updateDomainVisuals();
+    }
+    function clearAllInternalLineSupports() {
+        document.getElementById('internal_line_support_table_body').innerHTML = '';
+        updateDomainVisuals();
+    }
+    function getInternalLineSupportArrayData() {
+        var lines = [];
+        document.querySelectorAll('#internal_line_support_table_body tr').forEach(function(r) {
+            lines.push({
+                x1: parseFloat(r.querySelector('.ilsp-x1').value) || 0,
+                y1: parseFloat(r.querySelector('.ilsp-y1').value) || 0,
+                z1: parseFloat(r.querySelector('.ilsp-z1').value) || 0,
+                x2: parseFloat(r.querySelector('.ilsp-x2').value) || 0,
+                y2: parseFloat(r.querySelector('.ilsp-y2').value) || 0,
+                z2: parseFloat(r.querySelector('.ilsp-z2').value) || 0,
+                dofs: (r.querySelector('.ilsp-dofs').value || 'xyz').toLowerCase()
+            });
+        });
+        return lines;
+    }
+
     function getInternalSupportArrayData() {
         var supports = [];
         document.querySelectorAll('#internal_support_table_body tr').forEach(function(r) {
@@ -1192,8 +1267,13 @@
 
         document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
         document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
-        // Line supports UI is disabled for all structural forms (hidden for membranes and cables).
-        document.getElementById('line_supports_container').style.display = 'none';
+        var matType = document.getElementById('mat_type').value;
+        // External line supports: rectangular membrane only
+        document.getElementById('line_supports_container').style.display =
+            (!isPolygon && matType === 'membrane') ? 'block' : 'none';
+        // Internal line supports: polygon membrane only
+        var intLineEl = document.getElementById('internal_line_supports_container');
+        if (intLineEl) intLineEl.style.display = (isPolygon && matType === 'membrane') ? 'block' : 'none';
 
         updateDomainVisuals();
     }
@@ -1206,10 +1286,14 @@
         if (mode === 'polygon') {
             loadStockSupports(STOCK_POLYGON_SUPPORTS);
             clearAllInternalSupports();
+            clearAllInternalLineSupports();
+            clearAllLineSupports();
             addInternalSupportRow(STOCK_POLYGON_INTERNAL[0][0], STOCK_POLYGON_INTERNAL[0][1], STOCK_POLYGON_INTERNAL[0][2], STOCK_POLYGON_INTERNAL[0][3]);
         } else {
             loadStockSupports(STOCK_RECT_SUPPORTS);
             clearAllInternalSupports();
+            clearAllInternalLineSupports();
+            clearAllLineSupports();
         }
         updateDomainVisuals();
     }
@@ -1243,6 +1327,7 @@
         getPointSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
         getInternalSupportArrayData().forEach(p => pts.push([p.x, p.y, p.z]));
         getLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
+        getInternalLineSupportArrayData().forEach(l => { pts.push([l.x1, l.y1, l.z1]); pts.push([l.x2, l.y2, l.z2]); });
         getLoadArrayData().forEach(ld => pts.push([ld.x, ld.y, ld.z]));
         if (pts.length === 0) return { Lx: 6000, Ly: 3000, Lz: 1000 };
         return { Lx: Math.max(...pts.map(p => p[0]), 1000), Ly: Math.max(...pts.map(p => p[1]), 1000), Lz: Math.max(...pts.map(p => p[2]), 1000) };
@@ -1387,6 +1472,19 @@
             var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
             if (len > 1e-3) {
                 var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, len, 12), pinMat);
+                cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
+                cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
+                scene.add(cylMesh); supportGizmos.push(cylMesh);
+            }
+        });
+
+        // Internal line supports (polygon mode) — blue to distinguish from external green pins
+        var intLineMat = new THREE.MeshStandardMaterial({ color: 0x2255ee, roughness: 0.3 });
+        getInternalLineSupportArrayData().forEach(function(ls) {
+            var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
+            var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
+            if (len > 1e-3) {
+                var cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, len, 12), intLineMat);
                 cylMesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
                 cylMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineVec.clone().normalize());
                 scene.add(cylMesh); supportGizmos.push(cylMesh);
@@ -1746,8 +1844,24 @@
         if (isPolygon) {
             payload.perimeter_supports = getPointSupportArrayData();
             payload.internal_supports = getInternalSupportArrayData();
-            // In polygon mode, point_supports and line_supports are not used
-            // by the worker — strip them to avoid confusion.
+            // Sample internal line supports into discrete fixed points the worker understands
+            payload.internal_line_supports = getInternalLineSupportArrayData();
+            // Expand internal lines into sampled points and merge with internal point supports
+            var expandedInternal = payload.internal_supports.slice();
+            getInternalLineSupportArrayData().forEach(function(ls) {
+                var nSamples = Math.max(4, Math.round(Math.hypot(ls.x2 - ls.x1, ls.y2 - ls.y1, ls.z2 - ls.z1) / 500));
+                for (var si = 0; si <= nSamples; si++) {
+                    var t = si / nSamples;
+                    expandedInternal.push({
+                        x: ls.x1 + t * (ls.x2 - ls.x1),
+                        y: ls.y1 + t * (ls.y2 - ls.y1),
+                        z: ls.z1 + t * (ls.z2 - ls.z1),
+                        dofs: ls.dofs || 'xyz'
+                    });
+                }
+            });
+            payload.internal_supports = expandedInternal;
+            // In polygon mode, rectangular point/line tables are not the domain definition
             payload.point_supports = [];
             payload.line_supports = [];
 
