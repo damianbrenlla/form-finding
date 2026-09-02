@@ -170,12 +170,22 @@
         }
         .btn-del { background: #ffffff; color: #cc0000; border: none; font-weight: bold; cursor: pointer; padding: 2px 6px; }
 
+        /* Fixed Legend Positioning */
         #legend {
-            position: absolute; top: 20px; right: 20px;
-            background: rgba(255, 255, 255, 0.92); border: 1px solid #cccccc;
-            padding: 12px 14px; font-size: 0.72rem; display: none;
-            flex-direction: column; gap: 6px;
-            box-shadow: 0px 2px 8px rgba(0,0,0,0.06); z-index: 100; min-width: 190px;
+            position: absolute; 
+            top: 24px; 
+            right: 24px;
+            background: rgba(255, 255, 255, 0.95); 
+            border: 1px solid #cccccc;
+            padding: 12px 14px; 
+            font-size: 0.72rem; 
+            display: none;
+            flex-direction: column; 
+            gap: 6px;
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.10); 
+            z-index: 1000; 
+            min-width: 190px;
+            pointer-events: auto;
         }
         #legend-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.70rem; color: #000000; margin-bottom: 2px; }
         .legend-bar-container { display: flex; align-items: center; gap: 10px; }
@@ -643,6 +653,9 @@
         "Custom Isotropic Membrane"
     ];
 
+    var MASONRY_UNITS = { "Clay Solid (30 MPa)": 30.0, "Clay Hollow (15 MPa)": 15.0, "Dense Concrete Block (20 MPa)": 20.0 };
+    var MORTAR_GRADES = { "M12 (Strong)": 12.0, "M6 (General)": 6.0, "M4 (Medium)": 4.0 };
+
     function toggleSidebar() {
         var sidebar = document.getElementById('sidebar');
         sidebar.classList.toggle('collapsed');
@@ -1087,63 +1100,45 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
-    function addSupportRow(x, y, z, dofs, role) {
+    function addSupportRow(x, y, z, dofs) {
         var matType = document.getElementById('mat_type').value;
         var currentCount = document.querySelectorAll('#support_table_body tr').length;
-
+        
         if (matType === 'cables' && currentCount >= 2) {
             showAppModal("Boundary Constraint Limit", "Cable structures are restricted to a maximum of 2 boundary supports.");
             return;
         }
 
-        x = (x === undefined) ? 0 : Math.max(0, x);
-        y = (y === undefined) ? 0 : Math.max(0, y);
-        z = (z === undefined) ? 0 : Math.max(0, z);
-        dofs = (dofs === undefined) ? 'xyz' : dofs;
-        role = (role === undefined) ? 'perimeter' : role;
-
+        x = (x === undefined) ? 0 : x; y = (y === undefined) ? 0 : y; z = (z === undefined) ? 0 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '"></td>' +
-                       '<td><input type="number" class="sp-y" value="' + y + '"></td>' +
-                       '<td><input type="number" class="sp-z" value="' + z + '"></td>' +
-                       '<td><select class="sp-role" onchange="updateDomainVisuals()">' +
-                           '<option value="perimeter"' + (role === 'perimeter' ? ' selected' : '') + '>Perimeter</option>' +
-                           '<option value="interior"' + (role === 'interior' ? ' selected' : '') + '>Interior</option>' +
-                       '</select></td>' +
+        tr.innerHTML = '<td><input type="number" class="sp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="sp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="sp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="text" class="sp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('support_table_body').appendChild(tr);
         updateDomainVisuals();
     }
 
-    function addLineSupportRow(x1, y1, z1, x2, y2, z2, role, dofs) {
+    function addLineSupportRow(x1, y1, z1, x2, y2, z2, dofs) {
         var existingSups = getLineSupportArrayData();
         
         if (existingSups.length === 1 && y1 === undefined) {
             x1 = 0; y1 = activeLy; z1 = 0;
             x2 = activeLx; y2 = activeLy; z2 = 0;
         } else {
-            x1 = (x1 === undefined) ? 0 : Math.max(0, x1);
-            y1 = (y1 === undefined) ? 0 : Math.max(0, y1);
-            z1 = (z1 === undefined) ? 0 : Math.max(0, z1);
-            x2 = (x2 === undefined) ? activeLx : Math.max(0, x2);
-            y2 = (y2 === undefined) ? 0 : Math.max(0, y2);
-            z2 = (z2 === undefined) ? 0 : Math.max(0, z2);
+            x1 = (x1 === undefined) ? 0 : x1; y1 = (y1 === undefined) ? 0 : y1; z1 = (z1 === undefined) ? 0 : z1;
+            x2 = (x2 === undefined) ? activeLx : x2; y2 = (y2 === undefined) ? 0 : y2; z2 = (z2 === undefined) ? 0 : z2;
         }
-        role = (role === undefined) ? 'external' : role;
         dofs = (dofs === undefined) ? 'xyz' : dofs;
 
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="lsp-x1" value="' + x1 + '"></td>' +
-                       '<td><input type="number" class="lsp-y1" value="' + y1 + '"></td>' +
-                       '<td><input type="number" class="lsp-z1" value="' + z1 + '"></td>' +
-                       '<td><input type="number" class="lsp-x2" value="' + x2 + '"></td>' +
-                       '<td><input type="number" class="lsp-y2" value="' + y2 + '"></td>' +
-                       '<td><input type="number" class="lsp-z2" value="' + z2 + '"></td>' +
-                       '<td><select class="lsp-role" onchange="updateDomainVisuals()">' +
-                           '<option value="external"' + (role === 'external' ? ' selected' : '') + '>External</option>' +
-                           '<option value="internal"' + (role === 'internal' ? ' selected' : '') + '>Internal</option>' +
-                       '</select></td>' +
+        tr.innerHTML = '<td><input type="number" class="lsp-x1" value="' + x1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-y1" value="' + y1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-z1" value="' + z1 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-x2" value="' + x2 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-y2" value="' + y2 + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="lsp-z2" value="' + z2 + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="text" class="lsp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('line_support_table_body').appendChild(tr);
@@ -1161,9 +1156,9 @@
                 z = Math.round((pA.z + pB.z) / 2);
             }
         }
-        x = (x === undefined) ? 3000 : Math.max(0, x);
-        y = (y === undefined) ? 0 : Math.max(0, y);
-        z = (z === undefined) ? 0 : Math.max(0, z);
+        x = (x === undefined) ? 3000 : x;
+        y = (y === undefined) ? 0 : y;
+        z = (z === undefined) ? 0 : z;
         Fx = (Fx === undefined) ? 0 : Fx;
         Fy = (Fy === undefined) ? 0 : Fy;
         Fz = (Fz === undefined) ? -12.5 : Fz;
@@ -1189,14 +1184,11 @@
     function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
 
     function addInternalSupportRow(x, y, z, dofs) {
-        x = (x === undefined) ? 3000 : Math.max(0, x); 
-        y = (y === undefined) ? 1500 : Math.max(0, y); 
-        z = (z === undefined) ? 1000 : Math.max(0, z); 
-        dofs = (dofs === undefined) ? 'xyz' : dofs;
+        x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 1000 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="number" class="isp-x" value="' + x + '"></td>' +
-                       '<td><input type="number" class="isp-y" value="' + y + '"></td>' +
-                       '<td><input type="number" class="isp-z" value="' + z + '"></td>' +
+        tr.innerHTML = '<td><input type="number" class="isp-x" value="' + x + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-y" value="' + y + '" oninput="updateDomainVisuals()"></td>' +
+                       '<td><input type="number" class="isp-z" value="' + z + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><input type="text" class="isp-dofs" value="' + dofs + '" oninput="updateDomainVisuals()"></td>' +
                        '<td><button class="btn-del" onclick="deleteRow(this)">×</button></td>';
         document.getElementById('internal_support_table_body').appendChild(tr);
@@ -1281,10 +1273,6 @@
 
     function getLineSupportArrayData() {
         var lineSupports = [];
-        // Strictly EXCLUDE line supports if the active material classification is a Fabric Membrane
-        var matType = document.getElementById('mat_type').value;
-        if (matType === 'membrane') return [];
-
         document.querySelectorAll('#line_support_table_body tr').forEach(function(r) {
             lineSupports.push({ x1: parseFloat(r.querySelector('.lsp-x1').value) || 0, y1: parseFloat(r.querySelector('.lsp-y1').value) || 0, z1: parseFloat(r.querySelector('.lsp-z1').value) || 0, x2: parseFloat(r.querySelector('.lsp-x2').value) || 0, y2: parseFloat(r.querySelector('.lsp-y2').value) || 0, z2: parseFloat(r.querySelector('.lsp-z2').value) || 0, role: ((r.querySelector('.lsp-role') && r.querySelector('.lsp-role').value) || 'external').toLowerCase(), dofs: (r.querySelector('.lsp-dofs').value || 'xyz').toLowerCase() });
         });
@@ -1490,11 +1478,6 @@
                 
                 var arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0xcc0000, arrowLen * 0.25, arrowLen * 0.12);
                 scene.add(arrow); forceArrows.push(arrow);
-
-                var fzText = `${ld.Fz.toFixed(1)} kN`;
-                var labelSprite = makeTextSprite(fzText, '#000000');
-                labelSprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 60));
-                scene.add(labelSprite); forceArrows.push(labelSprite);
             }
         });
 
@@ -1729,7 +1712,19 @@
             }
 
             var diag = data.data.diagnostics || {};
-            var convText = diag.converged ? `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]` : `[Converged: NO (Iters: ${diag.iterations_run})]`;
+            var convText;
+            if (diag.system_solved_linearly || (diag.method && String(diag.method).indexOf('Force Density') >= 0)) {
+                var slack = (typeof diag.slack_cables === 'number') ? diag.slack_cables : 0;
+                convText = `[FDM linear solve OK` + (slack > 0 ? `; slack members: ${slack}` : '') + `]`;
+            } else if (diag.converged) {
+                convText = `[Converged: YES (Iters: ${diag.iterations_run}, Res: ${diag.relative_residual})]`;
+            } else if (diag.settled) {
+                convText = `[Settled: residual plateaued (Iters: ${diag.iterations_run}, Res: ${diag.best_relative_residual})]`;
+            } else if (typeof diag.iterations_run === 'number') {
+                convText = `[Equilibrium not reached (hit iteration cap at ${diag.iterations_run}, best Res: ${diag.best_relative_residual})]`;
+            } else {
+                convText = `[Solve finished]`;
+            }
 
             status.innerText = `Form finding complete [${data.data.material || ""}]. ${convText}\nRendering...`;
             reRenderMesh();
@@ -1773,7 +1768,7 @@
             ny: (matType === 'cables') ? 1 : parseInt(document.getElementById('ny').value),
             max_iterations: Math.max(500, parseInt(document.getElementById('max_iterations').value) || 20000),
             point_supports: getPointSupportArrayData(),
-            line_supports: (matType === 'membrane') ? [] : getLineSupportArrayData(),
+            line_supports: getLineSupportArrayData(),
             loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
@@ -1807,6 +1802,7 @@
 
     function clearResults() {
         currentVertices = []; currentFaces = []; currentEdges = []; currentStressesMPa = []; currentDeflectionsMM = []; currentForcesN = [];
+        currentTriangles = null; currentDomainMode = "rectangular";
         currentNxActual = null; currentNyActual = null;
         if (mesh) { scene.remove(mesh); mesh = null; }
         while (reactionGroup.children.length > 0) { reactionGroup.remove(reactionGroup.children[0]); }
@@ -1854,7 +1850,7 @@
     function format2DP(val) { return Number(val).toFixed(2); }
 
     function reRenderMesh() {
-        if (!currentVertices.length || (!currentFaces.length && !currentEdges.length)) return;
+        if (!currentVertices.length || (!currentFaces.length && !currentTriangles)) return;
         if (mesh) scene.remove(mesh);
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
 
