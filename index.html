@@ -37,9 +37,58 @@
         #sidebar {
             width: 420px; background: #ffffff; padding: 24px;
             border-right: 1px solid #e5e5e5; display: flex;
-            flex-direction: column; gap: 14px; overflow-y: auto; z-index: 10;
+            flex-direction: column; gap: 14px; overflow-y: auto; z-index: 100;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            flex-shrink: 0;
         }
-        #viewport { flex: 1; position: relative; background: #ffffff; }
+
+        #sidebar.collapsed {
+            margin-left: -420px;
+        }
+
+        #viewport { 
+            flex: 1; 
+            position: relative; 
+            background: #ffffff; 
+            height: 100vh; 
+            width: 100%; 
+            overflow: hidden;
+        }
+
+        /* Minimalist Burger Toggle Button */
+        #sidebar-toggle {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 1100;
+            width: 34px;
+            height: 34px;
+            background: #ffffff;
+            border: 1px solid #000000;
+            border-radius: 0px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            padding: 0;
+            transition: background 0.15s ease, border-color 0.15s ease;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.08);
+        }
+
+        #sidebar-toggle:hover {
+            background: #f5f5f5;
+        }
+
+        #sidebar-toggle span {
+            display: block;
+            width: 16px;
+            height: 2px;
+            background-color: #000000;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
         
         .brand-logo-img {
             height: 18px;
@@ -152,7 +201,6 @@
             background: #ffffff;
             color: #000000;
             padding: 10px 12px;
-            border-radius: 0px;
             font-size: 0.72rem;
             line-height: 1.45;
             z-index: 1000;
@@ -536,6 +584,13 @@
 </div>
 
 <div id="viewport">
+    <!-- Minimalist Sidebar Toggle (Burger) Button -->
+    <button id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle Sidebar Menu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
     <div id="legend">
         <div id="legend-title">Field Map</div>
         <div class="legend-bar-container">
@@ -558,17 +613,7 @@
     var reactionGroup = null, sagIndicatorGroup = null, originalCableGroup = null;
     var axesScene, axesCamera, axesGroup;
     var currentVertices = [], currentFaces = [], currentForcesN = [], currentStressesMPa = [], currentDeflectionsMM = [];
-    // CRITICAL FIX: actual solved grid resolution reported by the backend.
-    // domain_ff.py's forced-grid-line logic (np.union1d on support coordinates)
-    // can silently grow nx/ny beyond whatever the UI fields say, whenever a
-    // support coordinate doesn't land on the regular grid. reRenderMesh() MUST
-    // use these — not the raw #nx/#ny input values — to reconstruct triangle
-    // indices, or the mesh will fail to reach the outlying supports even
-    // though their nodes were solved correctly and exist in currentVertices.
     var currentNxActual = null, currentNyActual = null;
-    // Backend-returned triangle connectivity (polygon/irregular domain mode).
-    // Null in rectangular mode, where reRenderMesh() rebuilds triangles from
-    // the (nx+1) x (ny+1) grid stride instead.
     var currentTriangles = null;
     var currentDomainMode = "rectangular";
     var perimeterPreviewGroup = null;
@@ -603,6 +648,22 @@
         "Custom Isotropic Membrane"
     ];
 
+    function toggleSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('collapsed');
+        
+        // Continuous resize sync during CSS animation frame window
+        var startTime = performance.now();
+        var duration = 260;
+        function syncCanvas() {
+            onWindowResize();
+            if (performance.now() - startTime < duration) {
+                requestAnimationFrame(syncCanvas);
+            }
+        }
+        requestAnimationFrame(syncCanvas);
+    }
+
     function showAppModal(titleText, bodyText) {
         document.getElementById('app_modal_subtitle').innerText = titleText || "Notification";
         document.getElementById('app_modal_text').innerText = bodyText || "";
@@ -630,15 +691,10 @@
         return sprite;
     }
 
-    // Stock default support layouts (membrane only). Used both at material
-    // init and when toggling Domain Mode, so a first-time user immediately sees
-    // an example of each shape. User-entered supports are never clobbered —
-    // these only auto-replace when the current rows still match a stock layout.
     var STOCK_RECT_SUPPORTS = [
         [0, 0, 1000, 'xyz'], [6000, 0, 0, 'xyz'], [6000, 3000, 1000, 'xyz'], [0, 3000, 0, 'xyz']
     ];
     var STOCK_POLYGON_SUPPORTS = [
-        // Irregular pentagon, entered anti-clockwise (in plan, X-Y).
         [2000, 0, 1500, 'xyz'], [5800, 800, 0, 'xyz'], [5400, 4200, 1500, 'xyz'],
         [2200, 4600, 0, 'xyz'], [0, 2300, 1800, 'xyz']
     ];
@@ -788,7 +844,6 @@
             if (polyHint) polyHint.style.display = 'none';
             var internalSup = document.getElementById('internal_supports_container');
             if (internalSup) internalSup.style.display = 'none';
-            // Cables always use a simple 1-D span; force rectangular domain for the payload path.
             var domainSelect = document.getElementById('domain_mode');
             if (domainSelect) domainSelect.value = 'rectangular';
 
@@ -818,9 +873,6 @@
         document.getElementById('sec_cable_div').style.display = (matType === 'cables') ? 'flex' : 'none';
         document.getElementById('sec_fabric_div').style.display = (matType === 'membrane') ? 'flex' : 'none';
 
-        // Cables: hide manual Add Load; clear lives beside Add Span Load.
-        // Table remains visible but read-only (loads only via span generator).
-        // Membranes: restore manual Add Load + Clear in the point-load header.
         var btnAddLoad = document.getElementById('btn_add_load');
         var btnClearMem = document.getElementById('btn_clear_loads_membrane');
         var pointLoadsBtnGroup = document.getElementById('point_loads_btn_group');
@@ -860,8 +912,6 @@
                     inp.style.cursor = 'default';
                 }
             });
-            // Delete (×) always visible so individual span loads can be removed,
-            // same as point-support rows. Values stay read-only for cables.
             var delBtn = tr.querySelector('.btn-del');
             if (delBtn) delBtn.style.display = '';
         });
@@ -902,7 +952,6 @@
         keyLight.position.set(5000, 8000, 4000);
         scene.add(keyLight);
 
-        // Large finite grid (acts effectively infinite for typical domain sizes)
         var grid = new THREE.GridHelper(1000000, 1000, 0x000000, 0xe0e0e0);
         grid.position.y = -1;
         scene.add(grid);
@@ -1005,7 +1054,6 @@
             return;
         }
 
-        // Always order supports so that p1 is the “start” (lower X, or lower parameter)
         var pA = pointSups[0];
         var pB = pointSups[1];
         var orderByX = Math.abs(pB.x - pA.x) > Math.abs(pB.y - pA.y);
@@ -1047,6 +1095,7 @@
 
     function onWindowResize() {
         var container = document.getElementById('viewport');
+        if (!container || !renderer || !camera) return;
         camera.aspect = container.clientWidth / container.clientHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(container.clientWidth, container.clientHeight);
@@ -1098,7 +1147,6 @@
     }
 
     function addLoadRow(x, y, z, Fx, Fy, Fz) {
-        // Sensible defaults for cables: place at mid-span of current supports
         var matType = document.getElementById('mat_type').value;
         if (x === undefined && matType === 'cables') {
             var pointSups = getPointSupportArrayData();
@@ -1116,7 +1164,6 @@
         Fy = (Fy === undefined) ? 0 : Fy;
         Fz = (Fz === undefined) ? -12.5 : Fz;
 
-        // Cables: values read-only (loads only via span generator), but × delete stays available.
         var isCable = (matType === 'cables');
         var roAttr = isCable ? ' readonly style="background:#f5f5f5;cursor:default;"' : ' oninput="updateDomainVisuals()"';
 
@@ -1137,9 +1184,6 @@
     function clearAllLineSupports() { document.getElementById('line_support_table_body').innerHTML = ''; updateDomainVisuals(); }
     function clearAllLoads() { document.getElementById('load_table_body').innerHTML = ''; updateDomainVisuals(); }
 
-    // -----------------------------------------------------------------------
-    // Internal Supports (polygon mode — interior masts/pins)
-    // -----------------------------------------------------------------------
     function addInternalSupportRow(x, y, z, dofs) {
         x = (x === undefined) ? 3000 : x; y = (y === undefined) ? 1500 : y; z = (z === undefined) ? 1000 : z; dofs = (dofs === undefined) ? 'xyz' : dofs;
         var tr = document.createElement('tr');
@@ -1161,18 +1205,11 @@
         return supports;
     }
 
-    // -----------------------------------------------------------------------
-    // Domain Mode (Rectangular / Polygon)
-    // -----------------------------------------------------------------------
     function onDomainModeChange() {
         var mode = document.getElementById('domain_mode').value;
         var matType = document.getElementById('mat_type').value;
         var isPolygon = (mode === 'polygon' && matType !== 'cables');
 
-        // Auto-swap the example support layout ONLY when the current rows
-        // are still an untouched app default (or the table is empty). A user's
-        // edited supports are preserved across mode toggles. Use the
-        // "Load Example Shape" button to force a reset at any time.
         if (matType === 'membrane') {
             var rows = document.querySelectorAll('#support_table_body tr');
             var isEmpty = (rows.length === 0);
@@ -1192,7 +1229,6 @@
 
         document.getElementById('polygon_hint').style.display = isPolygon ? 'block' : 'none';
         document.getElementById('internal_supports_container').style.display = isPolygon ? 'block' : 'none';
-        // Line supports UI is disabled for all structural forms (hidden for membranes and cables).
         document.getElementById('line_supports_container').style.display = 'none';
 
         updateDomainVisuals();
@@ -1201,7 +1237,7 @@
     function loadExampleForCurrentMode() {
         var mode = document.getElementById('domain_mode').value;
         var matType = document.getElementById('mat_type').value;
-        if (matType === 'cables') { clearResults(); return; } // point supports are domain-agnostic
+        if (matType === 'cables') { clearResults(); return; }
         clearResults();
         if (mode === 'polygon') {
             loadStockSupports(STOCK_POLYGON_SUPPORTS);
@@ -1248,9 +1284,6 @@
         return { Lx: Math.max(...pts.map(p => p[0]), 1000), Ly: Math.max(...pts.map(p => p[1]), 1000), Lz: Math.max(...pts.map(p => p[2]), 1000) };
     }
 
-    // -----------------------------------------------------------------------
-    // Client-side polygon validation (instant feedback, mirrors worker).
-    // -----------------------------------------------------------------------
     function segmentsIntersect2D(ax, ay, bx, by, cx, cy, dx, dy) {
         var d1 = ((dx - cx) * (ay - cy)) - ((dy - cy) * (ax - cx));
         var d2 = ((dx - cx) * (by - cy)) - ((dy - cy) * (bx - cx));
@@ -1315,10 +1348,8 @@
         var absArea = Math.round(Math.abs(area));
         var ok = true;
 
-        // also check internal supports are inside the polygon
         var internalSups = getInternalSupportArrayData();
         if (internalSups.length > 0) {
-            // ray-cast point-in-polygon
             var outside = internalSups.filter(function(s) {
                 var inside = false;
                 for (var i = 0, j = n - 1; i < n; j = i++) {
@@ -1360,7 +1391,6 @@
             scene.add(ptMesh); supportGizmos.push(ptMesh);
         });
 
-        // Internal supports — different color (blue) when in polygon mode
         if (isPolygon) {
             getInternalSupportArrayData().forEach(function(is) {
                 var ptMesh = new THREE.Mesh(ptPinGeo, intMat);
@@ -1369,7 +1399,6 @@
             });
         }
 
-        // Polygon perimeter outline preview
         if (perimeterPreviewGroup) { scene.remove(perimeterPreviewGroup); perimeterPreviewGroup = null; }
         if (isPolygon && getPointSupportArrayData().length >= 3) {
             var pts2D = getPointSupportArrayData().map(function(p) { return new THREE.Vector3(p.x, p.z, p.y); });
@@ -1383,6 +1412,11 @@
         }
 
         getLineSupportArrayData().forEach(function(ls) {
+            var isInternal = ls.role === 'internal' || ls.role === 'interior';
+            var pinMat = new THREE.MeshStandardMaterial({
+                color: isInternal ? 0x5555cc : 0x00aa55,
+                roughness: 0.3
+            });
             var p1 = new THREE.Vector3(ls.x1, ls.z1, ls.y1), p2 = new THREE.Vector3(ls.x2, ls.z2, ls.y2);
             var lineVec = new THREE.Vector3().subVectors(p2, p1), len = lineVec.length();
             if (len > 1e-3) {
@@ -1425,9 +1459,6 @@
         var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
 
         if (isPolygon && pointSups.length >= 3) {
-            // Polygon domain: no flat constant-Z outline and no blue hatch fill.
-            // The green 3D perimeter line is already drawn in updateDomainVisuals()
-            // at the actual support elevations — that is the only pre-solve preview needed.
             return;
         }
 
@@ -1527,14 +1558,12 @@
                     dir.normalize();
                     var arrowLen = Math.min(Math.max(mag * 30, 300), 1200);
                     var arrow = new THREE.ArrowHelper(dir, midPos, arrowLen, 0x00aa55, 140, 70);
-                    
                     arrow.userData.reactionData = { type: "Line Support Resultant", Rx: totalRx, Ry: totalRy, Rz: totalRz, Rtotal: mag };
-                    
                     reactionGroup.add(arrow);
 
                     var labelText = `Line Reaction: ${mag.toFixed(1)} kN`;
                     var sprite = makeTextSprite(labelText, '#00aa55');
-                    sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+                    sprite.scale.multiplyScalar(1.5);
                     sprite.position.copy(midPos).add(dir.clone().multiplyScalar(arrowLen + 100));
                     reactionGroup.add(sprite);
                 }
@@ -1551,14 +1580,12 @@
                 dir.normalize();
                 const arrowLen = Math.min(Math.max(mag * 50, 400), 1800);
                 const arrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x00aa55, 140, 70);
-                
                 arrow.userData.reactionData = { type: "Point Support Reaction", Rx: r.Rx_kN, Ry: r.Ry_kN, Rz: r.Rz_kN, Rtotal: r.R_total_kN || mag };
-                
                 reactionGroup.add(arrow);
 
                 const labelText = `${(r.R_total_kN || mag).toFixed(1)} kN`;
                 const sprite = makeTextSprite(labelText, '#00aa55');
-                sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+                sprite.scale.multiplyScalar(1.5);
                 sprite.position.copy(origin).add(dir.clone().multiplyScalar(arrowLen + 150));
                 reactionGroup.add(sprite);
             }
@@ -1606,7 +1633,7 @@
 
             var midPoint = new THREE.Vector3().addVectors(chordProjPos, maxSagNodePos).multiplyScalar(0.5);
             var sprite = makeTextSprite(`Max Sag: ${maxSagMM.toFixed(1)} mm`, '#00aa55');
-            sprite.scale.multiplyScalar(1.5);          // ← 50 % bigger
+            sprite.scale.multiplyScalar(1.5);
             sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0, 120));
             sagIndicatorGroup.add(sprite);
         }
@@ -1635,12 +1662,6 @@
             currentForcesN = data.data.axial_forces || [];
             currentStressesMPa = data.data.stresses_mpa; currentDeflectionsMM = data.data.deflections_mm || [];
 
-            // CRITICAL FIX: capture the ACTUAL solved grid resolution reported
-            // by the worker. Forced grid lines at support coordinates can grow
-            // nx/ny beyond the UI's requested values, and reRenderMesh() must
-            // rebuild triangle indices against the real stride, not the stale
-            // UI input values, or outlying supports get silently dropped from
-            // every triangle even though their nodes exist and solved fine.
             currentNxActual = (typeof data.data.nx_actual === 'number') ? data.data.nx_actual : null;
             currentNyActual = (typeof data.data.ny_actual === 'number') ? data.data.ny_actual : null;
 
@@ -1654,8 +1675,6 @@
 
             var diag = data.data.diagnostics || {};
             var convText;
-            // Cables use Force Density Method (linear solve) — not iterative DR.
-            // Prefer FDM-specific fields so we never report "undefined" residuals.
             if (diag.system_solved_linearly || (diag.method && String(diag.method).indexOf('Force Density') >= 0)) {
                 var slack = (typeof diag.slack_cables === 'number') ? diag.slack_cables : 0;
                 convText = `[FDM linear solve OK` + (slack > 0 ? `; slack members: ${slack}` : '') + `]`;
@@ -1714,8 +1733,6 @@
             loads: getLoadArrayData(), include_self_weight: document.getElementById('self_weight_toggle').checked
         };
 
-        // Domain Mode: irregular polygon defined by ordered perimeter supports,
-        // plus optional internal supports (masts/pins) inside the perimeter.
         var domainMode = document.getElementById('domain_mode').value;
         var isPolygon = (domainMode === 'polygon' && matType !== 'cables');
         payload.domain_mode = isPolygon ? "polygon" : "rectangular";
@@ -1723,12 +1740,9 @@
         if (isPolygon) {
             payload.perimeter_supports = getPointSupportArrayData();
             payload.internal_supports = getInternalSupportArrayData();
-            // In polygon mode, point_supports and line_supports are not used
-            // by the worker — strip them to avoid confusion.
             payload.point_supports = [];
             payload.line_supports = [];
 
-            // Client-side guard: at least 3 perimeter points required.
             if (payload.perimeter_supports.length < 3) {
                 document.getElementById('btn-exec').disabled = false;
                 document.getElementById('btn-stop').style.display = 'none';
@@ -1742,8 +1756,9 @@
 
     function stopOptimisation() {
         document.getElementById('btn-stop').style.display = 'none';
-        document.getElementById('btn-exec').disabled = true;
-        engineReady = false; if (worker) worker.terminate(); initWasmEngine();
+        document.getElementById('btn-exec').disabled = false;
+        document.getElementById('status').innerText = "Form finding stopped. Wasm engine remains ready.";
+        if (worker) worker.postMessage({ action: 'cancel' });
     }
 
     function clearResults() {
@@ -1761,7 +1776,6 @@
         updateDomainVisuals();
     }
 
-    /** Grey reference of the undeformed cable chord (supports only). Shown only after a solve. */
     function renderOriginalCableReference() {
         if (!originalCableGroup) return;
         while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
@@ -1773,7 +1787,6 @@
         if (pointSups.length < 2) return;
 
         var pA = pointSups[0], pB = pointSups[1];
-        // Match Three.js scene mapping used elsewhere: (X, Z, Y)
         var p1 = new THREE.Vector3(pA.x, pA.z, pA.y);
         var p2 = new THREE.Vector3(pB.x, pB.z, pB.y);
 
@@ -1798,7 +1811,7 @@
     function format2DP(val) { return Number(val).toFixed(2); }
 
     function reRenderMesh() {
-        if (!currentVertices.length || !currentFaces.length) return;
+        if (!currentVertices.length || (!currentFaces.length && !currentTriangles)) return;
         if (mesh) scene.remove(mesh);
         while (sagIndicatorGroup.children.length > 0) { sagIndicatorGroup.remove(sagIndicatorGroup.children[0]); }
 
@@ -1847,24 +1860,10 @@
             return;
         }
 
-        // Membranes / other: never show the cable original reference
         if (originalCableGroup) {
             while (originalCableGroup.children.length > 0) { originalCableGroup.remove(originalCableGroup.children[0]); }
         }
 
-        // CRITICAL FIX: reconstruct triangle indices using the ACTUAL solved
-        // grid resolution (reported by the backend as nx_actual / ny_actual),
-        // not the raw UI input values. domain_ff.py's forced-grid-line logic
-        // (np.union1d on every support X/Y coordinate) can silently grow the
-        // real grid past whatever nx/ny the user typed in, whenever a support
-        // doesn't land exactly on the regular spacing. If this function used
-        // the stale UI values instead, the (nx+1)x(ny+1) stride assumed below
-        // would be wrong, and indices would silently reference the wrong
-        // nodes — leaving nodes near irregular/outlying supports completely
-        // unreferenced by any triangle (they exist in currentVertices, which
-        // is why the support pins still draw correctly, but no face reaches
-        // them). Fall back to the UI values only if the backend didn't report
-        // actual values (e.g. an older worker_ff.js).
         var nx = (currentNxActual !== null) ? currentNxActual : (parseInt(document.getElementById('nx').value) || 36);
         var ny = (currentNyActual !== null) ? currentNyActual : (parseInt(document.getElementById('ny').value) || 12);
 
@@ -1890,9 +1889,6 @@
             colors.push(c.r, c.g, c.b);
         });
 
-        // If the backend returned explicit triangle connectivity (polygon /
-        // irregular domain mode), use it directly. Otherwise rebuild triangle
-        // indices from the (nx+1)x(ny+1) rectangular grid stride (legacy mode).
         if (currentTriangles && currentTriangles.length) {
             currentTriangles.forEach(function(tri) {
                 indices.push(tri[0], tri[1], tri[2]);
@@ -1941,8 +1937,6 @@
         var stl = "solid DBSW_FormFound_Mesh\n";
         var r = 15.0;
 
-        // When the backend returned explicit triangles (polygon / irregular
-        // domain mode), export those facets directly as a watertight surface.
         if (currentTriangles && currentTriangles.length) {
             currentTriangles.forEach(function(tri) {
                 var pa = currentVertices[tri[0]];
@@ -2012,333 +2006,5 @@
     onDomainModeChange();
     initWasmEngine();
 </script>
-<script data-pplx-inline-edit>
-(function () {
-  if (window === window.top) return;
-
-  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
-  const MAX_FONT_BYTES = 500 * 1024;
-  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
-  let scrollForwarding = false;
-  let scrollRaf = 0;
-  let trustedTopOrigin = null;
-
-  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
-  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
-  // across multiple labels.
-  function matchesAllowedOrigin(origin) {
-    if (!origin) return false;
-    for (const entry of allowedParentOrigins) {
-      if (!entry.includes("*")) {
-        if (entry === origin) return true;
-        continue;
-      }
-      const pattern = new RegExp(
-        "^" +
-          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
-          "$",
-      );
-      if (pattern.test(origin)) return true;
-    }
-    return false;
-  }
-
-  // Trust decision: when the sender is same-origin-visible (event.origin is a
-  // real origin like https://www.perplexity.ai) we trust event.origin directly.
-  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
-  // broker's stamped `parentOrigin` to identify the top window. The fallback
-  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
-  // on the response path (see postToTrustedTop) to ensure replies can't be
-  // delivered to anyone but the actual top window of that claimed origin.
-  function getTrustedParentOrigin(event) {
-    const forwardedParentOrigin =
-      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
-    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
-    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
-  }
-
-  // All responses go to window.top with targetOrigin = the allowlisted origin.
-  // An attacker that iframes us inside their own null-origin broker can claim
-  // any parentOrigin they like, but the browser will drop the reply whenever
-  // the real top's origin doesn't match — so the screenshot never leaves.
-  function postToTrustedTop(message) {
-    if (!trustedTopOrigin) return;
-    try {
-      window.top.postMessage(message, trustedTopOrigin);
-    } catch (_error) {}
-  }
-
-  function inlineAll(original, clone) {
-    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
-
-    try {
-      const computedStyle = getComputedStyle(original);
-      // cssText on a computed style is the serialized declaration in modern
-      // Chromium/Safari — a single read beats enumerating ~400 longhand
-      // properties. Firefox returns "" here, so we fall back on empty.
-      const serialized = computedStyle.cssText;
-      if (serialized) {
-        clone.style.cssText = serialized;
-      } else {
-        const parts = new Array(computedStyle.length);
-        for (let index = 0; index < computedStyle.length; index += 1) {
-          const property = computedStyle[index];
-          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
-        }
-        clone.style.cssText = parts.join("");
-      }
-    } catch (_error) {}
-
-    const originalChildren = original.children;
-    const clonedChildren = clone.children;
-    for (
-      let index = 0;
-      index < originalChildren.length && index < clonedChildren.length;
-      index += 1
-    ) {
-      inlineAll(originalChildren[index], clonedChildren[index]);
-    }
-  }
-
-  function extractFontUrl(srcValue) {
-    const matches = [
-      ...srcValue.matchAll(
-        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
-      ),
-    ];
-    if (matches.length === 0) return null;
-    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
-    if (woff2) return woff2[1];
-    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
-    if (woff) return woff[1];
-    return matches[0][1];
-  }
-
-  // Cache resolved font URL -> data URI across captures. Fonts on a page
-  // essentially never change, and a batch run emits multiple captures back to
-  // back — without this we'd refetch + re-base64 every time.
-  const fontDataUriCache = new Map();
-  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
-
-  async function fetchAsDataUri(url) {
-    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
-    let dataUri = null;
-    try {
-      const response = await fetch(url, { mode: "cors", credentials: "omit" });
-      if (response.ok) {
-        const blob = await response.blob();
-        if (blob.size <= MAX_FONT_BYTES) {
-          dataUri = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () =>
-              resolve(typeof reader.result === "string" ? reader.result : null);
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(blob);
-          });
-        }
-      }
-    } catch (_error) {
-      dataUri = null;
-    }
-    fontDataUriCache.set(url, dataUri);
-    return dataUri;
-  }
-
-  function collectFontFaceRuleTexts() {
-    const rules = [];
-    for (const sheet of document.styleSheets) {
-      let cssRules;
-      try {
-        cssRules = sheet.cssRules;
-      } catch (_error) {
-        continue;
-      }
-      if (!cssRules) continue;
-      for (const rule of cssRules) {
-        const cssText = rule.cssText || "";
-        if (cssText.startsWith("@font-face")) rules.push(cssText);
-      }
-    }
-    return rules;
-  }
-
-  async function buildInlinedFontCss() {
-    const ruleTexts = collectFontFaceRuleTexts();
-    if (ruleTexts.length === 0) return null;
-
-    const resolved = ruleTexts.map((cssText) => {
-      if (!SRC_DECLARATION_RE.test(cssText)) return null;
-      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
-      if (!srcMatch) return null;
-      const url = extractFontUrl(srcMatch[1]);
-      if (!url) return null;
-      try {
-        return { cssText, url: new URL(url, document.baseURI).href };
-      } catch (_error) {
-        return null;
-      }
-    });
-
-    const dataUris = await Promise.all(
-      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
-    );
-
-    const inlined = [];
-    let totalBytes = 0;
-    for (let index = 0; index < resolved.length; index += 1) {
-      const entry = resolved[index];
-      const dataUri = dataUris[index];
-      if (!entry || !dataUri) continue;
-      const approxBytes = dataUri.length * 0.75;
-      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
-      totalBytes += approxBytes;
-      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
-    }
-    return inlined.length > 0 ? inlined.join("\n") : null;
-  }
-
-  function stripExternal(clone) {
-    const images = clone.querySelectorAll("img");
-    for (let index = 0; index < images.length; index += 1) {
-      const src = images[index].getAttribute("src");
-      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
-    }
-
-    const elements = clone.querySelectorAll("*");
-    for (let index = 0; index < elements.length; index += 1) {
-      const style = elements[index].style.cssText;
-      if (style && style.includes("url(")) {
-        elements[index].style.cssText = style.replace(
-          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
-          "none",
-        );
-      }
-    }
-  }
-
-  function emitScroll() {
-    scrollRaf = 0;
-    if (!scrollForwarding) return;
-    postToTrustedTop({
-      type: "INLINE_EDIT_SCROLL",
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-    });
-  }
-
-  window.addEventListener(
-    "scroll",
-    function () {
-      if (!scrollForwarding || scrollRaf) return;
-      scrollRaf = requestAnimationFrame(emitScroll);
-    },
-    { passive: true, capture: true },
-  );
-
-  async function handleCaptureRequest(event) {
-    const requestId = event.data.requestId;
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    function postResult(dataUrl) {
-      postToTrustedTop({
-        type: "INLINE_EDIT_SCREENSHOT_RESULT",
-        requestId,
-        dataUrl,
-        scrollX,
-        scrollY,
-      });
-    }
-
-    try {
-      // Wait for any pending web fonts to resolve so both inline metrics and
-      // the @font-face inlining below see the same loaded faces.
-      if (document.fonts && document.fonts.ready) {
-        try {
-          await document.fonts.ready;
-        } catch (_error) {}
-      }
-
-      const clone = document.documentElement.cloneNode(true);
-      inlineAll(document.documentElement, clone);
-
-      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
-      for (let index = 0; index < removedNodes.length; index += 1) {
-        removedNodes[index].remove();
-      }
-
-      stripExternal(clone);
-
-      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
-      // can resolve them — external font URLs aren't fetched during
-      // foreignObject rendering, which would otherwise force a fallback face
-      // and change text metrics.
-      const inlinedFontCss = await buildInlinedFontCss();
-      if (inlinedFontCss) {
-        const styleEl = document.createElement("style");
-        styleEl.textContent = inlinedFontCss;
-        const head = clone.querySelector("head");
-        if (head) head.appendChild(styleEl);
-        else clone.insertBefore(styleEl, clone.firstChild);
-      }
-
-      const html = new XMLSerializer().serializeToString(clone);
-      const svg =
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
-        '<foreignObject width="100%" height="100%">' +
-        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
-        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
-        html +
-        "</div></div></foreignObject></svg>";
-      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-      const image = new Image();
-      image.onload = function () {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(image, 0, 0);
-        postResult(canvas.toDataURL("image/png"));
-      };
-      image.onerror = function () {
-        postResult(null);
-      };
-      image.src = svgUrl;
-    } catch (_error) {
-      postResult(null);
-    }
-  }
-
-  window.addEventListener("message", function (event) {
-    if (!event.data) return;
-    // Only accept messages from the direct parent frame. Blocks sibling /
-    // unrelated-window postMessage senders that could otherwise reach us.
-    if (event.source !== window.parent) return;
-
-    const trustedParentOrigin = getTrustedParentOrigin(event);
-    if (!trustedParentOrigin) return;
-    trustedTopOrigin = trustedParentOrigin;
-
-    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
-      scrollForwarding = true;
-      emitScroll();
-      return;
-    }
-
-    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
-      scrollForwarding = false;
-      if (scrollRaf) cancelAnimationFrame(scrollRaf);
-      scrollRaf = 0;
-      return;
-    }
-
-    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
-
-    handleCaptureRequest(event);
-  });
-})();
-
-
-</script></body>
+</body>
 </html>
